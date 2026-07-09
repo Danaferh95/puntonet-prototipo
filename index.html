@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v12</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Configurador de Infraestructura · Puntonet · Prototipo v16</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -22,6 +22,25 @@
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
     font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;overflow:hidden;}
+
+  /* ---------- Forzar horizontal en móvil ----------
+     La app siempre se muestra en horizontal. Si el dispositivo está en vertical, se rota todo
+     el documento 90° por CSS (sin necesidad de la Screen Orientation API, que en iOS Safari no
+     se puede bloquear vía JS) para que el contenido siga viéndose como landscape. Solo aplica
+     a pantallas angostas (teléfonos/tablets chicos); una ventana de escritorio angosta y alta
+     no se ve afectada más allá de ese mismo ancho. */
+  @media screen and (max-width: 992px) and (orientation: portrait){
+    html{
+      transform: rotate(-90deg);
+      transform-origin: left top;
+      width: 100vh;
+      height: 100vw;
+      overflow-x: hidden;
+      position: absolute;
+      top: 100%;
+      left: 0;
+    }
+  }
 
   /* ---------- Scrollbar acorde al UI (Chrome/Edge/Safari + Firefox) ---------- */
   *{ scrollbar-width:thin; scrollbar-color: var(--border) transparent; }
@@ -101,7 +120,7 @@
   .catalog-chip-label{font-size:9px;color:var(--muted);text-align:center;line-height:1.25;word-break:break-word;}
 
   /* ---------- Canvas ---------- */
-  #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);}
+  #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);touch-action:none;}
   #canvasWrap canvas{display:block;width:100%;height:100%;}
   #sceneHint{position:absolute;bottom:10px;left:12px;font-size:10.5px;color:var(--muted);
     background:rgba(16,21,29,.7);padding:6px 10px;border-radius:4px;border:1px solid var(--border);}
@@ -109,6 +128,13 @@
     border-radius:4px;padding:6px 9px;font-size:11px;color:var(--text);display:none;z-index:20;max-width:220px;}
   #tooltip .t-title{font-weight:600;margin-bottom:2px;}
   #tooltip .t-sub{color:var(--muted);font-size:10px;}
+  #placingHint{position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    background:var(--panel);border:1px solid var(--cian);color:var(--text);padding:8px 10px 8px 14px;
+    border-radius:8px;font-size:12px;z-index:20;box-shadow:0 6px 18px rgba(0,0,0,.4);
+    display:none;align-items:center;gap:10px;max-width:88%;}
+  #placingHint button{background:transparent;border:none;color:var(--muted);font-size:17px;
+    line-height:1;cursor:pointer;padding:2px 4px;flex-shrink:0;}
+  #placingHint button:hover{color:var(--danger);}
 
   /* ---------- Right panel (navegador de niveles) ---------- */
   #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
@@ -205,6 +231,59 @@
     padding:2px 7px;border-radius:4px;}
   .report-inst .rnotes{font-size:11px;color:var(--muted);margin-top:6px;font-style:italic;}
   .report-empty{font-size:12px;color:var(--muted);padding:14px;text-align:center;}
+
+  /* ---------- Responsive: se adapta el TAMAÑO, la orientación siempre queda horizontal ----------
+     Los breakpoints están pensados en ancho de pantalla en landscape: de una tablet grande
+     (~1024px) hasta el celular más angosto típico en horizontal (~568px, ej. iPhone SE), más
+     un breakpoint de ALTURA para cuando el landscape es muy bajo (~ celulares chicos, <420px
+     de alto). Los paneles laterales se angostan primero; el canvas 3D siempre se queda con el
+     espacio central disponible. */
+  @media (max-width: 1024px){
+    #app{ grid-template-columns: 196px 1fr 264px; }
+  }
+  @media (max-width: 900px){
+    #app{ grid-template-columns: 170px 1fr 236px; grid-template-rows: 46px 1fr; }
+    #header{ gap:8px; padding:0 10px; }
+    #header h1{ font-size:12px; }
+    #clienteInput{ max-width:150px; font-size:11px; padding:6px 8px; }
+    .btn{ padding:6px 9px; font-size:11px; }
+    #left, #right{ padding:10px 8px; }
+    #left h2, #right h2{ font-size:10px; margin-bottom:8px; }
+    .catalog-chip-item{ width:46px; }
+    .catalog-chip{ width:27px; height:27px; font-size:8.5px; }
+    .site-card{ padding:8px; gap:8px; }
+    .modal{ width:380px; }
+    .modal.wide{ width:560px; }
+  }
+  @media (max-width: 720px){
+    #app{ grid-template-columns: 140px 1fr 208px; }
+    #header .tag{ display:none; } /* ahorrar espacio: la etiqueta de versión no es crítica */
+    #clienteInput{ max-width:100px; }
+    #left .hint{ display:none; } /* el texto largo de ayuda no cabe cómodo en pantallas chicas */
+    .catalog-vertical-header{ padding:7px 8px; font-size:10px; }
+    .catalog-chip-item{ width:42px; }
+    #sedeEditBox .empRow input[type="number"]{ width:62px; }
+  }
+  @media (max-width: 580px){
+    #app{ grid-template-columns: 116px 1fr 178px; }
+    #header h1{ display:none; }
+    .btn{ padding:5px 7px; font-size:10px; }
+    .catalog-producto-label{ font-size:10px; }
+    .catalog-chip-item{ width:38px; }
+    .catalog-chip{ width:24px; height:24px; }
+    .inst-name{ font-size:10.5px; }
+    .inst-vertical{ display:none; } /* poco espacio: se prioriza el nombre del producto */
+  }
+  @media (max-height: 440px){
+    #app{ grid-template-rows: 42px 1fr; }
+    #header{ padding:0 8px; }
+    .btn{ padding:5px 8px; }
+    #left, #right{ padding:8px 8px; gap:8px; }
+    #sceneHint{ font-size:9px; padding:4px 7px; bottom:6px; left:8px; }
+    #zoomControls{ bottom:8px; right:8px; gap:5px; }
+    .zoom-btn{ width:28px; height:28px; font-size:13px; }
+    .modal{ max-height:94vh; }
+  }
 </style>
 </head>
 <body>
@@ -212,7 +291,7 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v12</span>
+    <span class="tag">Puntonet · Prototipo v16</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
@@ -244,6 +323,10 @@
 
   <div id="canvasWrap">
     <div id="sceneHint">Arrastrar fondo: orbitar · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</div>
+    <div id="placingHint">
+      <span id="placingHintText"></span>
+      <button id="placingHintCancel" title="Cancelar">×</button>
+    </div>
     <div id="zoomControls">
       <button class="zoom-btn" id="zoomIn" title="Acercar">+</button>
       <button class="zoom-btn" id="zoomOut" title="Alejar">−</button>
@@ -550,7 +633,7 @@ const state = {
   nextInstanceSeq: 1,
   nextConexionSeq: 1,
   editingInstance: null, // { sedeId, instanciaId } | null
-  placing: null,         // { tipo } while dragging a new sede
+  placing: null,         // { tipo:'sede' } | { tipo:'subproducto', id } — flujo táctil "armar y colocar"
 };
 
 /* Resuelve sedes reales, la Matriz Central y el Datacenter a partir de un id (uniforme para
@@ -748,14 +831,18 @@ const DC_LINK_Y = dcY*0.4; // altura de enlace del Datacenter, para las curvas d
 
 /* --- Cables entre entidades (arcos con partícula viajera) ---
    Cada conexión manual (state.conexiones) se dibuja como un cable entre los "puertos" de sus
-   2 extremos (Sede, Matriz o Datacenter). El "poder" visual (grosor/brillo/partículas) escala
-   con la cantidad de servicios de la sede involucrada (o de la Matriz, si es Matriz↔Datacenter).
-   Los tubos son clickeables: al hacer clic se abre el popup de la conexión (Ancho de banda /
-   Compartición). --- */
+   2 extremos (Sede, Matriz o Datacenter). En vez de un arco curvo, el trazado es ortogonal —
+   baja en línea recta hasta el piso, corre en horizontal sobre la grilla, y vuelve a subir — como
+   una bandeja/tubería de cableado eléctrico ordenada (ver fotos de referencia del cliente).
+   El "poder" visual (grosor/brillo/partículas) escala con la cantidad de servicios de la sede
+   involucrada (o de la Matriz, si es Matriz↔Datacenter). Los tubos son clickeables: al hacer
+   clic se abre el popup de la conexión (Ancho de banda / Compartición). --- */
 const connectionsGroup = new THREE.Group();
 scene.add(connectionsGroup);
 let connectionAnims = [];
 const CONNECTION_POWER_CAP = 6; // a partir de ~6 servicios el enlace llega a su máximo "brillo"
+const TRUNK_Y_BASE = 0.06;  // casi al ras del piso, sobre la grilla (canaleta de piso, no aérea)
+const TRUNK_Y_STEP = 0.045; // pequeña separación entre niveles cuando varias conexiones comparten tramo
 
 function getEntityPortWorldPos(entityId){
   const entity = getSedeById(entityId);
@@ -765,6 +852,30 @@ function getEntityPortWorldPos(entityId){
   return pos;
 }
 
+/* Centro (X,Z) y medio-ancho/medio-fondo del "cuadrado invisible" (hitbox/halo) de cada
+   entidad — el área que el cable NUNCA debe cortar por el medio; debe rodearla por fuera. */
+function getEntityCenterXZ(entityId){
+  const entity = getSedeById(entityId);
+  const p = new THREE.Vector3();
+  entity.group.getWorldPosition(p);
+  return p;
+}
+function getEntityHalfExtents(entityId){
+  // Usa el footprint VISUAL real de cada entidad (no el hitbox de clic, que es más grande a
+  // propósito para facilitar el clic) — así el puerto siempre queda claramente afuera de esta
+  // caja y el ruteo puede confiar en ella para decidir cuándo rodear.
+  if(entityId==='matriz') return { rx:1.7, rz:1.7 };       // radio del cascarón icosaédrico del hub
+  if(entityId==='datacenter') return { rx:1.5, rz:1.1 };   // mitad del tier más ancho del edificio
+  const sede = getSedeById(entityId);
+  const tamano = getTamanoLocal(sede.tamano);
+  return { rx: tamano.box[0]/2, rz: tamano.box[2]/2 };
+}
+/* Eje por el que "mira" el puerto de cada tipo de entidad (coincide con dónde se colocó el
+   sprite del puerto al construir su mesh): Sede y Matriz miran +X, el Datacenter mira +Z. */
+function getEntityExitAxis(entityId){
+  return tipoEntidad(entityId)==='datacenter' ? 'z' : 'x';
+}
+
 function connectionPower(c){
   const sedeSideId = [c.aId, c.bId].find(id=>tipoEntidad(id)==='sede');
   const entity = sedeSideId ? getSedeById(sedeSideId) : state.matriz;
@@ -772,46 +883,104 @@ function connectionPower(c){
   return Math.min(1, n / CONNECTION_POWER_CAP);
 }
 
+const ROUTE_MARGIN = 0.45; // separación entre el cable y el borde real del hitbox al rodearlo
+
+/* Puntos de salida desde el puerto de una entidad hacia el área libre, RODEANDO su cuadrado
+   invisible (centro ± halfExtents) en vez de cortar por el medio cuando el destino queda
+   "detrás" del puerto (en sentido contrario al que mira). Si el destino ya está del lado hacia
+   el que mira el puerto, no hace falta rodear nada: sale derecho. */
+function routeExitPoints(entityId, targetXZ, floorY){
+  const port = getEntityPortWorldPos(entityId);
+  const floorPt = new THREE.Vector3(port.x, floorY, port.z);
+  const center = getEntityCenterXZ(entityId);
+  const { rx, rz } = getEntityHalfExtents(entityId);
+  const axis = getEntityExitAxis(entityId);
+  const points = [port.clone(), floorPt.clone()];
+
+  if(axis==='x'){
+    if(targetXZ.x < floorPt.x - 0.05){
+      // el destino queda "detrás" del puerto: rodear por el lado más corto (norte o sur)
+      const side = (targetXZ.z >= center.z) ? 1 : -1;
+      const cornerZ = center.z + side*(rz + ROUTE_MARGIN);
+      points.push(new THREE.Vector3(floorPt.x, floorY, cornerZ));
+      points.push(new THREE.Vector3(center.x - rx - ROUTE_MARGIN, floorY, cornerZ));
+    }
+  } else {
+    if(targetXZ.z < floorPt.z - 0.05){
+      const side = (targetXZ.x >= center.x) ? 1 : -1;
+      const cornerX = center.x + side*(rx + ROUTE_MARGIN);
+      points.push(new THREE.Vector3(cornerX, floorY, floorPt.z));
+      points.push(new THREE.Vector3(cornerX, floorY, center.z - rz - ROUTE_MARGIN));
+    }
+  }
+  return points; // el último punto ya queda en zona libre, listo para cruzar hacia la otra entidad
+}
+
+/* Camino completo entre 2 entidades: sale de A rodeando su cuadrado si hace falta, cruza el
+   área libre en ángulos de 90° (primero X, luego Z), y entra a B rodeando el suyo si hace
+   falta. Se arma como una CurvePath de segmentos rectos (LineCurve3): esquinas cuadradas,
+   nunca curvas, y el cable nunca atraviesa el hitbox de ninguna de las 2 entidades. */
+function buildRoutedCurve(aId, bId, floorY){
+  const portB = getEntityPortWorldPos(bId);
+  const floorB = new THREE.Vector3(portB.x, floorY, portB.z);
+
+  const pointsA = routeExitPoints(aId, floorB, floorY);
+  const lastA = pointsA[pointsA.length-1];
+
+  const pointsBrev = routeExitPoints(bId, lastA, floorY);
+  const pointsB = pointsBrev.slice().reverse(); // invertido: desde la zona libre hacia el puerto de B
+  const firstB = pointsB[0];
+
+  const middle = [];
+  if(Math.abs(lastA.x-firstB.x) > 0.02 && Math.abs(lastA.z-firstB.z) > 0.02){
+    middle.push(new THREE.Vector3(firstB.x, floorY, lastA.z));
+  }
+
+  const raw = [...pointsA, ...middle, ...pointsB];
+  const points = raw.filter((p,i,arr)=> i===0 || p.distanceTo(arr[i-1]) > 0.02);
+  if(points.length < 2) points.push(portB.clone());
+  const path = new THREE.CurvePath();
+  for(let i=0;i<points.length-1;i++){
+    path.add(new THREE.LineCurve3(points[i], points[i+1]));
+  }
+  return path;
+}
+
 function rebuildConnections(){
   connectionsGroup.clear();
   connectionAnims = [];
   state.conexiones.forEach((c, idx)=>{
-    const start = getEntityPortWorldPos(c.aId);
-    const end = getEntityPortWorldPos(c.bId);
-    const dist = start.distanceTo(end);
-    const mid = start.clone().add(end).multiplyScalar(0.5);
-    mid.y = Math.max(start.y, end.y) + Math.min(3, 0.9 + dist*0.12);
-    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const floorY = TRUNK_Y_BASE + (idx % 4) * TRUNK_Y_STEP; // varias conexiones se "apilan" en niveles, como bandejas reales
+    const curve = buildRoutedCurve(c.aId, c.bId, floorY);
+    const curveLength = curve.getLength();
+    const tubularSegments = Math.max(24, Math.round(curveLength*3));
 
     const power = connectionPower(c);
 
-    // núcleo del enlace: un tubo cuyo radio crece con la cantidad de servicios; clickeable
-    const coreRadius = 0.028 + power * 0.07;
-    const coreGeo = new THREE.TubeGeometry(curve, 48, coreRadius, 8, false);
+    // núcleo del enlace: sección CUADRADA (radialSegments=4) cuyo grosor crece con la cantidad
+    // de servicios; clickeable
+    const coreRadius = 0.045 + power * 0.075;
+    const coreGeo = new THREE.TubeGeometry(curve, tubularSegments, coreRadius, 4, false);
     const coreMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee, transparent:true, opacity: 0.35 + power*0.45,
-      blending: THREE.AdditiveBlending, depthWrite:false,
+      color: 0x22d3ee, transparent:true, opacity: 0.55 + power*0.4,
     });
     const coreMesh = new THREE.Mesh(coreGeo, coreMat);
     coreMesh.userData = { isConexion:true, conexionId:c.id };
     connectionsGroup.add(coreMesh);
 
-    // halo exterior: más ancho (más fácil de clickear) y más brillante mientras más cargada está la sede
-    const glowRadius = coreRadius * (2.2 + power*1.3);
-    const glowGeo = new THREE.TubeGeometry(curve, 48, glowRadius, 8, false);
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: 0x8be9ff, transparent:true, opacity: 0.06 + power*0.28,
-      blending: THREE.AdditiveBlending, depthWrite:false,
-    });
-    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
-    glowMesh.userData = { isConexion:true, conexionId:c.id };
-    connectionsGroup.add(glowMesh);
+    // aristas marcadas, para que se lea como conducto/bandeja rígida y no como un tubo liso
+    const edgesMesh = new THREE.LineSegments(
+      new THREE.EdgesGeometry(coreGeo, 30),
+      new THREE.LineBasicMaterial({ color:0x8be9ff, transparent:true, opacity:0.5 })
+    );
+    connectionsGroup.add(edgesMesh);
 
-    // partículas viajeras: más cantidad y más velocidad cuanto más "potente" es el enlace
+    // partículas viajeras (pequeños cubos, en línea con el estilo "cuadrado"): más cantidad y
+    // más velocidad cuanto más "potente" es el enlace
     const particleCount = 1 + Math.round(power*3); // 1 a 4 partículas
-    const particleSize = 0.065 + power*0.05;
+    const particleSize = 0.09 + power*0.05;
     for(let pi=0; pi<particleCount; pi++){
-      const particleGeo = new THREE.SphereGeometry(particleSize, 8, 8);
+      const particleGeo = new THREE.BoxGeometry(particleSize, particleSize, particleSize);
       const particleMat = new THREE.MeshBasicMaterial({
         color: 0xbdf3ff, transparent:true, opacity: 0.85 + power*0.15,
         blending: THREE.AdditiveBlending, depthWrite:false,
@@ -820,7 +989,7 @@ function rebuildConnections(){
       connectionsGroup.add(particle);
       connectionAnims.push({
         curve, particle,
-        speed: (0.22 + power*0.3) + (idx%3)*0.05,
+        speed: (0.12 + power*0.16) + (idx%3)*0.025,
         phase: (idx*0.37 + pi/particleCount) % 1,
       });
     }
@@ -874,14 +1043,17 @@ document.getElementById('zoomReset').addEventListener('click', ()=>{
   applyZoom(1);
 });
 
-/* --- Redimensionar --- */
-window.addEventListener('resize', ()=>{
+/* --- Redimensionar (incluye rotación de pantalla / bloqueo de orientación vía CSS) --- */
+function handleViewportResize(){
   const aspect = wrap.clientWidth/wrap.clientHeight;
   camera.left=-FRUSTUM*aspect; camera.right=FRUSTUM*aspect;
   camera.top=FRUSTUM; camera.bottom=-FRUSTUM;
   camera.updateProjectionMatrix();
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
-});
+}
+window.addEventListener('resize', handleViewportResize);
+// el navegador reporta clientWidth/clientHeight con un pequeño retraso tras rotar el dispositivo
+window.addEventListener('orientationchange', ()=>{ setTimeout(handleViewportResize, 300); });
 
 /* --- Registro de assets por assetKey (§5) --- */
 const AssetRegistry = {
@@ -1278,7 +1450,10 @@ function updateSelectionVisuals(){
   if(dcHalo) dcHalo.material.opacity = state.selectedSedeIds.includes('datacenter') ? 0.9 : 0;
 }
 
-/* --- Drag & drop desde el panel izquierdo: crear sede, o asignar un producto arrastrado --- */
+/* --- Drag & drop desde el panel izquierdo: crear sede, o asignar un producto arrastrado ---
+   En desktop funciona con arrastre nativo (HTML5 DnD). En touch (celular/tablet) el DnD nativo
+   no dispara con el dedo, así que se ofrece una alternativa: tocar la tarjeta/producto lo "arma"
+   (aparece un aviso arriba del canvas) y el siguiente toque sobre el canvas lo coloca. */
 let draggingFromPanel = false;
 let draggingSubproductoId = null;
 const sedeDragCard = document.getElementById('sedeDragCard');
@@ -1286,6 +1461,36 @@ sedeDragCard.addEventListener('dragstart', (e)=>{
   draggingFromPanel = true;
   e.dataTransfer.setData('text/plain', 'sede');
 });
+
+const placingHintEl = document.getElementById('placingHint');
+const placingHintText = document.getElementById('placingHintText');
+function armPlacing(placing, hintText){
+  state.placing = placing;
+  placingHintText.textContent = hintText;
+  placingHintEl.style.display = 'flex';
+}
+function disarmPlacing(){
+  state.placing = null;
+  placingHintEl.style.display = 'none';
+}
+document.getElementById('placingHintCancel').addEventListener('click', disarmPlacing);
+sedeDragCard.addEventListener('click', ()=>{
+  if(state.placing && state.placing.tipo==='sede'){ disarmPlacing(); return; }
+  armPlacing({ tipo:'sede' }, 'Toca el canvas para colocar la sede');
+});
+
+function placeSedeAtClientPoint(clientX, clientY){
+  const rect = wrap.getBoundingClientRect();
+  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
+  const dropRaycaster = new THREE.Raycaster();
+  dropRaycaster.setFromCamera(mouse, camera);
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+  const point = new THREE.Vector3();
+  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  if(!point) return;
+  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  createSede(EMPLEADOS_DEFAULT, gx, gz);
+}
 
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
    el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
@@ -1324,6 +1529,18 @@ function playWrapEffect(entityId, subproductoId, onDone){
   requestAnimationFrame(tick);
 }
 
+function assignSubproductoAtClientPoint(subproductoId, clientX, clientY){
+  const hit = hitTestAtEvent({ clientX, clientY }); // ¿sobre qué sede o la Matriz se soltó el producto?
+  // El Datacenter es un punto de conexión (infraestructura de Puntonet), no tiene catálogo
+  // propio: los productos solo se asignan a sedes o a la Matriz.
+  if(hit.sedeId && hit.sedeId!=='datacenter'){
+    playWrapEffect(hit.sedeId, subproductoId, ()=>{
+      openPopupForNew(subproductoId, [hit.sedeId]);
+    });
+  }
+  // si se soltó fuera de cualquier entidad válida, no se asigna nada (sin efecto).
+}
+
 wrap.addEventListener('dragover', (e)=>{ e.preventDefault(); });
 wrap.addEventListener('drop', (e)=>{
   e.preventDefault();
@@ -1335,33 +1552,11 @@ wrap.addEventListener('drop', (e)=>{
   if(!payload) return;
 
   if(payload==='sede'){
-    const rect = wrap.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX-rect.left)/rect.width)*2-1,
-      -((e.clientY-rect.top)/rect.height)*2+1
-    );
-    const dropRaycaster = new THREE.Raycaster();
-    dropRaycaster.setFromCamera(mouse, camera);
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-    const point = new THREE.Vector3();
-    dropRaycaster.ray.intersectPlane(groundPlane, point);
-    if(!point) return;
-    const {gx,gz} = nearestFreeCell(point.x, point.z);
-    createSede(EMPLEADOS_DEFAULT, gx, gz);
+    placeSedeAtClientPoint(e.clientX, e.clientY);
     return;
   }
-
   if(payload.startsWith('subproducto:')){
-    const subproductoId = payload.slice('subproducto:'.length);
-    const hit = hitTestAtEvent(e); // ¿sobre qué sede o la Matriz se soltó el producto?
-    // El Datacenter es un punto de conexión (infraestructura de Puntonet), no tiene catálogo
-    // propio: los productos solo se asignan a sedes o a la Matriz.
-    if(hit.sedeId && hit.sedeId!=='datacenter'){
-      playWrapEffect(hit.sedeId, subproductoId, ()=>{
-        openPopupForNew(subproductoId, [hit.sedeId]);
-      });
-    }
-    // si se soltó fuera de cualquier entidad válida, no se asigna nada (sin efecto).
+    assignSubproductoAtClientPoint(payload.slice('subproducto:'.length), e.clientX, e.clientY);
   }
 });
 
@@ -1405,10 +1600,10 @@ function handleCanvasClick(hit, shiftKey){
     openConnPopup(hit.conexion);
     return;
   }
-  if(hit.asset){
-    openPopupForEdit(hit.asset.sedeId, hit.asset.instanciaId);
-    return;
-  }
+  // Ya no se abre el popup del producto al hacer clic en su ícono en el canvas: eso llevaba a
+  // que "seleccionar la sede" y "editar un producto" fueran el mismo gesto sin querer. Ahora un
+  // clic (sobre la sede, la Matriz, o cualquiera de sus íconos de producto) solo selecciona la
+  // entidad; el usuario elige qué producto editar desde la lista en el panel derecho.
   if(hit.sedeId){
     if(shiftKey){
       const idx = state.selectedSedeIds.indexOf(hit.sedeId);
@@ -1468,7 +1663,7 @@ function projectToPlaneAtHeight(e, height){
   return point || new THREE.Vector3(0,height,0);
 }
 
-renderer.domElement.addEventListener('mousedown', (e)=>{
+function onPointerDown(e){
   if(e.button!==0){
     // botón central/derecho: siempre orbita, como antes
     isOrbiting = true; lastX = e.clientX; lastY = e.clientY;
@@ -1477,9 +1672,9 @@ renderer.domElement.addEventListener('mousedown', (e)=>{
   pointerDownInfo = { x:e.clientX, y:e.clientY, hit: hitTestAtEvent(e) };
   pointerMode = null;
   lastX = e.clientX; lastY = e.clientY;
-});
+}
 
-window.addEventListener('mousemove', (e)=>{
+function onPointerMove(e){
   if(pointerDownInfo && pointerMode===null){
     const moved = Math.hypot(e.clientX-pointerDownInfo.x, e.clientY-pointerDownInfo.y);
     if(pointerDownInfo.hit.port && moved > PORT_DRAG_THRESHOLD){
@@ -1530,9 +1725,9 @@ window.addEventListener('mousemove', (e)=>{
     updateCameraFromAngles();
   }
   lastX = e.clientX; lastY = e.clientY;
-});
+}
 
-window.addEventListener('mouseup', (e)=>{
+function onPointerUp(e){
   if(e.button===0 && pointerDownInfo){
     if(pointerMode==='connecting'){
       endTempCable();
@@ -1553,13 +1748,50 @@ window.addEventListener('mouseup', (e)=>{
       rebuildConnections();
       movingSede = null;
     } else if(pointerMode!=='orbit'){
-      // no hubo arrastre real (o fue mínimo): se trata como un clic de selección/edición
-      handleCanvasClick(pointerDownInfo.hit, e.shiftKey);
+      // no hubo arrastre real (o fue mínimo): o bien completa una colocación pendiente
+      // (flujo táctil de "tocar para armar, tocar para colocar"), o es un clic de selección.
+      if(state.placing){
+        if(state.placing.tipo==='sede') placeSedeAtClientPoint(e.clientX, e.clientY);
+        else if(state.placing.tipo==='subproducto') assignSubproductoAtClientPoint(state.placing.id, e.clientX, e.clientY);
+        disarmPlacing();
+      } else {
+        handleCanvasClick(pointerDownInfo.hit, e.shiftKey);
+      }
     }
   }
   pointerDownInfo = null;
   pointerMode = null;
   isOrbiting = false;
+}
+
+renderer.domElement.addEventListener('mousedown', onPointerDown);
+window.addEventListener('mousemove', onPointerMove);
+window.addEventListener('mouseup', onPointerUp);
+
+/* --- Equivalente táctil: el drag-and-drop nativo (HTML5) no dispara con dedos en móviles, pero
+   estos gestos (orbitar, tocar para seleccionar, arrastrar una sede, arrastrar un puerto para
+   conectar) están hechos a mano con mouse events — así que basta con traducir el primer punto
+   de contacto a la misma forma de evento y reusar exactamente la misma lógica de arriba. --- */
+function touchPoint(e){
+  const t = e.touches[0] || e.changedTouches[0];
+  return { clientX:t.clientX, clientY:t.clientY, button:0, shiftKey:false };
+}
+renderer.domElement.addEventListener('touchstart', (e)=>{
+  if(e.touches.length!==1) return; // dejamos pasar gestos de 2 dedos (por si el navegador hace algo con ellos)
+  onPointerDown(touchPoint(e));
+}, { passive:true });
+window.addEventListener('touchmove', (e)=>{
+  if(!pointerDownInfo || e.touches.length!==1) return;
+  if(e.cancelable) e.preventDefault(); // evita que la página haga scroll mientras se interactúa con el canvas
+  onPointerMove(touchPoint(e));
+}, { passive:false });
+window.addEventListener('touchend', (e)=>{
+  if(!pointerDownInfo) return;
+  onPointerUp(touchPoint(e));
+});
+window.addEventListener('touchcancel', ()=>{
+  if(pointerMode==='connecting') endTempCable();
+  pointerDownInfo = null; pointerMode = null; isOrbiting = false; movingSede = null;
 });
 
 /* --- Tooltip on hover sobre assets --- */
@@ -1708,6 +1940,10 @@ function renderCatalogPanel(){
           e.dataTransfer.effectAllowed = 'copy';
         });
         chip.addEventListener('dragend', ()=>{ draggingSubproductoId = null; });
+        chip.addEventListener('click', ()=>{
+          if(state.placing && state.placing.tipo==='subproducto' && state.placing.id===s.id){ disarmPlacing(); return; }
+          armPlacing({ tipo:'subproducto', id:s.id }, `Toca una sede o la Matriz para asignar "${s.nombre}"`);
+        });
         const chipLabel = document.createElement('div');
         chipLabel.className = 'catalog-chip-label';
         chipLabel.textContent = s.nombre;
