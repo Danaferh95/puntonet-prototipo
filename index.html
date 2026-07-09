@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v16</title>
+<title>Configurador de Infraestructura · Puntonet · Prototipo v17</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -135,6 +135,9 @@
   #placingHint button{background:transparent;border:none;color:var(--muted);font-size:17px;
     line-height:1;cursor:pointer;padding:2px 4px;flex-shrink:0;}
   #placingHint button:hover{color:var(--danger);}
+  .touch-drag-ghost{position:fixed;z-index:200;pointer-events:none;transform:translate(-50%,-135%);
+    color:#04121a;font-weight:700;font-size:11.5px;padding:8px 13px;border-radius:8px;
+    box-shadow:0 10px 26px rgba(0,0,0,.55);white-space:nowrap;opacity:.96;}
 
   /* ---------- Right panel (navegador de niveles) ---------- */
   #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
@@ -291,7 +294,7 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v16</span>
+    <span class="tag">Puntonet · Prototipo v17</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
@@ -1438,15 +1441,22 @@ function setSedeEmpleados(sede, empleados){
 
 function removeSedeVisual(sede){ scene.remove(sede.group); }
 
+function getEntityHaloObject(entityId){
+  if(entityId==='matriz') return hubGroup.getObjectByName('matrizHalo');
+  if(entityId==='datacenter') return datacenterGroup.getObjectByName('matrizHalo');
+  const sede = getSedeById(entityId);
+  return sede ? sede.group.getObjectByName('halo') : null;
+}
+
 function updateSelectionVisuals(){
   state.sedes.forEach(sede=>{
     const halo = sede.group.getObjectByName('halo');
     const selected = state.selectedSedeIds.includes(sede.id);
     if(halo) halo.material.opacity = selected ? 0.9 : 0;
   });
-  const matrizHalo = hubGroup.getObjectByName('matrizHalo');
+  const matrizHalo = getEntityHaloObject('matriz');
   if(matrizHalo) matrizHalo.material.opacity = state.selectedSedeIds.includes('matriz') ? 0.9 : 0;
-  const dcHalo = datacenterGroup.getObjectByName('matrizHalo');
+  const dcHalo = getEntityHaloObject('datacenter');
   if(dcHalo) dcHalo.material.opacity = state.selectedSedeIds.includes('datacenter') ? 0.9 : 0;
 }
 
@@ -1559,6 +1569,84 @@ wrap.addEventListener('drop', (e)=>{
     assignSubproductoAtClientPoint(payload.slice('subproducto:'.length), e.clientX, e.clientY);
   }
 });
+
+/* --- Arrastre táctil real (tablets/celulares) ---
+   El drag-and-drop nativo de HTML5 no dispara con el dedo en ningún navegador móvil, así que
+   para que "arrastrar" funcione de verdad (no solo tocar-para-armar) se simula el gesto a mano:
+   un "fantasma" sigue el dedo, la sede/Matriz bajo el dedo se resalta en vivo, y al soltar sobre
+   el canvas se ejecuta la misma acción que un drop de escritorio. El tocar-para-armar sigue
+   funcionando además de esto (para toques sin arrastre real). */
+let dragHoverEntityId = null;
+function setDragHoverHighlight(entityId){
+  if(dragHoverEntityId === entityId) return;
+  if(dragHoverEntityId && !state.selectedSedeIds.includes(dragHoverEntityId)){
+    const prevHalo = getEntityHaloObject(dragHoverEntityId);
+    if(prevHalo) prevHalo.material.opacity = 0;
+  }
+  dragHoverEntityId = entityId;
+  if(entityId){
+    const halo = getEntityHaloObject(entityId);
+    if(halo) halo.material.opacity = 0.7;
+  }
+}
+
+function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor){
+  let touchId = null, startX=0, startY=0, dragging=false, ghost=null;
+
+  el.addEventListener('touchstart', (e)=>{
+    if(e.touches.length!==1) return;
+    const t = e.touches[0];
+    touchId = t.identifier; startX = t.clientX; startY = t.clientY; dragging = false;
+  }, { passive:true });
+
+  el.addEventListener('touchmove', (e)=>{
+    const t = Array.from(e.touches).find(tt=>tt.identifier===touchId);
+    if(!t) return;
+    const moved = Math.hypot(t.clientX-startX, t.clientY-startY);
+    if(!dragging && moved > 10){
+      dragging = true;
+      ghost = document.createElement('div');
+      ghost.className = 'touch-drag-ghost';
+      ghost.style.background = ghostColor || 'var(--cian)';
+      ghost.textContent = ghostLabel;
+      document.body.appendChild(ghost);
+    }
+    if(dragging){
+      e.preventDefault();
+      ghost.style.left = t.clientX+'px';
+      ghost.style.top = t.clientY+'px';
+      const wrapRect = wrap.getBoundingClientRect();
+      const overCanvas = t.clientX>=wrapRect.left && t.clientX<=wrapRect.right && t.clientY>=wrapRect.top && t.clientY<=wrapRect.bottom;
+      if(overCanvas){
+        const hit = hitTestAtEvent({ clientX:t.clientX, clientY:t.clientY });
+        setDragHoverHighlight(hit.sedeId && hit.sedeId!=='datacenter' ? hit.sedeId : null);
+      } else {
+        setDragHoverHighlight(null);
+      }
+    }
+  }, { passive:false });
+
+  function finish(e){
+    touchId = null;
+    if(!dragging) return;
+    dragging = false;
+    e.preventDefault(); // evita el 'click' fantasma que el navegador dispara después de un arrastre
+    if(ghost){ document.body.removeChild(ghost); ghost = null; }
+    setDragHoverHighlight(null);
+    const t = e.changedTouches[0];
+    const wrapRect = wrap.getBoundingClientRect();
+    const overCanvas = t.clientX>=wrapRect.left && t.clientX<=wrapRect.right && t.clientY>=wrapRect.top && t.clientY<=wrapRect.bottom;
+    if(overCanvas) payloadFn(t.clientX, t.clientY);
+  }
+  el.addEventListener('touchend', finish);
+  el.addEventListener('touchcancel', ()=>{
+    dragging = false; touchId = null;
+    if(ghost){ document.body.removeChild(ghost); ghost = null; }
+    setDragHoverHighlight(null);
+  });
+}
+
+makeTouchDraggable(sedeDragCard, placeSedeAtClientPoint, 'Sede', 'var(--cian)');
 
 
 
@@ -1944,6 +2032,7 @@ function renderCatalogPanel(){
           if(state.placing && state.placing.tipo==='subproducto' && state.placing.id===s.id){ disarmPlacing(); return; }
           armPlacing({ tipo:'subproducto', id:s.id }, `Toca una sede o la Matriz para asignar "${s.nombre}"`);
         });
+        makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)));
         const chipLabel = document.createElement('div');
         chipLabel.className = 'catalog-chip-label';
         chipLabel.textContent = s.nombre;
