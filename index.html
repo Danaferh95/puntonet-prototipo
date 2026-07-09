@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v8</title>
+<title>Configurador de Infraestructura · Puntonet · Prototipo v12</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -142,6 +142,19 @@
   #herenciaBox .herenciaRemove{color:var(--danger);font-weight:700;cursor:pointer;padding:0 3px;flex-shrink:0;}
   #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
   #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
+  #connectionsBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
+  #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
+  #connectionsBox .connList{display:flex;flex-direction:column;gap:5px;}
+  .connRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;}
+  .connRow:hover{border-color:var(--cian);}
+  .connDot{width:8px;height:8px;border-radius:50%;background:var(--cian);flex-shrink:0;}
+  .connName{flex:1;}
+  .connDetalle{color:var(--muted);font-weight:400;font-size:10.5px;}
+  .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
+  .connDelete:hover{color:#fca5a5;}
   #instanceList{display:flex;flex-direction:column;gap:6px;}
   .inst-row{display:flex;align-items:center;gap:8px;background:var(--panel-2);
     border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:pointer;}
@@ -199,12 +212,11 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v8</span>
+    <span class="tag">Puntonet · Prototipo v12</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
-    <button class="btn" id="btnReport">Generar Reporte</button>
-    <button class="btn primary" id="btnExport">Descargar JSON</button>
+    <button class="btn primary" id="btnReport">Generar Reporte</button>
   </div>
 
   <div id="left">
@@ -247,6 +259,7 @@
       <div id="navSedeLabel"></div>
       <div id="matrizHint">Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.</div>
       <div id="sedeEditBox" style="display:none;"></div>
+      <div id="connectionsBox" style="display:none;"></div>
       <div id="herenciaBox" style="display:none;"></div>
     </div>
     <div id="instanceSection" style="display:none;">
@@ -286,6 +299,31 @@
   </div>
 </div>
 
+<!-- Popup de conexión (cable entre 2 entidades) -->
+<div class="modal-overlay" id="connOverlay">
+  <div class="modal" id="connModal">
+    <div class="modal-head">
+      <div class="path">Conexión</div>
+      <div class="title" id="connTitle"></div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Ancho de banda</label>
+        <input type="text" id="connAncho" placeholder="Ej. 100 Mbps, 1 Gbps...">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Compartición</label>
+        <input type="text" id="connComparticion" placeholder="Ej. Dedicado (1:1), Compartido 4:1...">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn danger-outline" id="btnDeleteConn" style="margin-right:auto;color:var(--danger);border-color:var(--danger);">Eliminar conexión</button>
+      <button class="btn ghost" id="btnCancelConn">Cancelar</button>
+      <button class="btn primary" id="btnSaveConn">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal de reporte -->
 <div class="modal-overlay" id="reportOverlay">
   <div class="modal wide">
@@ -296,12 +334,14 @@
     <div class="modal-body" id="reportBody"></div>
     <div class="modal-foot">
       <button class="btn ghost" id="btnCloseReport">Cerrar</button>
-      <button class="btn primary" id="btnExportFromReport">Descargar JSON</button>
+      <button class="btn" id="btnExportFromReport">Descargar JSON</button>
+      <button class="btn primary" id="btnExportPDF">Descargar PDF</button>
     </div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* =========================================================================
    1. CATÁLOGO — Vertical (N1) → Producto (N2) → Subproducto (N3)
@@ -503,18 +543,45 @@ const state = {
   clienteNombre: '',
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
   matriz: { id:'matriz', nombre:'Matriz Central', instancias:[], group:null }, // group se asigna tras crear el hub
-  selectedSedeIds: [],   // ids de sede, y opcionalmente 'matriz'
+  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', group:null, instancias:[] }, // edificio fijo de Puntonet
+  conexiones: [],        // { id, aId, bId, anchoBanda, comparticion } — cable manual entre 2 entidades
+  selectedSedeIds: [],   // ids de sede, y opcionalmente 'matriz' / 'datacenter'
   nextSedeSeq: 1,
   nextInstanceSeq: 1,
+  nextConexionSeq: 1,
   editingInstance: null, // { sedeId, instanciaId } | null
   placing: null,         // { tipo } while dragging a new sede
 };
 
-/* Resuelve tanto sedes reales como la Matriz Central a partir de un id (uniforme para
-   selección, popups de servicio y assets 3D). */
+/* Resuelve sedes reales, la Matriz Central y el Datacenter a partir de un id (uniforme para
+   selección, popups de servicio, puertos de conexión y assets 3D). */
 function getSedeById(id){
   if(id==='matriz') return state.matriz;
+  if(id==='datacenter') return state.datacenter;
   return state.sedes.find(s=>s.id===id);
+}
+function tipoEntidad(id){
+  if(id==='matriz') return 'matriz';
+  if(id==='datacenter') return 'datacenter';
+  return 'sede';
+}
+function nombreEntidad(id){ const e = getSedeById(id); return e ? e.nombre : id; }
+
+/* --- Conexiones: cables manuales entre Sede↔Matriz, Sede↔Datacenter y Matriz↔Datacenter ---
+   No se conectan sede-sede. No hay checkboxes: se crean arrastrando desde el "puerto" (§5). */
+function parValidoConexion(aId, bId){
+  if(aId===bId) return false;
+  if(tipoEntidad(aId)==='sede' && tipoEntidad(bId)==='sede') return false;
+  return true;
+}
+function conexionExiste(aId, bId){
+  return state.conexiones.some(c=>(c.aId===aId&&c.bId===bId)||(c.aId===bId&&c.bId===aId));
+}
+function conexionesDe(entityId){
+  return state.conexiones.filter(c=>c.aId===entityId||c.bId===entityId);
+}
+function otroExtremo(conexion, entityId){
+  return conexion.aId===entityId ? conexion.bId : conexion.aId;
 }
 
 function uid(prefix, seqField){
@@ -531,6 +598,7 @@ const scene = new THREE.Scene();
 
 const GRID_SPACING = 4;
 const FRUSTUM = 22;
+const PORT_BASE_SCALE = 0.46; // declarado temprano: los puertos de Matriz/Datacenter se crean antes que makePortSprite() en el archivo
 
 let camera, renderer;
 function setupCamera(){
@@ -595,7 +663,6 @@ hubGroup.add(beam);
 
 hubGroup.position.set(0, 0, 0);
 scene.add(hubGroup);
-const HUB_LINK_Y = coreY * 0.55; // altura desde donde salen los enlaces hacia las sedes
 
 // La Matriz Central se comporta como una "sede" especial para selección/asignación de productos:
 // reutiliza el mismo mecanismo de isSedeRoot (sedeId==='matriz') para que el resto del código
@@ -616,48 +683,129 @@ matrizHalo.position.y = 0.03;
 matrizHalo.name = 'matrizHalo';
 hubGroup.add(matrizHalo);
 
-/* --- Conexiones hub → sedes (arcos con partícula viajera) ---
-   El "poder" visual del enlace (grosor, brillo, cantidad/velocidad de partículas)
-   escala con la cantidad de servicios (instancias) que tiene asignados la sede. --- */
+// Puerto de conexión de la Matriz: desde aquí se arrastra un cable hacia una sede o el Datacenter.
+const matrizPort = makePortSprite();
+matrizPort.position.set(2.0, coreY*0.5, 0);
+matrizPort.userData = { isPort:true, entityId:'matriz' };
+hubGroup.add(matrizPort);
+
+const matrizLabel = makeNameSprite('Matriz Central');
+matrizLabel.position.set(0, coreY + 1.7, 0);
+hubGroup.add(matrizLabel);
+
+/* --- Datacenter "Epicentro": edificio fijo de Puntonet, siempre presente, ubicado detrás de la
+   Matriz. Representa la infraestructura física a la que se conectan sedes/Matriz cuando quieren
+   servicio de Internet/ISP de Puntonet (reemplaza la antigua "torre" decorativa). --- */
+const DATACENTER_GZ = -5; // celdas de grilla detrás del hub — bien separado de la Matriz, se excluye de las celdas libres para sedes
+const datacenterGroup = new THREE.Group();
+const dcPos = { x: 0*GRID_SPACING, z: DATACENTER_GZ*GRID_SPACING };
+datacenterGroup.position.set(dcPos.x, 0, dcPos.z);
+scene.add(datacenterGroup);
+state.datacenter.group = datacenterGroup;
+
+const DC_TIERS = [ [3.0,0.55,2.2], [2.0,1.0,1.5], [1.1,0.7,0.85] ];
+let dcY = 0;
+DC_TIERS.forEach(dims=>{
+  const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
+  const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
+  const y = dcY + dims[1]/2;
+  edges.position.y = y; fill.position.y = y;
+  datacenterGroup.add(edges, fill);
+  dcY += dims[1];
+});
+// hilera de "luces de servidor" en la fachada, para dar sensación de datacenter activo
+for(let i=0;i<7;i++){
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.05,8,8),
+    new THREE.MeshBasicMaterial({ color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 }));
+  light.position.set(-1.2 + i*0.4, 0.3, 1.11);
+  datacenterGroup.add(light);
+}
+const dcLabel = makeNameSprite('Datacenter Epicentro');
+dcLabel.position.set(0, dcY + 0.8, 0);
+datacenterGroup.add(dcLabel);
+
+const dcHaloGeo = new THREE.RingGeometry(2.2, 2.38, 40);
+const dcHalo = new THREE.Mesh(dcHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
+dcHalo.rotation.x = -Math.PI/2;
+dcHalo.position.y = 0.03;
+dcHalo.name = 'matrizHalo'; // mismo nombre que el halo de la Matriz: updateSelectionVisuals los trata igual
+datacenterGroup.add(dcHalo);
+
+const dcHitboxGeo = new THREE.BoxGeometry(3.4, dcY+0.6, 2.6);
+const dcHitbox = new THREE.Mesh(dcHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
+dcHitbox.position.y = (dcY+0.6)/2;
+dcHitbox.name = 'matrizHitbox'; // mismo patrón que la Matriz: sedeId + isSedeRoot
+dcHitbox.userData = { sedeId:'datacenter', isSedeRoot:true, isMatrizRoot:true };
+datacenterGroup.add(dcHitbox);
+
+const dcPort = makePortSprite();
+dcPort.position.set(0, dcY*0.4, 1.4);
+dcPort.userData = { isPort:true, entityId:'datacenter' };
+datacenterGroup.add(dcPort);
+
+const DC_LINK_Y = dcY*0.4; // altura de enlace del Datacenter, para las curvas de cable
+
+/* --- Cables entre entidades (arcos con partícula viajera) ---
+   Cada conexión manual (state.conexiones) se dibuja como un cable entre los "puertos" de sus
+   2 extremos (Sede, Matriz o Datacenter). El "poder" visual (grosor/brillo/partículas) escala
+   con la cantidad de servicios de la sede involucrada (o de la Matriz, si es Matriz↔Datacenter).
+   Los tubos son clickeables: al hacer clic se abre el popup de la conexión (Ancho de banda /
+   Compartición). --- */
 const connectionsGroup = new THREE.Group();
 scene.add(connectionsGroup);
 let connectionAnims = [];
 const CONNECTION_POWER_CAP = 6; // a partir de ~6 servicios el enlace llega a su máximo "brillo"
 
+function getEntityPortWorldPos(entityId){
+  const entity = getSedeById(entityId);
+  const portObj = entity.group.getObjectByName('connPort');
+  const pos = new THREE.Vector3();
+  portObj.getWorldPosition(pos);
+  return pos;
+}
+
+function connectionPower(c){
+  const sedeSideId = [c.aId, c.bId].find(id=>tipoEntidad(id)==='sede');
+  const entity = sedeSideId ? getSedeById(sedeSideId) : state.matriz;
+  const n = entity ? entity.instancias.length : 0;
+  return Math.min(1, n / CONNECTION_POWER_CAP);
+}
+
 function rebuildConnections(){
   connectionsGroup.clear();
   connectionAnims = [];
-  // Solo se dibuja el enlace hub → sede para las sedes que el cliente conectó explícitamente
-  // a la Matriz Central; una sede recién creada no tiene ningún enlace hasta activarlo.
-  state.sedes.filter(sede=>sede.conectadoMatriz).forEach((sede, idx)=>{
-    const start = new THREE.Vector3(0, HUB_LINK_Y, 0);
-    const tamano = getTamanoLocal(sede.tamano);
-    const end = new THREE.Vector3(sede.group.position.x, tamano.box[1]*0.6, sede.group.position.z);
+  state.conexiones.forEach((c, idx)=>{
+    const start = getEntityPortWorldPos(c.aId);
+    const end = getEntityPortWorldPos(c.bId);
     const dist = start.distanceTo(end);
     const mid = start.clone().add(end).multiplyScalar(0.5);
     mid.y = Math.max(start.y, end.y) + Math.min(3, 0.9 + dist*0.12);
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
 
-    const n = sede.instancias.length;
-    const power = Math.min(1, n / CONNECTION_POWER_CAP); // 0 (vacía) → 1 (muy cargada)
+    const power = connectionPower(c);
 
-    // núcleo del enlace: un tubo cuyo radio crece con la cantidad de servicios
+    // núcleo del enlace: un tubo cuyo radio crece con la cantidad de servicios; clickeable
     const coreRadius = 0.028 + power * 0.07;
     const coreGeo = new THREE.TubeGeometry(curve, 48, coreRadius, 8, false);
     const coreMat = new THREE.MeshBasicMaterial({
       color: 0x22d3ee, transparent:true, opacity: 0.35 + power*0.45,
       blending: THREE.AdditiveBlending, depthWrite:false,
     });
-    connectionsGroup.add(new THREE.Mesh(coreGeo, coreMat));
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreMesh.userData = { isConexion:true, conexionId:c.id };
+    connectionsGroup.add(coreMesh);
 
-    // halo exterior: más ancho y más brillante mientras más cargada está la sede
+    // halo exterior: más ancho (más fácil de clickear) y más brillante mientras más cargada está la sede
     const glowRadius = coreRadius * (2.2 + power*1.3);
     const glowGeo = new THREE.TubeGeometry(curve, 48, glowRadius, 8, false);
     const glowMat = new THREE.MeshBasicMaterial({
       color: 0x8be9ff, transparent:true, opacity: 0.06 + power*0.28,
       blending: THREE.AdditiveBlending, depthWrite:false,
     });
-    connectionsGroup.add(new THREE.Mesh(glowGeo, glowMat));
+    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+    glowMesh.userData = { isConexion:true, conexionId:c.id };
+    connectionsGroup.add(glowMesh);
 
     // partículas viajeras: más cantidad y más velocidad cuanto más "potente" es el enlace
     const particleCount = 1 + Math.round(power*3); // 1 a 4 partículas
@@ -907,6 +1055,12 @@ function buildSedeMesh(tamanoId){
   halo.position.y = 0.02;
   halo.name = 'halo';
   group.add(halo);
+
+  // Puerto de conexión: desde aquí el usuario arrastra un cable hacia la Matriz o el Datacenter.
+  const port = makePortSprite();
+  port.position.set(w/2 + 0.28, h*0.7, 0);
+  group.add(port);
+
   return group;
 }
 
@@ -937,48 +1091,42 @@ function updateSedeNameSprite(sede){
   sede.group.add(sprite);
 }
 
-/* --- Torre de Microonda: la MISMA estructura (a la misma escala) que el asset "Microonda" de
-   la versión anterior del prototipo — base + mástil + plato parabólico — pero ahora colocada
-   junto a la sede como una estructura propia y visible, en vez de un ícono decorativo pequeño.
-   Representa la conexión de la sede hacia Puntonet (el proveedor). --- */
-function buildMicroondaTorre(color){
-  const group = new THREE.Group();
-
-  const baseGeo = new THREE.BoxGeometry(0.95, 0.35, 0.95);
-  const baseFill = new THREE.Mesh(baseGeo, new THREE.MeshBasicMaterial({ color:0x0e1a30, transparent:true, opacity:.45 }));
-  const baseEdges = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeo), new THREE.LineBasicMaterial({ color }));
-  baseFill.add(baseEdges);
-  baseFill.position.y = 0.175;
-  group.add(baseFill);
-
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.5, 8), new THREE.MeshBasicMaterial({ color }));
-  pole.position.y = 1.1;
-  group.add(pole);
-
-  const dish = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.28, 16, 1, true), new THREE.MeshBasicMaterial({ color, wireframe:true }));
-  dish.rotation.z = Math.PI * 0.42;
-  dish.position.set(0, 1.85, 0.05);
-  group.add(dish);
-
-  return group;
-}
-
-/* --- Torre Puntonet: se muestra junto a la sede (a escala real, no como ícono en el techo)
-   solo si el cliente activa la conexión con el proveedor (no es automática al crear la sede) --- */
-function refreshSedeExtras(sede){
-  const old = sede.group.getObjectByName('antenaAsset');
-  if(old) sede.group.remove(old);
-  if(sede.conectadoPuntonet){
-    const tamano = getTamanoLocal(sede.tamano);
-    const torre = buildMicroondaTorre(0xe6edf3);
-    torre.name = 'antenaAsset';
-    torre.userData = { sedeId: sede.id, isDecor:true };
-    // se ubica en el suelo, a un lado de la sede (separación suficiente para no solaparse con la caja)
-    const offsetX = tamano.box[0]/2 + 0.85;
-    torre.position.set(offsetX, 0, tamano.box[2]/2 - 0.2);
-    sede.group.add(torre);
+/* --- Puerto de conexión: un "botón" cuadrado con un "+", siempre de frente a la cámara
+   (sprite), para que se lea claro como punto de conexión desde cualquier ángulo de la órbita. --- */
+function makePortSprite(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 96; canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
   }
-  updateSedeNameSprite(sede);
+  roundRect(10,10,76,76,14);
+  ctx.fillStyle = 'rgba(10,14,20,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(48,28); ctx.lineTo(48,68);
+  ctx.moveTo(28,48); ctx.lineTo(68,48);
+  ctx.stroke();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthWrite:false, depthTest:false });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(PORT_BASE_SCALE, PORT_BASE_SCALE, 1);
+  sprite.name = 'connPort';
+  sprite.renderOrder = 10; // siempre visible por encima de otros objetos, no se "esconde" detrás de una caja
+  return sprite;
 }
 
 function refreshSedeAssets(sede){
@@ -999,7 +1147,7 @@ function refreshSedeAssets(sede){
   const propias = sede.instancias;
   // Productos heredados de la Matriz (solo aplica a sedes reales, no a la Matriz misma).
   // Se filtran referencias huérfanas por si el producto ya no existe en la Matriz.
-  const heredadas = (sede.id==='matriz' || !sede.conectadoMatriz) ? [] :
+  const heredadas = (sede.id==='matriz' || !conexionExiste(sede.id,'matriz')) ? [] :
     (sede.herenciaIds||[]).map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid)).filter(Boolean);
   const total = propias.length + heredadas.length;
   let idx = 0;
@@ -1042,7 +1190,9 @@ function refreshSedeAssets(sede){
 function gridToWorld(gx,gz){ return { x: gx*GRID_SPACING, z: gz*GRID_SPACING }; }
 
 function occupied(gx,gz,excludeId){
-  return state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId) || (gx===0 && gz===0);
+  if(gx===0 && gz===0) return true; // celda del hub / Matriz Central
+  if(gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro
+  return state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId);
 }
 
 function nearestFreeCell(worldX, worldZ, excludeId){
@@ -1056,8 +1206,8 @@ function nearestFreeCell(worldX, worldZ, excludeId){
   return {gx,gz};
 }
 
-/* Las sedes ya NO se conectan automáticamente a la Matriz Central ni a Puntonet al crearse;
-   el cliente activa cada conexión explícitamente desde el panel de edición de la sede. */
+/* Las sedes ya NO se conectan automáticamente a nada al crearse: toda conexión (a la Matriz o
+   al Datacenter) se establece arrastrando manualmente desde su puerto (§5). */
 function createSede(empleados, gx, gz){
   empleados = Math.max(1, Math.round(empleados || EMPLEADOS_DEFAULT));
   const tamano = tamanoPorEmpleados(empleados);
@@ -1069,22 +1219,25 @@ function createSede(empleados, gx, gz){
   scene.add(group);
   const sede = {
     id, nombre, tipo:'sede', tamano: tamano.id, empleados,
-    conectadoMatriz:false, conectadoPuntonet:false,
-    gx, gz, group, instancias:[],
+    gx, gz, group, instancias:[], herenciaIds:[],
   };
   group.userData = { sedeId:id, isSedeRoot:true };
-  group.traverse(o=>{ if(o.name==='sedeHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; } });
+  group.traverse(o=>{
+    if(o.name==='sedeHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; }
+    if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
+  });
   state.sedes.push(sede);
   refreshSedeAssets(sede);
-  refreshSedeExtras(sede);
+  updateSedeNameSprite(sede);
   rebuildConnections();
   return sede;
 }
 
 /* Reconstruye la geometría 3D de la sede cuando el tamaño (tier) cambia al editar empleados,
-   conservando posición, instancias y estado de conexiones. */
+   conservando posición, instancias y conexiones (las conexiones se redibujan desde sus puertos,
+   que se recalculan solos ya que son hijos del nuevo group). */
 function rebuildSedeMeshIfNeeded(sede, newTamanoId){
-  if(sede.tamano === newTamanoId){ refreshSedeExtras(sede); return; }
+  if(sede.tamano === newTamanoId){ updateSedeNameSprite(sede); return; }
   sede.tamano = newTamanoId;
   const pos = sede.group.position.clone();
   const wasSelected = state.selectedSedeIds.includes(sede.id);
@@ -1092,11 +1245,14 @@ function rebuildSedeMeshIfNeeded(sede, newTamanoId){
   const group = buildSedeMesh(newTamanoId);
   group.position.copy(pos);
   group.userData = { sedeId: sede.id, isSedeRoot:true };
-  group.traverse(o=>{ if(o.name==='sedeHitbox'){ o.userData.sedeId=sede.id; o.userData.isSedeRoot=true; } });
+  group.traverse(o=>{
+    if(o.name==='sedeHitbox'){ o.userData.sedeId=sede.id; o.userData.isSedeRoot=true; }
+    if(o.name==='connPort'){ o.userData.sedeId=sede.id; o.userData.isPort=true; o.userData.entityId=sede.id; }
+  });
   scene.add(group);
   sede.group = group;
   refreshSedeAssets(sede);
-  refreshSedeExtras(sede);
+  updateSedeNameSprite(sede);
   if(wasSelected) updateSelectionVisuals();
 }
 
@@ -1118,6 +1274,8 @@ function updateSelectionVisuals(){
   });
   const matrizHalo = hubGroup.getObjectByName('matrizHalo');
   if(matrizHalo) matrizHalo.material.opacity = state.selectedSedeIds.includes('matriz') ? 0.9 : 0;
+  const dcHalo = datacenterGroup.getObjectByName('matrizHalo');
+  if(dcHalo) dcHalo.material.opacity = state.selectedSedeIds.includes('datacenter') ? 0.9 : 0;
 }
 
 /* --- Drag & drop desde el panel izquierdo: crear sede, o asignar un producto arrastrado --- */
@@ -1128,6 +1286,44 @@ sedeDragCard.addEventListener('dragstart', (e)=>{
   draggingFromPanel = true;
   e.dataTransfer.setData('text/plain', 'sede');
 });
+
+/* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
+   el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
+   estuviera "vistiendo"), y solo entonces se abre el formulario para completar sus atributos. */
+function playWrapEffect(entityId, subproductoId, onDone){
+  const entity = getSedeById(entityId);
+  const sub = getSubproducto(subproductoId);
+  const color = getSubproductoColor(sub);
+  let w=1.8, h=1.8, d=1.8;
+  if(entity.id==='matriz'){ w = d = 4.6; h = coreY + 0.5; }
+  else if(entity.id==='datacenter'){ w = 3.6; h = dcY + 0.3; d = 2.8; }
+  else { const tamano = getTamanoLocal(entity.tamano); w = tamano.box[0]+0.35; h = tamano.box[1]+0.2; d = tamano.box[2]+0.35; }
+
+  const geo = new THREE.BoxGeometry(w,h,d);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0 });
+  const wrapMesh = new THREE.Mesh(geo, mat);
+  wrapMesh.position.y = h/2;
+  wrapMesh.scale.set(0.3,0.3,0.3);
+  const edgesMat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0 });
+  const edgesMesh = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgesMat);
+  wrapMesh.add(edgesMesh);
+  entity.group.add(wrapMesh);
+
+  const duration = 1400;
+  const started = performance.now();
+  function tick(now){
+    const t = Math.min(1, (now-started)/duration);
+    const ease = 1 - Math.pow(1-t, 3); // ease-out cúbico: rápido al inicio, suave al final
+    wrapMesh.scale.setScalar(0.3 + ease*0.7);
+    const pulse = Math.sin(ease*Math.PI); // sube y vuelve a bajar: "aparece y se asienta"
+    mat.opacity = pulse * 0.4;
+    edgesMat.opacity = pulse * 0.9;
+    if(t<1){ requestAnimationFrame(tick); }
+    else { entity.group.remove(wrapMesh); onDone(); }
+  }
+  requestAnimationFrame(tick);
+}
+
 wrap.addEventListener('dragover', (e)=>{ e.preventDefault(); });
 wrap.addEventListener('drop', (e)=>{
   e.preventDefault();
@@ -1158,12 +1354,18 @@ wrap.addEventListener('drop', (e)=>{
   if(payload.startsWith('subproducto:')){
     const subproductoId = payload.slice('subproducto:'.length);
     const hit = hitTestAtEvent(e); // ¿sobre qué sede o la Matriz se soltó el producto?
-    if(hit.sedeId){
-      openPopupForNew(subproductoId, [hit.sedeId]);
+    // El Datacenter es un punto de conexión (infraestructura de Puntonet), no tiene catálogo
+    // propio: los productos solo se asignan a sedes o a la Matriz.
+    if(hit.sedeId && hit.sedeId!=='datacenter'){
+      playWrapEffect(hit.sedeId, subproductoId, ()=>{
+        openPopupForNew(subproductoId, [hit.sedeId]);
+      });
     }
-    // si se soltó fuera de cualquier sede/Matriz, no se asigna nada (sin efecto).
+    // si se soltó fuera de cualquier entidad válida, no se asigna nada (sin efecto).
   }
 });
+
+
 
 /* =========================================================================
    5. RAYCASTING / CLICK EN EL CANVAS
@@ -1171,10 +1373,12 @@ wrap.addEventListener('drop', (e)=>{
 
 const raycaster = new THREE.Raycaster();
 
-/* --- Utilidad de raycast: qué hay bajo el cursor (asset de servicio / raíz de una sede) ---
+/* --- Utilidad de raycast: qué hay bajo el cursor ---
    'asset' solo se llena con un producto propio editable (para abrir su popup al hacer click).
    'sedeId' se resuelve también si se cae sobre un asset propio o heredado, para que el
-   drag&drop de productos funcione aunque el drop caiga justo sobre un ícono existente. */
+   drag&drop de productos funcione aunque el drop caiga justo sobre un ícono existente.
+   'port' se llena al tocar el puerto de conexión de una entidad (inicia el arrastre de cable).
+   'conexion' se llena al tocar un cable ya existente (abre su popup de edición). */
 function hitTestAtEvent(e){
   const rect = wrap.getBoundingClientRect();
   const mouse = new THREE.Vector2(
@@ -1183,18 +1387,24 @@ function hitTestAtEvent(e){
   );
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(scene.children, true);
-  let asset = null, sedeId = null;
+  let asset = null, sedeId = null, port = null, conexion = null;
   for(const it of intersects){
     const ud = it.object.userData;
     if(!ud) continue;
+    if(!port && ud.isPort) port = { entityId: ud.entityId };
+    if(!conexion && ud.isConexion) conexion = ud.conexionId;
     if(!asset && ud.isAsset) asset = ud;
     if(!sedeId && (ud.isSedeRoot || ud.isAsset || ud.isHeredadoAsset)) sedeId = ud.sedeId;
-    if(asset && sedeId) break;
+    if(port && conexion && asset && sedeId) break;
   }
-  return { asset, sedeId };
+  return { asset, sedeId, port, conexion };
 }
 
 function handleCanvasClick(hit, shiftKey){
+  if(hit.conexion){
+    openConnPopup(hit.conexion);
+    return;
+  }
   if(hit.asset){
     openPopupForEdit(hit.asset.sedeId, hit.asset.instanciaId);
     return;
@@ -1215,13 +1425,48 @@ function handleCanvasClick(hit, shiftKey){
 }
 
 /* --- Gesto unificado de botón izquierdo sobre el canvas ---
+   mousedown sobre un PUERTO + arrastre                      → estirar un cable hacia otra entidad
    mousedown sobre una sede (sin tocar un asset) + arrastre  → mover la sede en la grilla
    mousedown en cualquier otro punto + arrastre               → orbitar la cámara
    mousedown + mouseup sin arrastre real                      → clic de selección / edición */
 const DRAG_THRESHOLD = 6;
+const PORT_DRAG_THRESHOLD = 3; // el puerto es un blanco pequeño: reacciona con un roce mínimo
 let pointerDownInfo = null; // { x, y, hit }
-let pointerMode = null;     // null | 'orbit' | 'moveSede'
+let pointerMode = null;     // null | 'orbit' | 'moveSede' | 'connecting'
 let movingSede = null;
+let connectingFromId = null;
+let connectingHoverId = null;
+
+/* Línea temporal que sigue al cursor mientras se arrastra un cable nuevo. Vive en su propio
+   grupo (no en connectionsGroup) para que rebuildConnections() no la borre a mitad del gesto. */
+const tempCableGroup = new THREE.Group();
+scene.add(tempCableGroup);
+let tempCableLine = null;
+function startTempCable(){
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const mat = new THREE.LineBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.85 });
+  tempCableLine = new THREE.Line(geo, mat);
+  tempCableGroup.add(tempCableLine);
+}
+function updateTempCable(from, to, valid){
+  if(!tempCableLine) return;
+  tempCableLine.geometry.dispose();
+  tempCableLine.geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+  tempCableLine.material.color.set(valid ? 0x4ade80 : 0x22d3ee);
+  tempCableLine.material.opacity = valid ? 1 : 0.7;
+}
+function endTempCable(){
+  if(tempCableLine){ tempCableGroup.remove(tempCableLine); tempCableLine.geometry.dispose(); tempCableLine=null; }
+}
+function projectToPlaneAtHeight(e, height){
+  const rect = wrap.getBoundingClientRect();
+  const mouse = new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(mouse, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0,1,0), -height);
+  const point = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, point);
+  return point || new THREE.Vector3(0,height,0);
+}
 
 renderer.domElement.addEventListener('mousedown', (e)=>{
   if(e.button!==0){
@@ -1237,8 +1482,13 @@ renderer.domElement.addEventListener('mousedown', (e)=>{
 window.addEventListener('mousemove', (e)=>{
   if(pointerDownInfo && pointerMode===null){
     const moved = Math.hypot(e.clientX-pointerDownInfo.x, e.clientY-pointerDownInfo.y);
-    if(moved > DRAG_THRESHOLD){
-      if(pointerDownInfo.hit.sedeId && pointerDownInfo.hit.sedeId!=='matriz' && !pointerDownInfo.hit.asset){
+    if(pointerDownInfo.hit.port && moved > PORT_DRAG_THRESHOLD){
+      pointerMode = 'connecting';
+      connectingFromId = pointerDownInfo.hit.port.entityId;
+      connectingHoverId = null;
+      startTempCable();
+    } else if(!pointerDownInfo.hit.port && moved > DRAG_THRESHOLD){
+      if(pointerDownInfo.hit.sedeId && pointerDownInfo.hit.sedeId!=='matriz' && pointerDownInfo.hit.sedeId!=='datacenter' && !pointerDownInfo.hit.asset){
         pointerMode = 'moveSede';
         movingSede = state.sedes.find(s=>s.id===pointerDownInfo.hit.sedeId);
       } else {
@@ -1248,7 +1498,17 @@ window.addEventListener('mousemove', (e)=>{
     }
   }
 
-  if(pointerMode==='moveSede' && movingSede){
+  if(pointerMode==='connecting'){
+    const originPos = getEntityPortWorldPos(connectingFromId);
+    const hover = hitTestAtEvent(e);
+    if(hover.sedeId && hover.sedeId!==connectingFromId && parValidoConexion(connectingFromId, hover.sedeId)){
+      connectingHoverId = hover.sedeId;
+      updateTempCable(originPos, getEntityPortWorldPos(hover.sedeId), true);
+    } else {
+      connectingHoverId = null;
+      updateTempCable(originPos, projectToPlaneAtHeight(e, originPos.y), false);
+    }
+  } else if(pointerMode==='moveSede' && movingSede){
     const rect = wrap.getBoundingClientRect();
     const mouse = new THREE.Vector2(
       ((e.clientX-rect.left)/rect.width)*2-1,
@@ -1274,7 +1534,18 @@ window.addEventListener('mousemove', (e)=>{
 
 window.addEventListener('mouseup', (e)=>{
   if(e.button===0 && pointerDownInfo){
-    if(pointerMode==='moveSede' && movingSede){
+    if(pointerMode==='connecting'){
+      endTempCable();
+      if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
+        const conexion = { id: uid('conn','nextConexionSeq'), aId:connectingFromId, bId:connectingHoverId, anchoBanda:'', comparticion:'' };
+        state.conexiones.push(conexion);
+        rebuildConnections();
+        renderRightPanel();
+        openConnPopup(conexion.id); // recién conectado: se invita a completar Ancho de banda/Compartición
+      }
+      connectingFromId = null;
+      connectingHoverId = null;
+    } else if(pointerMode==='moveSede' && movingSede){
       const {gx,gz} = nearestFreeCell(movingSede.group.position.x, movingSede.group.position.z, movingSede.id);
       movingSede.gx = gx; movingSede.gz = gz;
       const pos = gridToWorld(gx,gz);
@@ -1343,6 +1614,10 @@ function animate(){
     const p = c.curve.getPointAt(tt);
     c.particle.position.copy(p);
   });
+
+  // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
+  const portPulse = 1 + Math.sin(t*3) * 0.14;
+  scene.traverse(o=>{ if(o.userData && o.userData.isPort) o.scale.setScalar(PORT_BASE_SCALE * portPulse); });
 
   renderer.render(scene, camera);
 }
@@ -1460,19 +1735,30 @@ function renderRightPanel(){
   navEmpty.style.display='none';
   navContent.style.display='block';
 
-  const isMatrizOnly = ids.length===1 && ids[0]==='matriz';
+  const singleId = ids.length===1 ? ids[0] : null;
+  const isMatriz = singleId==='matriz';
+  const isDatacenter = singleId==='datacenter';
+  const isSedeSingle = !!singleId && !isMatriz && !isDatacenter;
+
   const nombres = ids.map(id=>getSedeById(id).nombre);
-  navSedeLabel.textContent = isMatrizOnly
-    ? 'Matriz Central'
+  navSedeLabel.textContent = isMatriz ? 'Matriz Central'
+    : isDatacenter ? 'Datacenter Epicentro'
     : (ids.length===1 ? `Sede: ${nombres[0]}` : `${ids.length} sedes seleccionadas: ${nombres.join(', ')}`);
 
-  matrizHintEl.style.display = isMatrizOnly ? 'block' : 'none';
-  renderSedeEditBox(ids.length===1 && !isMatrizOnly ? getSedeById(ids[0]) : null);
-  renderHerenciaBox(ids.length===1 && !isMatrizOnly ? getSedeById(ids[0]) : null);
+  matrizHintEl.style.display = (isMatriz || isDatacenter) ? 'block' : 'none';
+  matrizHintEl.textContent = isMatriz
+    ? 'Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.'
+    : isDatacenter
+      ? 'El Datacenter Epicentro es la infraestructura de Puntonet. Arrastra desde el puerto (●) de una sede o de la Matriz hasta aquí para contratar el servicio de Internet/ISP.'
+      : '';
 
-  if(ids.length===1){
+  renderSedeEditBox(isSedeSingle ? getSedeById(singleId) : null);
+  renderConnectionsBox(singleId);
+  renderHerenciaBox(isSedeSingle ? getSedeById(singleId) : null);
+
+  if(ids.length===1 && !isDatacenter){
     const entity = getSedeById(ids[0]);
-    instanceSectionTitle.textContent = isMatrizOnly ? 'Productos propios de la Matriz' : 'Servicios asignados';
+    instanceSectionTitle.textContent = isMatriz ? 'Productos propios de la Matriz' : 'Servicios asignados';
     if(entity.instancias.length>0){
       instanceSection.style.display='block';
       instanceListEl.innerHTML='';
@@ -1498,6 +1784,48 @@ function renderRightPanel(){
   } else {
     instanceSection.style.display='none';
   }
+}
+
+const connectionsBoxEl = document.getElementById('connectionsBox');
+
+/* Lista de conexiones activas de la entidad seleccionada (Sede, Matriz o Datacenter), con "-"
+   para eliminarlas rápido. Ya no hay checkboxes: las conexiones se crean arrastrando el cable
+   desde el puerto (●) de la entidad hacia otra en el canvas 3D. */
+function renderConnectionsBox(entityId){
+  if(!entityId){
+    connectionsBoxEl.style.display = 'none';
+    connectionsBoxEl.innerHTML = '';
+    return;
+  }
+  connectionsBoxEl.style.display = 'flex';
+  const conexiones = conexionesDe(entityId);
+  if(conexiones.length===0){
+    connectionsBoxEl.innerHTML = `<label>Conexiones</label>
+      <div class="connEmpty">Sin conexiones activas. Arrastra desde el puerto (●) hacia otra sede, la Matriz o el Datacenter para conectar.</div>`;
+    return;
+  }
+  const rows = conexiones.map(c=>{
+    const otro = otroExtremo(c, entityId);
+    const detalle = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
+    return `<div class="connRow" data-conn="${c.id}">
+      <span class="connDot"></span>
+      <span class="connName">${nombreEntidad(otro)}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
+      <span class="connDelete" data-conn="${c.id}" title="Eliminar conexión">−</span>
+    </div>`;
+  }).join('');
+  connectionsBoxEl.innerHTML = `<label>Conexiones</label><div class="connList">${rows}</div>`;
+  connectionsBoxEl.querySelectorAll('.connRow').forEach(row=>{
+    row.addEventListener('click', (e)=>{
+      if(e.target.classList.contains('connDelete')) return;
+      openConnPopup(row.dataset.conn);
+    });
+  });
+  connectionsBoxEl.querySelectorAll('.connDelete').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      eliminarConexion(btn.dataset.conn);
+    });
+  });
 }
 
 function escapeHtml(str){
@@ -1532,18 +1860,6 @@ function renderSedeEditBox(sede){
       </div>
       <div class="tamanoInfo" id="sedeTamanoInfo">${sede.empleados} empleados · ${tamano.nombre}</div>
     </div>
-    <div class="field" style="margin-bottom:0;">
-      <label>Conexiones</label>
-      <label class="toggleRow">
-        <input type="checkbox" id="sedeConectaMatriz" ${sede.conectadoMatriz?'checked':''}>
-        Conectar a Matriz Central
-      </label>
-      <label class="toggleRow">
-        <input type="checkbox" id="sedeConectaPuntonet" ${sede.conectadoPuntonet?'checked':''}>
-        Conectar a Puntonet (proveedor)
-      </label>
-      <div class="toggleHint">Ninguna conexión se activa automáticamente al crear la sede.</div>
-    </div>
   `;
 
   document.getElementById('sedeNombreInput').addEventListener('input', (e)=>{
@@ -1569,21 +1885,6 @@ function renderSedeEditBox(sede){
     if(v<=EMPLEADOS_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
     applyEmpleados(v);
   });
-
-  document.getElementById('sedeConectaMatriz').addEventListener('change', (e)=>{
-    sede.conectadoMatriz = e.target.checked;
-    if(!sede.conectadoMatriz && sede.herenciaIds && sede.herenciaIds.length){
-      // sin conexión a la Matriz no tiene sentido seguir heredando sus productos
-      sede.herenciaIds = [];
-      refreshSedeAssets(sede);
-    }
-    rebuildConnections();
-    renderHerenciaBox(sede);
-  });
-  document.getElementById('sedeConectaPuntonet').addEventListener('change', (e)=>{
-    sede.conectadoPuntonet = e.target.checked;
-    refreshSedeExtras(sede);
-  });
 }
 
 const herenciaBoxEl = document.getElementById('herenciaBox');
@@ -1601,9 +1902,9 @@ function renderHerenciaBox(sede){
 
   herenciaBoxEl.style.display = 'flex';
 
-  if(!sede.conectadoMatriz){
+  if(!conexionExiste(sede.id,'matriz')){
     herenciaBoxEl.innerHTML = `<label>Herencia de la Matriz</label>
-      <div class="herenciaEmpty">Activa la conexión a "Matriz Central" arriba para poder heredar sus productos.</div>`;
+      <div class="herenciaEmpty">Conecta esta sede con la Matriz Central (arrastra desde su puerto ●) para poder heredar sus productos.</div>`;
     return;
   }
   if(productosMatriz.length===0){
@@ -1820,6 +2121,63 @@ btnDeleteInstance.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
+   7b. POPUP DE CONEXIÓN (Ancho de banda / Compartición)
+   ========================================================================= */
+
+const connOverlay = document.getElementById('connOverlay');
+const connTitle = document.getElementById('connTitle');
+const connAncho = document.getElementById('connAncho');
+const connComparticion = document.getElementById('connComparticion');
+let connEditingId = null;
+
+function openConnPopup(conexionId){
+  const c = state.conexiones.find(x=>x.id===conexionId);
+  if(!c) return;
+  connEditingId = conexionId;
+  connTitle.textContent = `${nombreEntidad(c.aId)} ↔ ${nombreEntidad(c.bId)}`;
+  connAncho.value = c.anchoBanda || '';
+  connComparticion.value = c.comparticion || '';
+  connOverlay.classList.add('show');
+  requestAnimationFrame(()=>{ connAncho.focus(); });
+}
+function closeConnPopup(){
+  connOverlay.classList.remove('show');
+  connEditingId = null;
+}
+document.getElementById('btnCancelConn').addEventListener('click', closeConnPopup);
+document.getElementById('btnSaveConn').addEventListener('click', ()=>{
+  const c = state.conexiones.find(x=>x.id===connEditingId);
+  if(c){
+    c.anchoBanda = connAncho.value.trim();
+    c.comparticion = connComparticion.value.trim();
+  }
+  closeConnPopup();
+  renderRightPanel();
+});
+
+/* Elimina una conexión. Si conectaba una sede con la Matriz, también limpia la herencia de esa
+   sede (ya no tiene sentido seguir heredando productos de la Matriz sin estar conectada a ella). */
+function eliminarConexion(conexionId){
+  const c = state.conexiones.find(x=>x.id===conexionId);
+  if(!c) return;
+  state.conexiones = state.conexiones.filter(x=>x.id!==conexionId);
+  if(c.aId==='matriz' || c.bId==='matriz'){
+    const sedeId = c.aId==='matriz' ? c.bId : c.aId;
+    const sede = getSedeById(sedeId);
+    if(sede && sede.herenciaIds && sede.herenciaIds.length){
+      sede.herenciaIds = [];
+      refreshSedeAssets(sede);
+    }
+  }
+  rebuildConnections();
+  renderRightPanel();
+}
+document.getElementById('btnDeleteConn').addEventListener('click', ()=>{
+  if(connEditingId) eliminarConexion(connEditingId);
+  closeConnPopup();
+});
+
+/* =========================================================================
    8. DESELECCIONAR
    ========================================================================= */
 
@@ -1838,7 +2196,7 @@ clienteInput.addEventListener('input', ()=>{ state.clienteNombre = clienteInput.
 
 function buildConfiguracionCliente(){
   return {
-    version: 5, // v5: Matriz Central con productos propios + herenciaIds por sede
+    version: 6, // v6: Datacenter Epicentro + conexiones manuales (cable) entre Sede/Matriz/Datacenter
     nombreCliente: state.clienteNombre || 'Sin nombre',
     generadoEn: new Date().toISOString(),
     matriz: {
@@ -1849,9 +2207,12 @@ function buildConfiguracionCliente(){
         marca: i.marca, creadoEn: i.creadoEn,
       })),
     },
+    datacenter: { nombre: state.datacenter.nombre },
+    conexiones: state.conexiones.map(c=>({
+      id: c.id, aId: c.aId, bId: c.bId, anchoBanda: c.anchoBanda, comparticion: c.comparticion,
+    })),
     sedes: state.sedes.map(s=>({
       id: s.id, nombre: s.nombre, tipo: s.tipo, tamano: s.tamano, empleados: s.empleados,
-      conectadoMatriz: s.conectadoMatriz, conectadoPuntonet: s.conectadoPuntonet,
       herenciaIds: s.herenciaIds || [],
       gx: s.gx, gz: s.gz,
       instancias: s.instancias.map(i=>({
@@ -1866,6 +2227,17 @@ function buildConfiguracionCliente(){
 const reportOverlay = document.getElementById('reportOverlay');
 const reportBody = document.getElementById('reportBody');
 const reportSubtitle = document.getElementById('reportSubtitle');
+
+/* Reutilizada por el reporte en pantalla y por la exportación a PDF. */
+function conexionesTexto(entityId){
+  const cs = conexionesDe(entityId);
+  if(cs.length===0) return 'sin conexiones activas';
+  return cs.map(c=>{
+    const otro = otroExtremo(c, entityId);
+    const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
+    return nombreEntidad(otro) + (det ? ` (${det})` : '');
+  }).join(' + ');
+}
 
 function openReport(){
   const config = buildConfiguracionCliente();
@@ -1894,7 +2266,7 @@ function openReport(){
   const matrizBox = document.createElement('div');
   matrizBox.className='report-sede';
   const mh3 = document.createElement('h3');
-  mh3.innerHTML = `<span>${config.matriz.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${config.matriz.instancias.length} producto(s) propio(s))</span>`;
+  mh3.innerHTML = `<span>${config.matriz.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${config.matriz.instancias.length} producto(s) propio(s) · ${conexionesTexto('matriz')})</span>`;
   matrizBox.appendChild(mh3);
   if(config.matriz.instancias.length===0){
     const empty = document.createElement('div');
@@ -1905,6 +2277,14 @@ function openReport(){
     config.matriz.instancias.forEach(inst=>renderInstRow(inst, matrizBox, null));
   }
   reportBody.appendChild(matrizBox);
+
+  // Sección del Datacenter Epicentro (infraestructura de Puntonet, no tiene productos propios)
+  const dcBox = document.createElement('div');
+  dcBox.className='report-sede';
+  const dch3 = document.createElement('h3');
+  dch3.innerHTML = `<span>${config.datacenter.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${conexionesTexto('datacenter')})</span>`;
+  dcBox.appendChild(dch3);
+  reportBody.appendChild(dcBox);
 
   if(config.sedes.length===0){
     const empty = document.createElement('div');
@@ -1917,13 +2297,9 @@ function openReport(){
       box.className='report-sede';
       const h3 = document.createElement('h3');
       const tamanoInfo = getTamanoLocal(sede.tamano);
-      const conexiones = [
-        sede.conectadoMatriz ? 'Matriz Central' : null,
-        sede.conectadoPuntonet ? 'Puntonet' : null,
-      ].filter(Boolean).join(' + ') || 'sin conexiones activas';
-      h3.innerHTML = `<span>${sede.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${sede.empleados} empleados · ${tamanoInfo.nombre} · ${conexiones})</span>`;
+      h3.innerHTML = `<span>${sede.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${sede.empleados} empleados · ${tamanoInfo.nombre} · ${conexionesTexto(sede.id)})</span>`;
       box.appendChild(h3);
-      const heredadas = sede.conectadoMatriz ? (sede.herenciaIds||[])
+      const heredadas = conexionExiste(sede.id,'matriz') ? (sede.herenciaIds||[])
         .map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid))
         .filter(Boolean) : [];
       if(sede.instancias.length===0 && heredadas.length===0){
@@ -1944,22 +2320,121 @@ function openReport(){
 document.getElementById('btnReport').addEventListener('click', openReport);
 document.getElementById('btnCloseReport').addEventListener('click', ()=>reportOverlay.classList.remove('show'));
 
+function safeFileName(nombreCliente){
+  return (nombreCliente||'cliente').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'cliente';
+}
+
 function downloadJSON(){
   const config = buildConfiguracionCliente();
   const blob = new Blob([JSON.stringify(config, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const safeName = (config.nombreCliente||'cliente').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'cliente';
   const fecha = new Date().toISOString().slice(0,10);
   a.href = url;
-  a.download = `configuracion-${safeName}-${fecha}.json`;
+  a.download = `configuracion-${safeFileName(config.nombreCliente)}-${fecha}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-document.getElementById('btnExport').addEventListener('click', downloadJSON);
 document.getElementById('btnExportFromReport').addEventListener('click', downloadJSON);
+
+/* Exportación a PDF: reconstruye el mismo contenido del reporte en pantalla (Matriz, Datacenter,
+   cada Sede con sus productos propios/heredados) usando jsPDF, con salto de página automático. */
+function downloadPDF(){
+  const config = buildConfiguracionCliente();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const marginX = 44;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxWidth = pageW - marginX*2;
+  let y = 54;
+
+  function ensureSpace(h){
+    if(y + h > pageH - 40){ doc.addPage(); y = 54; }
+  }
+  function addTitle(text){
+    ensureSpace(26);
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(20,24,30);
+    doc.text(text, marginX, y); y += 20;
+  }
+  function addSubtitle(text){
+    ensureSpace(18);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(120,128,140);
+    doc.text(text, marginX, y); y += 24;
+  }
+  function addSectionHeading(text){
+    ensureSpace(26);
+    doc.setDrawColor(215,220,228);
+    doc.line(marginX, y, pageW-marginX, y);
+    y += 16;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20,24,30);
+    const lines = doc.splitTextToSize(text, maxWidth);
+    lines.forEach(line=>{ ensureSpace(14); doc.text(line, marginX, y); y += 14; });
+    y += 4;
+  }
+  function addLine(text, opts={}){
+    const { bold=false, italic=false, size=9.5, color=[70,78,90], indent=10 } = opts;
+    doc.setFont('helvetica', bold ? 'bold' : (italic ? 'italic' : 'normal'));
+    doc.setFontSize(size);
+    doc.setTextColor(color[0],color[1],color[2]);
+    const lines = doc.splitTextToSize(text, maxWidth-indent);
+    lines.forEach(line=>{
+      ensureSpace(size+4);
+      doc.text(line, marginX+indent, y);
+      y += size+4;
+    });
+  }
+  function addEmpty(text){
+    addLine(text, { italic:true, size:9.5, color:[140,148,158] });
+    y += 4;
+  }
+  function addProduct(inst, heredadoDe){
+    const sub = getSubproducto(inst.subproductoId);
+    const producto = getProducto(sub.productoNivel2Id);
+    const vertical = getVertical(inst.verticalId);
+    addLine(`${inst.nombreSubproducto}${heredadoDe ? ' (heredado de '+heredadoDe+')' : ''}  —  ${vertical.nombre} · ${producto.nombre}`,
+      { bold:true, size:10.5, color:[20,24,30] });
+    addLine(inst.marca ? `Marca: ${inst.marca}` : 'Marca: —', { size:9, color:[130,138,150] });
+    const props = Object.entries(inst.propiedades||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('   ·   ');
+    if(props) addLine(props, { size:9, color:[90,98,110] });
+    if(inst.notas) addLine(`"${inst.notas}"`, { italic:true, size:9, color:[140,148,158] });
+    y += 6;
+  }
+
+  addTitle('Configurador de Infraestructura · Puntonet');
+  addSubtitle(`${config.nombreCliente} · ${config.sedes.length} sede(s) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`);
+
+  addSectionHeading(`${config.matriz.nombre}  ·  ${config.matriz.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto('matriz')}`);
+  if(config.matriz.instancias.length===0) addEmpty('Sin productos propios asignados.');
+  else config.matriz.instancias.forEach(inst=>addProduct(inst, null));
+
+  addSectionHeading(`${config.datacenter.nombre}  ·  ${conexionesTexto('datacenter')}`);
+
+  if(config.sedes.length===0){
+    addSectionHeading('Sedes');
+    addEmpty('Aún no se han agregado sedes al canvas.');
+  } else {
+    config.sedes.forEach(sede=>{
+      const tamanoInfo = getTamanoLocal(sede.tamano);
+      addSectionHeading(`${sede.nombre}  ·  ${sede.empleados} empleados · ${tamanoInfo.nombre}  ·  ${conexionesTexto(sede.id)}`);
+      const heredadas = conexionExiste(sede.id,'matriz') ? (sede.herenciaIds||[])
+        .map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid))
+        .filter(Boolean) : [];
+      if(sede.instancias.length===0 && heredadas.length===0){
+        addEmpty('Sin servicios asignados.');
+      } else {
+        sede.instancias.forEach(inst=>addProduct(inst, null));
+        heredadas.forEach(inst=>addProduct(inst, 'la Matriz'));
+      }
+    });
+  }
+
+  const fecha = new Date().toISOString().slice(0,10);
+  doc.save(`configuracion-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
+}
+document.getElementById('btnExportPDF').addEventListener('click', downloadPDF);
 
 /* =========================================================================
    10. DATOS DE EJEMPLO INICIALES (para que la demo no arranque vacía)
@@ -1969,13 +2444,19 @@ document.getElementById('btnExportFromReport').addEventListener('click', downloa
   const s2 = createSede(70, 2, 1);     // grande
   const s3 = createSede(30, 0, -3);    // mediana
 
-  // Conexiones de ejemplo: s1 conectada a Matriz Central, s2 a ambas (Matriz + Puntonet,
-  // sede remota sin fibra), s3 sin ninguna conexión activa todavía.
-  s1.conectadoMatriz = true;
-  s2.conectadoMatriz = true;
-  s2.conectadoPuntonet = true;
-  s3.conectadoMatriz = true;
-  refreshSedeExtras(s2);
+  // Conexiones de ejemplo (cables manuales): s1 y s3 conectadas a la Matriz Central; s2 conectada
+  // tanto a la Matriz como directo al Datacenter (sede remota, contrata su propio Internet/ISP);
+  // la Matriz también tiene su propia salida a Internet en el Datacenter.
+  function conectar(aId, bId, anchoBanda, comparticion){
+    const c = { id: uid('conn','nextConexionSeq'), aId, bId, anchoBanda, comparticion };
+    state.conexiones.push(c);
+    return c;
+  }
+  conectar(s1.id, 'matriz', '50 Mbps', 'Dedicado (1:1)');
+  conectar(s2.id, 'matriz', '200 Mbps', 'Dedicado (1:1)');
+  conectar(s2.id, 'datacenter', '100 Mbps', 'Compartido 4:1');
+  conectar(s3.id, 'matriz', '30 Mbps', 'Compartido 4:1');
+  conectar('matriz', 'datacenter', '1 Gbps', 'Dedicado (1:1)');
 
   function addInst(sede, subproductoId, marca, propiedades, notas){
     const sub = getSubproducto(subproductoId);
@@ -1990,7 +2471,7 @@ document.getElementById('btnExportFromReport').addEventListener('click', downloa
   }
   addInst(s1, 'firewall_on_premise', 'Fortinet', {Marca:'Fortinet','Modelo de equipo':'FG-100F'}, 'Cliente evaluando migrar a IaaS en 2027.');
   addInst(s1, 'internet_corporativo', '', {'Ancho de banda':'200 Mbps','Ubicaciones geográficas':'Quito'}, '');
-  addInst(s2, 'puntonet_space', '', {'Tipo de antena':'VSAT','Plan':'Plan 20GB'}, 'Sede remota sin fibra disponible.');
+  addInst(s2, 'iaas', '', {RAM:'16GB',ROM:'500GB',Procesador:'4 vCPU'}, 'Sede remota, migrada al Datacenter Epicentro.');
   addInst(s3, 'iaas', '', {RAM:'16GB',ROM:'500GB',Procesador:'4 vCPU'}, '');
 
   // Productos propios de la Matriz Central, que algunas sedes heredan.
