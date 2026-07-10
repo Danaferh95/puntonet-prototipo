@@ -172,30 +172,39 @@
   #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
   #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
   .btn.danger-outline{color:var(--danger);border-color:var(--danger);}
-  #conexionEditBox{display:none;flex-direction:column;gap:10px;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
-  #conexionEditBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
-  #conexionEditBox .conexionEndpoints{font-size:13px;font-weight:600;color:var(--text);}
-  #conexionEditBox .connAttrRow{display:flex;justify-content:space-between;gap:10px;font-size:12px;
-    color:var(--text);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);
-    padding:7px 10px;margin-top:6px;}
-  #conexionEditBox .connAttrRow span:first-child{color:var(--muted);flex-shrink:0;}
-  #conexionEditBox .connAttrRow span:last-child{font-weight:600;text-align:right;}
-  #conexionEditBox .conexionActions{display:flex;gap:8px;}
-  #conexionEditBox .conexionActions .btn{flex:1;}
   #connectionsBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
     border-bottom:1px solid var(--border);}
   #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
   #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
-  #connectionsBox .connList{display:flex;flex-direction:column;gap:5px;}
+  #connectionsBox .connList{display:flex;flex-direction:column;gap:6px;}
+  /* --- Conexión: fila colapsada + panel inline que se expande/colapsa (acordeón), en vez de
+     cambiar a otra pantalla — así el usuario nunca pierde de vista la sede/Matriz seleccionada. --- */
+  .connItem{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--panel-2);}
+  .connItem:hover{border-color:var(--cian);}
+  .connItem.open{border-color:var(--cian);}
   .connRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
-    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;}
-  .connRow:hover{border-color:var(--cian);}
+    padding:8px 9px;}
   .connDot{width:8px;height:8px;border-radius:50%;background:var(--cian);flex-shrink:0;}
   .connName{flex:1;}
   .connDetalle{color:var(--muted);font-weight:400;font-size:10.5px;}
+  .connArrow{color:var(--muted);font-size:11px;transition:transform .15s;flex-shrink:0;}
+  .connItem.open .connArrow{transform:rotate(90deg);color:var(--cian);}
   .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
   .connDelete:hover{color:#fca5a5;}
+  .connExpand{display:grid;grid-template-rows:0fr;transition:grid-template-rows .2s ease;}
+  .connExpand > div{overflow:hidden;}
+  .connItem.open .connExpand{grid-template-rows:1fr;}
+  .connExpandInner{padding:2px 9px 10px;border-top:1px solid var(--border);}
+  .connExpandInner .field{margin-top:9px;margin-bottom:0;}
+  .connExpandInner .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .connExpandInner .empRow{display:flex;gap:8px;align-items:center;}
+  .connExpandInner input[type="range"]{flex:1;accent-color:var(--cian);}
+  .connExpandInner input[type="number"]{width:72px;flex:none;background:var(--panel);
+    border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius);font-size:12px;}
+  .connExpandInner input[type="text"]{width:100%;background:var(--panel);border:1px solid var(--border);
+    color:var(--text);padding:7px 9px;border-radius:var(--radius);font-size:12px;font-family:inherit;}
+  .connExpandInner input[type="text"]:focus, .connExpandInner input[type="number"]:focus{outline:none;border-color:var(--cian);}
+  .connExpandInner .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
   #instanceList{display:flex;flex-direction:column;gap:6px;}
   .inst-row{display:flex;align-items:center;gap:8px;background:var(--panel-2);
     border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:pointer;}
@@ -356,7 +365,6 @@
     <div id="navContent" style="display:none;">
       <div id="navSedeLabel"></div>
       <div id="matrizHint">Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.</div>
-      <div id="conexionEditBox" style="display:none;"></div>
       <div id="sedeEditBox" style="display:none;"></div>
       <div id="connectionsBox" style="display:none;"></div>
       <div id="herenciaBox" style="display:none;"></div>
@@ -394,31 +402,6 @@
       <button class="btn danger-outline" id="btnDeleteInstance" style="display:none;margin-right:auto;color:var(--danger);border-color:var(--danger);">Eliminar</button>
       <button class="btn ghost" id="btnCancelPopup">Cancelar</button>
       <button class="btn primary" id="btnSavePopup">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Popup de conexión (cable entre 2 entidades) -->
-<div class="modal-overlay" id="connOverlay">
-  <div class="modal" id="connModal">
-    <div class="modal-head">
-      <div class="path">Conexión</div>
-      <div class="title" id="connTitle"></div>
-    </div>
-    <div class="modal-body">
-      <div class="field">
-        <label>Ancho de banda</label>
-        <input type="text" id="connAncho" placeholder="Ej. 100 Mbps, 1 Gbps...">
-      </div>
-      <div class="field" style="margin-bottom:0;">
-        <label>Compartición</label>
-        <input type="text" id="connComparticion" placeholder="Ej. Dedicado (1:1), Compartido 4:1...">
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn danger-outline" id="btnDeleteConn" style="margin-right:auto;color:var(--danger);border-color:var(--danger);">Eliminar conexión</button>
-      <button class="btn ghost" id="btnCancelConn">Cancelar</button>
-      <button class="btn primary" id="btnSaveConn">Guardar</button>
     </div>
   </div>
 </div>
@@ -633,6 +616,30 @@ function tamanoPorEmpleados(n){
 }
 const EMPLEADOS_DEFAULT = 12;
 const EMPLEADOS_SLIDER_MAX = 100; // el slider llega hasta 100; el campo numérico permite override mayor
+
+/* --- Ancho de banda de una conexión: mismo patrón que Empleados (slider + campo numérico que
+   permite override por encima del máximo del slider). Se guarda internamente en Mbps; se
+   formatea a Gbps automáticamente a partir de 1000 para que coincida con cómo lo escribía el
+   vendedor a mano (ej. "1 Gbps"). --- */
+const ANCHO_BANDA_SLIDER_MAX = 1000; // Mbps (=1 Gbps); el campo numérico permite ingresar más
+const ANCHO_BANDA_DEFAULT = 100; // Mbps
+function parseAnchoBandaMbps(str){
+  if(!str) return ANCHO_BANDA_DEFAULT;
+  const m = String(str).match(/([\d.]+)\s*(mbps|gbps|mb|gb)?/i);
+  if(!m) return ANCHO_BANDA_DEFAULT;
+  const n = parseFloat(m[1]);
+  if(isNaN(n)) return ANCHO_BANDA_DEFAULT;
+  const unidad = (m[2]||'mbps').toLowerCase();
+  return unidad.startsWith('g') ? n*1000 : n;
+}
+function formatAnchoBandaMbps(mbps){
+  if(!mbps) return '';
+  if(mbps>=1000){
+    const gbps = Math.round((mbps/1000)*100)/100;
+    return gbps+' Gbps';
+  }
+  return mbps+' Mbps';
+}
 
 /* =========================================================================
    2. ESTADO GLOBAL
@@ -1632,9 +1639,22 @@ function hitTestAtEvent(e){
   return { asset, sedeId, port, conexion };
 }
 
-function selectConexion(conexionId){
+/* Selecciona una conexión clickeada directamente en el canvas 3D. En vez de vaciar la selección
+   de sede/Matriz/Datacenter (lo que forzaba al usuario a "otra pantalla"), mantiene el foco en
+   la entidad ya seleccionada si es uno de los 2 extremos del cable, y expande esa conexión
+   inline en el panel derecho — mismo panel, mismo lugar, solo se abre su acordeón. */
+function selectConexionInline(conexionId){
+  const c = state.conexiones.find(x=>x.id===conexionId);
+  if(!c) return;
+  const focoActual = state.selectedSedeIds.length===1 ? state.selectedSedeIds[0] : null;
+  let foco;
+  if(focoActual && (c.aId===focoActual || c.bId===focoActual)){
+    foco = focoActual;
+  } else {
+    foco = [c.aId, c.bId].find(id=>tipoEntidad(id)==='sede') || c.aId;
+  }
+  state.selectedSedeIds = [foco];
   state.selectedConexionId = conexionId;
-  state.selectedSedeIds = [];
   updateSelectionVisuals();
   rebuildConnections(); // para resaltar visualmente el cable seleccionado
   renderRightPanel();
@@ -1642,7 +1662,7 @@ function selectConexion(conexionId){
 
 function handleCanvasClick(hit, shiftKey){
   if(hit.conexion){
-    selectConexion(hit.conexion);
+    selectConexionInline(hit.conexion);
     return;
   }
   // Ya no se abre el popup del producto al hacer clic en su ícono en el canvas: eso llevaba a
@@ -1807,11 +1827,14 @@ function onPointerUp(e){
       if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
         const conexion = { id: uid('conn','nextConexionSeq'), aId:connectingFromId, bId:connectingHoverId, anchoBanda:'', comparticion:'' };
         state.conexiones.push(conexion);
-        state.selectedSedeIds = [];
+        // recién conectado: se deja seleccionada la entidad de origen y la conexión se abre
+        // expandida ahí mismo (acordeón), invitando a completar Ancho de banda/Compartición
+        // sin salir del panel ni abrir otra ventana.
+        state.selectedSedeIds = [connectingFromId];
         state.selectedConexionId = conexion.id;
+        updateSelectionVisuals();
         rebuildConnections();
         renderRightPanel();
-        openConnPopup(conexion.id); // recién conectado: se invita a completar Ancho de banda/Compartición
       }
       connectingFromId = null;
       connectingHoverId = null;
@@ -2036,22 +2059,6 @@ renderCatalogPanel();
 function renderRightPanel(){
   const ids = state.selectedSedeIds;
 
-  if(state.selectedConexionId){
-    navEmpty.style.display='none';
-    navContent.style.display='block';
-    instanceSection.style.display='none';
-    const c = state.conexiones.find(x=>x.id===state.selectedConexionId);
-    if(!c){ state.selectedConexionId=null; renderRightPanel(); return; }
-    navSedeLabel.textContent = 'Conexión';
-    matrizHintEl.style.display='none';
-    renderSedeEditBox(null);
-    renderConnectionsBox(null);
-    renderHerenciaBox(null);
-    renderConexionEditBox(c);
-    return;
-  }
-  renderConexionEditBox(null);
-
   if(ids.length===0){
     navEmpty.style.display='block';
     navContent.style.display='none';
@@ -2112,39 +2119,20 @@ function renderRightPanel(){
   }
 }
 
-const conexionEditBoxEl = document.getElementById('conexionEditBox');
-
-/* Vista de la conexión seleccionada: resumen de sus atributos (solo lectura) + "Editar" (abre
-   el popup completo) + "Eliminar conexión". El popup ya NO se abre automáticamente al
-   seleccionar una conexión — solo al crearla (arrastrando un puerto) o al pedir editarla aquí. */
-function renderConexionEditBox(c){
-  if(!c){
-    conexionEditBoxEl.style.display = 'none';
-    conexionEditBoxEl.innerHTML = '';
-    return;
-  }
-  conexionEditBoxEl.style.display = 'flex';
-  conexionEditBoxEl.innerHTML = `
-    <div>
-      <label>Conexión</label>
-      <div class="conexionEndpoints">${nombreEntidad(c.aId)} ↔ ${nombreEntidad(c.bId)}</div>
-      <div class="connAttrRow"><span>Ancho de banda</span><span>${c.anchoBanda || '—'}</span></div>
-      <div class="connAttrRow"><span>Compartición</span><span>${c.comparticion || '—'}</span></div>
-    </div>
-    <div class="conexionActions">
-      <button class="btn" id="btnEditConexionInline">Editar</button>
-      <button class="btn danger-outline" id="btnDeleteConexionInline">Eliminar conexión</button>
-    </div>
-  `;
-  document.getElementById('btnEditConexionInline').addEventListener('click', ()=>openConnPopup(c.id));
-  document.getElementById('btnDeleteConexionInline').addEventListener('click', ()=>eliminarConexion(c.id));
-}
-
 const connectionsBoxEl = document.getElementById('connectionsBox');
 
-/* Lista de conexiones activas de la entidad seleccionada (Sede, Matriz o Datacenter), con "-"
-   para eliminarlas rápido. Ya no hay checkboxes: las conexiones se crean arrastrando el cable
-   desde el puerto (●) de la entidad hacia otra en el canvas 3D. */
+/* Alterna qué conexión está expandida inline (acordeón: colapsado ↔ expuesto). Un solo elemento
+   abierto a la vez, en el mismo panel — nunca se navega a otra pantalla para editarla. */
+function toggleConexionExpand(conexionId){
+  state.selectedConexionId = state.selectedConexionId===conexionId ? null : conexionId;
+  rebuildConnections(); // resalta (o quita el resalte de) el cable en la escena 3D
+  renderRightPanel();
+}
+
+/* Lista de conexiones activas de la entidad seleccionada (Sede, Matriz o Datacenter). Cada
+   conexión es un acordeón: clic en la fila la expande/colapsa en el mismo lugar mostrando
+   Ancho de banda (slider) y Compartición, editables sin salir del panel ni abrir otra ventana.
+   Las conexiones se crean arrastrando el cable desde el puerto (●) de la entidad. */
 function renderConnectionsBox(entityId){
   if(!entityId){
     connectionsBoxEl.style.display = 'none';
@@ -2158,27 +2146,87 @@ function renderConnectionsBox(entityId){
       <div class="connEmpty">Sin conexiones activas. Arrastra desde el puerto (●) hacia otra sede, la Matriz o el Datacenter para conectar.</div>`;
     return;
   }
-  const rows = conexiones.map(c=>{
+  connectionsBoxEl.innerHTML = `<label>Conexiones</label><div class="connList" id="connListWrap"></div>`;
+  const listEl = connectionsBoxEl.querySelector('#connListWrap');
+
+  conexiones.forEach(c=>{
     const otro = otroExtremo(c, entityId);
     const detalle = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-    return `<div class="connRow" data-conn="${c.id}">
+    const isOpen = state.selectedConexionId === c.id;
+
+    const item = document.createElement('div');
+    item.className = 'connItem' + (isOpen ? ' open' : '');
+
+    const row = document.createElement('div');
+    row.className = 'connRow';
+    row.innerHTML = `
       <span class="connDot"></span>
       <span class="connName">${nombreEntidad(otro)}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
-      <span class="connDelete" data-conn="${c.id}" title="Eliminar conexión">−</span>
-    </div>`;
-  }).join('');
-  connectionsBoxEl.innerHTML = `<label>Conexiones</label><div class="connList">${rows}</div>`;
-  connectionsBoxEl.querySelectorAll('.connRow').forEach(row=>{
+      <span class="connArrow">▸</span>
+      <span class="connDelete" title="Eliminar conexión">−</span>`;
     row.addEventListener('click', (e)=>{
       if(e.target.classList.contains('connDelete')) return;
-      selectConexion(row.dataset.conn);
+      toggleConexionExpand(c.id);
     });
-  });
-  connectionsBoxEl.querySelectorAll('.connDelete').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
+    row.querySelector('.connDelete').addEventListener('click', (e)=>{
       e.stopPropagation();
-      eliminarConexion(btn.dataset.conn);
+      eliminarConexion(c.id);
     });
+    item.appendChild(row);
+
+    const expand = document.createElement('div');
+    expand.className = 'connExpand';
+    if(isOpen){
+      const mbpsVal = parseAnchoBandaMbps(c.anchoBanda);
+      const sliderVal = Math.min(mbpsVal, ANCHO_BANDA_SLIDER_MAX);
+      expand.innerHTML = `<div><div class="connExpandInner">
+        <div class="field">
+          <label>Ancho de banda</label>
+          <div class="empRow">
+            <input type="range" class="connAnchoRange" min="1" max="${ANCHO_BANDA_SLIDER_MAX}" value="${sliderVal}">
+            <input type="number" class="connAnchoNumber" min="1" step="1" value="${mbpsVal}">
+          </div>
+          <div class="tamanoInfo connAnchoInfo">${formatAnchoBandaMbps(mbpsVal) || 'Sin definir'}</div>
+        </div>
+        <div class="field">
+          <label>Compartición</label>
+          <input type="text" class="connComparticionInput" value="${escapeHtml(c.comparticion||'')}" placeholder="Ej. Dedicado (1:1), Compartido 4:1...">
+        </div>
+      </div></div>`;
+
+      const rangeEl = expand.querySelector('.connAnchoRange');
+      const numEl = expand.querySelector('.connAnchoNumber');
+      const infoEl = expand.querySelector('.connAnchoInfo');
+      const comparticionEl = expand.querySelector('.connComparticionInput');
+
+      function applyAncho(v){
+        v = Math.max(1, Math.round(v));
+        c.anchoBanda = formatAnchoBandaMbps(v);
+        infoEl.textContent = c.anchoBanda;
+        rebuildConnections();
+        // refleja el nuevo detalle en la fila colapsada sin perder el foco de los inputs
+        const otroNombre = nombreEntidad(otroExtremo(c, entityId));
+        const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
+        row.querySelector('.connName').innerHTML = `${otroNombre}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
+      }
+      rangeEl.addEventListener('input', ()=>{
+        numEl.value = rangeEl.value;
+        applyAncho(parseInt(rangeEl.value,10));
+      });
+      numEl.addEventListener('input', ()=>{
+        const v = Math.max(1, parseInt(numEl.value,10) || 1);
+        if(v<=ANCHO_BANDA_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
+        applyAncho(v);
+      });
+      comparticionEl.addEventListener('input', ()=>{
+        c.comparticion = comparticionEl.value.trim();
+        const otroNombre = nombreEntidad(otroExtremo(c, entityId));
+        const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
+        row.querySelector('.connName').innerHTML = `${otroNombre}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
+      });
+    }
+    item.appendChild(expand);
+    listEl.appendChild(item);
   });
 }
 
@@ -2481,39 +2529,9 @@ btnDeleteInstance.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   7b. POPUP DE CONEXIÓN (Ancho de banda / Compartición)
+   7b. CONEXIONES — edición inline (ver renderConnectionsBox / toggleConexionExpand más arriba;
+   ya no existe un popup aparte, Ancho de banda y Compartición se editan dentro del acordeón).
    ========================================================================= */
-
-const connOverlay = document.getElementById('connOverlay');
-const connTitle = document.getElementById('connTitle');
-const connAncho = document.getElementById('connAncho');
-const connComparticion = document.getElementById('connComparticion');
-let connEditingId = null;
-
-function openConnPopup(conexionId){
-  const c = state.conexiones.find(x=>x.id===conexionId);
-  if(!c) return;
-  connEditingId = conexionId;
-  connTitle.textContent = `${nombreEntidad(c.aId)} ↔ ${nombreEntidad(c.bId)}`;
-  connAncho.value = c.anchoBanda || '';
-  connComparticion.value = c.comparticion || '';
-  connOverlay.classList.add('show');
-  requestAnimationFrame(()=>{ connAncho.focus(); });
-}
-function closeConnPopup(){
-  connOverlay.classList.remove('show');
-  connEditingId = null;
-}
-document.getElementById('btnCancelConn').addEventListener('click', closeConnPopup);
-document.getElementById('btnSaveConn').addEventListener('click', ()=>{
-  const c = state.conexiones.find(x=>x.id===connEditingId);
-  if(c){
-    c.anchoBanda = connAncho.value.trim();
-    c.comparticion = connComparticion.value.trim();
-  }
-  closeConnPopup();
-  renderRightPanel();
-});
 
 /* Elimina una conexión. Si conectaba una sede con la Matriz, también limpia la herencia de esa
    sede (ya no tiene sentido seguir heredando productos de la Matriz sin estar conectada a ella). */
@@ -2533,10 +2551,6 @@ function eliminarConexion(conexionId){
   rebuildConnections();
   renderRightPanel();
 }
-document.getElementById('btnDeleteConn').addEventListener('click', ()=>{
-  if(connEditingId) eliminarConexion(connEditingId);
-  closeConnPopup();
-});
 
 /* =========================================================================
    8. DESELECCIONAR
