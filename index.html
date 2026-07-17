@@ -147,6 +147,8 @@
   #navSedeLabel{font-size:12px;font-weight:600;color:var(--text);}
   #sedeEditBox{display:flex;flex-direction:column;gap:2px;padding:10px 0 12px;margin-bottom:6px;
     border-bottom:1px solid var(--border);}
+  #matrizEditBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
   #sedeEditBox .field{margin-bottom:10px;}
   #sedeEditBox .field:last-child{margin-bottom:0;}
   #sedeEditBox input[type="range"]{flex:1;accent-color:var(--cian);}
@@ -332,16 +334,29 @@
       </div>
     </div>
 
+    <div id="matrizDragWrap">
+      <h2>Agregar Matriz</h2>
+      <div class="site-card" draggable="true" id="matrizDragCard">
+        <div class="site-icon size-m" style="color:var(--indigo);border-color:var(--indigo);">◆</div>
+        <div>
+          <div class="lbl">Matriz</div>
+          <div class="sub">Puede haber varias · va donde la sueltes</div>
+        </div>
+      </div>
+    </div>
+
     <div class="legend">
       <h2 style="margin-bottom:8px;">Productos (arrastra a una sede)</h2>
       <div id="productLegend"></div>
     </div>
 
     <div class="hint">
-      Arrastra una sede al canvas para crearla. Arrastra un producto sobre una sede o sobre la
-      Matriz Central para asignarlo (se abre el formulario al soltar). Clic sobre una sede o la
-      Matriz para ver/editar su detalle. Arrastra una sede ya colocada para moverla en la grilla.
-      Shift + clic para seleccionar varias sedes a la vez.
+      Arrastra una sede o una Matriz al canvas para crearlas — puede haber varias de cada una, en
+      cualquier celda libre de la grilla (el punto del centro es solo una referencia visual, no
+      una posición reservada). Arrastra un producto sobre una sede o una Matriz para asignarlo (se
+      abre el formulario al soltar). Clic sobre una sede o una Matriz para ver/editar su detalle.
+      Arrastra una sede o Matriz ya colocada para moverla en la grilla. Shift + clic para
+      seleccionar varias a la vez.
     </div>
   </div>
 
@@ -361,10 +376,11 @@
 
   <div id="right">
     <h2 id="rightTitle">Detalle de selección</h2>
-    <div id="navEmpty">Selecciona una sede o la Matriz Central en el canvas para ver su detalle. Arrastra productos desde el panel izquierdo para asignarlos.</div>
+    <div id="navEmpty">Selecciona una sede o una Matriz en el canvas para ver su detalle. Arrastra productos desde el panel izquierdo para asignarlos.</div>
     <div id="navContent" style="display:none;">
       <div id="navSedeLabel"></div>
       <div id="matrizHint">Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.</div>
+      <div id="matrizEditBox" style="display:none;"></div>
       <div id="sedeEditBox" style="display:none;"></div>
       <div id="connectionsBox" style="display:none;"></div>
       <div id="herenciaBox" style="display:none;"></div>
@@ -648,31 +664,46 @@ function formatAnchoBandaMbps(mbps){
 const state = {
   clienteNombre: '',
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
-  matriz: { id:'matriz', nombre:'Matriz Central', instancias:[], group:null }, // group se asigna tras crear el hub
+  matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
+                          // las sedes: se crean arrastrando, pueden ser varias, y van donde el usuario quiera.
   datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', group:null, instancias:[] }, // edificio fijo de Puntonet
   conexiones: [],        // { id, aId, bId, anchoBanda, comparticion } — cable manual entre 2 entidades
-  selectedSedeIds: [],   // ids de sede, y opcionalmente 'matriz' / 'datacenter'
+  selectedSedeIds: [],   // ids de sede/Matriz, y opcionalmente 'datacenter'
   selectedConexionId: null, // id de la conexión seleccionada (mutuamente excluyente con selectedSedeIds)
   nextSedeSeq: 1,
+  nextMatrizSeq: 1,
   nextInstanceSeq: 1,
   nextConexionSeq: 1,
   editingInstance: null, // { sedeId, instanciaId } | null
-  placing: null,         // { tipo:'sede' } | { tipo:'subproducto', id } — flujo táctil "armar y colocar"
+  placing: null,         // { tipo:'sede' } | { tipo:'matriz' } | { tipo:'subproducto', id } — flujo táctil "armar y colocar"
 };
 
-/* Resuelve sedes reales, la Matriz Central y el Datacenter a partir de un id (uniforme para
-   selección, popups de servicio, puertos de conexión y assets 3D). */
+/* Resuelve sedes reales, Matrices y el Datacenter a partir de un id (uniforme para selección,
+   popups de servicio, puertos de conexión y assets 3D). Las Matrices son, en la práctica, "sedes
+   especiales": mismo modelo de datos (id, nombre, gx, gz, group, instancias), solo que con otra
+   geometría 3D y sin tamaño derivado de empleados. */
 function getSedeById(id){
-  if(id==='matriz') return state.matriz;
   if(id==='datacenter') return state.datacenter;
+  const matriz = state.matrices.find(m=>m.id===id);
+  if(matriz) return matriz;
   return state.sedes.find(s=>s.id===id);
 }
+function getMatrizById(id){ return state.matrices.find(m=>m.id===id); }
 function tipoEntidad(id){
-  if(id==='matriz') return 'matriz';
   if(id==='datacenter') return 'datacenter';
+  if(state.matrices.some(m=>m.id===id)) return 'matriz';
   return 'sede';
 }
 function nombreEntidad(id){ const e = getSedeById(id); return e ? e.nombre : id; }
+/* Busca una instancia de producto entre TODAS las Matrices (los instanciaId son únicos
+   globalmente vía nextInstanceSeq, así que no hace falta saber de antemano de qué Matriz es). */
+function findInstanciaEnMatrices(instanciaId){
+  for(const m of state.matrices){
+    const found = m.instancias.find(i=>i.instanciaId===instanciaId);
+    if(found) return found;
+  }
+  return null;
+}
 
 /* --- Conexiones: cables manuales entre Sede↔Matriz, Sede↔Datacenter y Matriz↔Datacenter ---
    No se conectan sede-sede. No hay checkboxes: se crean arrastrando desde el "puerto" (§5). */
@@ -718,7 +749,7 @@ function setupCamera(){
 }
 setupCamera();
 
-renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setSize(wrap.clientWidth, wrap.clientHeight);
 wrap.appendChild(renderer.domElement);
@@ -731,74 +762,91 @@ scene.add(dirLight);
 const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
 scene.add(grid);
 
-// Hub central — representación de la "empresa" (Puntonet) de la que parten las sedes
-const HUB_HEIGHT = 1.1;
-const hubGroup = new THREE.Group();
+/* --- Matriz: geometría 3D reutilizable ---
+   Antes era un único "hub" fijo en el centro. Ahora una Matriz se comporta como una sede
+   especial: se puede crear más de una, y cada una se coloca donde el usuario la arrastre en la
+   grilla. buildMatrizMesh() construye un ejemplar nuevo cada vez (mismo patrón que
+   buildSedeMesh()), y createMatriz() (más abajo, §4B) lo instancia y lo agrega al estado. */
+function buildMatrizMesh(){
+  const group = new THREE.Group();
 
-// núcleo: torre escalonada de cajas wireframe
-const coreSizes = [ [2.0,0.35,2.0], [1.5,0.55,1.5], [1.0,1.1,1.0] ];
-let coreY = 0;
-coreSizes.forEach((dims)=>{
-  const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
-  const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
-  const y = coreY + dims[1]/2;
-  edges.position.y = y; fill.position.y = y;
-  hubGroup.add(edges); hubGroup.add(fill);
-  coreY += dims[1];
-});
+  // núcleo: torre escalonada de cajas wireframe
+  const coreSizes = [ [2.0,0.35,2.0], [1.5,0.55,1.5], [1.0,1.1,1.0] ];
+  let coreY = 0;
+  coreSizes.forEach((dims)=>{
+    const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
+    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
+    const y = coreY + dims[1]/2;
+    edges.position.y = y; fill.position.y = y;
+    group.add(edges); group.add(fill);
+    coreY += dims[1];
+  });
 
-// cascarón exterior giratorio: icosaedro wireframe, simboliza la red corporativa
-const hubShellGeo = new THREE.IcosahedronGeometry(1.7, 0);
-const hubShell = new THREE.LineSegments(new THREE.EdgesGeometry(hubShellGeo), new THREE.LineBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.45 }));
-hubShell.position.y = coreY * 0.62;
-hubShell.name = 'hubShell';
-hubGroup.add(hubShell);
+  // cascarón exterior giratorio: icosaedro wireframe, simboliza la red corporativa
+  const hubShellGeo = new THREE.IcosahedronGeometry(1.7, 0);
+  const hubShell = new THREE.LineSegments(new THREE.EdgesGeometry(hubShellGeo), new THREE.LineBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.45 }));
+  hubShell.position.y = coreY * 0.62;
+  hubShell.name = 'hubShell';
+  group.add(hubShell);
 
-// segundo cascarón, más pequeño, gira en sentido contrario para dar profundidad
-const hubShell2Geo = new THREE.IcosahedronGeometry(1.25, 0);
-const hubShell2 = new THREE.LineSegments(new THREE.EdgesGeometry(hubShell2Geo), new THREE.LineBasicMaterial({ color:0x67e3fa, transparent:true, opacity:.3 }));
-hubShell2.position.y = coreY * 0.62;
-hubShell2.name = 'hubShell2';
-hubGroup.add(hubShell2);
+  // segundo cascarón, más pequeño, gira en sentido contrario para dar profundidad
+  const hubShell2Geo = new THREE.IcosahedronGeometry(1.25, 0);
+  const hubShell2 = new THREE.LineSegments(new THREE.EdgesGeometry(hubShell2Geo), new THREE.LineBasicMaterial({ color:0x67e3fa, transparent:true, opacity:.3 }));
+  hubShell2.position.y = coreY * 0.62;
+  hubShell2.name = 'hubShell2';
+  group.add(hubShell2);
 
-// haz vertical sutil sobre el hub
-const beamGeo = new THREE.CylinderGeometry(0.04,0.04, 2.4, 8, 1, true);
-const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.18, side:THREE.DoubleSide }));
-beam.position.y = coreY + 1.2;
-hubGroup.add(beam);
+  // haz vertical sutil sobre el hub
+  const beamGeo = new THREE.CylinderGeometry(0.04,0.04, 2.4, 8, 1, true);
+  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.18, side:THREE.DoubleSide }));
+  beam.position.y = coreY + 1.2;
+  group.add(beam);
 
-hubGroup.position.set(0, 0, 0);
-scene.add(hubGroup);
+  const matrizHitboxGeo = new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16);
+  const matrizHitbox = new THREE.Mesh(matrizHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
+  matrizHitbox.position.y = (coreY + 2.6) / 2;
+  matrizHitbox.name = 'matrizHitbox';
+  group.add(matrizHitbox);
 
-// La Matriz Central se comporta como una "sede" especial para selección/asignación de productos:
-// reutiliza el mismo mecanismo de isSedeRoot (sedeId==='matriz') para que el resto del código
-// (click, drag&drop de productos, halo de selección) funcione sin duplicar lógica.
-state.matriz.group = hubGroup;
+  const matrizHaloGeo = new THREE.RingGeometry(2.5, 2.68, 40);
+  const matrizHalo = new THREE.Mesh(matrizHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
+  matrizHalo.rotation.x = -Math.PI/2;
+  matrizHalo.position.y = 0.03;
+  matrizHalo.name = 'matrizHalo';
+  group.add(matrizHalo);
 
-const matrizHitboxGeo = new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16);
-const matrizHitbox = new THREE.Mesh(matrizHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
-matrizHitbox.position.y = (coreY + 2.6) / 2;
-matrizHitbox.name = 'matrizHitbox';
-matrizHitbox.userData = { sedeId:'matriz', isSedeRoot:true, isMatrizRoot:true };
-hubGroup.add(matrizHitbox);
+  // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
+  const matrizPort = makePortSprite();
+  matrizPort.position.set(2.0, coreY*0.5, 0);
+  group.add(matrizPort);
 
-const matrizHaloGeo = new THREE.RingGeometry(2.5, 2.68, 40);
-const matrizHalo = new THREE.Mesh(matrizHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
-matrizHalo.rotation.x = -Math.PI/2;
-matrizHalo.position.y = 0.03;
-matrizHalo.name = 'matrizHalo';
-hubGroup.add(matrizHalo);
+  // coreY se guarda en userData porque otras funciones (nombre flotante, anillo de productos,
+  // efecto de "recubrimiento") necesitan conocer la altura del núcleo para posicionarse bien,
+  // y cada Matriz ahora es una instancia independiente (ya no hay una variable global coreY).
+  group.userData.coreY = coreY;
+  return group;
+}
 
-// Puerto de conexión de la Matriz: desde aquí se arrastra un cable hacia una sede o el Datacenter.
-const matrizPort = makePortSprite();
-matrizPort.position.set(2.0, coreY*0.5, 0);
-matrizPort.userData = { isPort:true, entityId:'matriz' };
-hubGroup.add(matrizPort);
-
-const matrizLabel = makeNameSprite('Matriz Central');
-matrizLabel.position.set(0, coreY + 1.7, 0);
-hubGroup.add(matrizLabel);
+/* --- Marcador del centro de la grilla ---
+   Puramente decorativo y permanente: un punto que indica dónde está el centro (0,0) del canvas,
+   sin significado funcional — no reserva esa celda ni está atado a ninguna entidad. Las Matrices
+   y las sedes se pueden colocar ahí mismo si el usuario quiere, igual que en cualquier otra celda
+   libre. No tiene userData especial, así que nunca se reconoce como clickeable/seleccionable
+   (ver hitTestAtEvent). */
+const centerMarkerGroup = new THREE.Group();
+const centerDotGeo = new THREE.CircleGeometry(0.18, 24);
+const centerDot = new THREE.Mesh(centerDotGeo, new THREE.MeshBasicMaterial({ color:0x4b5563, transparent:true, opacity:.7, side:THREE.DoubleSide }));
+centerDot.rotation.x = -Math.PI/2;
+centerDot.position.y = 0.015;
+centerMarkerGroup.add(centerDot);
+const centerRingGeo = new THREE.RingGeometry(0.34, 0.4, 32);
+const centerRing = new THREE.Mesh(centerRingGeo, new THREE.MeshBasicMaterial({ color:0x4b5563, transparent:true, opacity:.4, side:THREE.DoubleSide }));
+centerRing.rotation.x = -Math.PI/2;
+centerRing.position.y = 0.015;
+centerMarkerGroup.add(centerRing);
+centerMarkerGroup.position.set(0, 0, 0);
+scene.add(centerMarkerGroup);
 
 /* --- Datacenter "Epicentro": edificio fijo de Puntonet, siempre presente, ubicado detrás de la
    Matriz. Representa la infraestructura física a la que se conectan sedes/Matriz cuando quieren
@@ -873,7 +921,15 @@ function getEntityPortWorldPos(entityId){
 
 function connectionPower(c){
   const sedeSideId = [c.aId, c.bId].find(id=>tipoEntidad(id)==='sede');
-  const entity = sedeSideId ? getSedeById(sedeSideId) : state.matriz;
+  let entity;
+  if(sedeSideId){
+    entity = getSedeById(sedeSideId);
+  } else {
+    // ninguno de los 2 extremos es una sede real (p.ej. Matriz↔Datacenter o Matriz↔Matriz): usa
+    // el que tenga más productos propios, para que el cable "brille" según el extremo más activo.
+    const a = getSedeById(c.aId), b = getSedeById(c.bId);
+    entity = (a && b) ? (a.instancias.length >= b.instancias.length ? a : b) : (a || b);
+  }
   const n = entity ? entity.instancias.length : 0;
   return Math.min(1, n / CONNECTION_POWER_CAP);
 }
@@ -935,7 +991,9 @@ function rebuildConnections(){
 }
 
 /* --- Orbit controls simplificado (sin dependencias externas) --- */
-let isOrbiting = false, lastX=0, lastY=0, camAngleY=Math.atan2(20,20), camAngleX=Math.atan2(20, Math.hypot(20,20));
+const DEFAULT_CAM_ANGLE_Y = Math.atan2(20,20);
+const DEFAULT_CAM_ANGLE_X = Math.atan2(20, Math.hypot(20,20));
+let isOrbiting = false, lastX=0, lastY=0, camAngleY=DEFAULT_CAM_ANGLE_Y, camAngleX=DEFAULT_CAM_ANGLE_X;
 const camDistance = Math.sqrt(20*20+20*20+20*20); // distancia fija: solo orienta la órbita, NO controla el zoom
 function updateCameraFromAngles(){
   const r = camDistance;
@@ -975,8 +1033,8 @@ document.getElementById('zoomOut').addEventListener('click', ()=>{
   applyZoom(zoomLevel / ZOOM_STEP_FACTOR);
 });
 document.getElementById('zoomReset').addEventListener('click', ()=>{
-  camAngleY = Math.atan2(20,20);
-  camAngleX = Math.atan2(20, Math.hypot(20,20));
+  camAngleY = DEFAULT_CAM_ANGLE_Y;
+  camAngleX = DEFAULT_CAM_ANGLE_X;
   updateCameraFromAngles();
   applyZoom(1);
 });
@@ -1195,9 +1253,9 @@ function makeNameSprite(text){
 function updateSedeNameSprite(sede){
   const old = sede.group.getObjectByName('nameSprite');
   if(old) sede.group.remove(old);
-  const tamano = getTamanoLocal(sede.tamano);
+  const y = sede.tipo==='matriz' ? sede.group.userData.coreY + 1.7 : getTamanoLocal(sede.tamano).box[1] + 0.85;
   const sprite = makeNameSprite(sede.nombre);
-  sprite.position.set(0, tamano.box[1] + 0.85, 0);
+  sprite.position.set(0, y, 0);
   sede.group.add(sprite);
 }
 
@@ -1247,18 +1305,18 @@ function refreshSedeAssets(sede){
   container.name = 'assetsContainer';
 
   let radius, assetY;
-  if(sede.id==='matriz'){
-    radius = 2.6; assetY = coreY + 0.55; // anillo propio alrededor del hub
+  if(sede.tipo==='matriz'){
+    radius = 2.6; assetY = sede.group.userData.coreY + 0.55; // anillo propio alrededor del hub
   } else {
     const tamano = getTamanoLocal(sede.tamano);
     radius = tamano.assetRadius; assetY = tamano.box[1] + 0.35;
   }
 
   const propias = sede.instancias;
-  // Productos heredados de la Matriz (solo aplica a sedes reales, no a la Matriz misma).
-  // Se filtran referencias huérfanas por si el producto ya no existe en la Matriz.
-  const heredadas = (sede.id==='matriz' || !conexionExiste(sede.id,'matriz')) ? [] :
-    (sede.herenciaIds||[]).map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid)).filter(Boolean);
+  // Productos heredados de Matrices conectadas (solo aplica a sedes reales, no a las Matrices
+  // mismas). Se filtran referencias huérfanas por si el producto ya no existe en ninguna Matriz.
+  const heredadas = sede.tipo==='matriz' ? [] :
+    (sede.herenciaIds||[]).map(hid=>findInstanciaEnMatrices(hid)).filter(Boolean);
   const total = propias.length + heredadas.length;
   let idx = 0;
 
@@ -1300,9 +1358,10 @@ function refreshSedeAssets(sede){
 function gridToWorld(gx,gz){ return { x: gx*GRID_SPACING, z: gz*GRID_SPACING }; }
 
 function occupied(gx,gz,excludeId){
-  if(gx===0 && gz===0) return true; // celda del hub / Matriz Central
   if(gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro
-  return state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId);
+  if(state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId)) return true;
+  if(state.matrices.some(m=>m.gx===gx && m.gz===gz && m.id!==excludeId)) return true;
+  return false;
 }
 
 function nearestFreeCell(worldX, worldZ, excludeId){
@@ -1392,10 +1451,24 @@ function deleteSede(sede){
   renderRightPanel();
 }
 
+/* Elimina UNA Matriz por completo: su geometría 3D, sus productos propios, cualquier conexión
+   que la involucre (con la limpieza de herencia correspondiente en cada sede conectada, vía
+   eliminarConexion), y la quita de la lista. Igual que deleteSede, pero para Matrices. */
+function deleteMatriz(matriz){
+  conexionesDe(matriz.id).forEach(c=> eliminarConexion(c.id));
+  scene.remove(matriz.group);
+  state.matrices = state.matrices.filter(m=>m.id!==matriz.id);
+  state.selectedSedeIds = state.selectedSedeIds.filter(id=>id!==matriz.id);
+  rebuildConnections();
+  updateSelectionVisuals();
+  renderRightPanel();
+}
+
 function getEntityHaloObject(entityId){
-  if(entityId==='matriz') return hubGroup.getObjectByName('matrizHalo');
   if(entityId==='datacenter') return datacenterGroup.getObjectByName('matrizHalo');
-  const sede = getSedeById(entityId);
+  const matriz = getMatrizById(entityId);
+  if(matriz) return matriz.group.getObjectByName('matrizHalo');
+  const sede = state.sedes.find(s=>s.id===entityId);
   return sede ? sede.group.getObjectByName('halo') : null;
 }
 
@@ -1405,8 +1478,11 @@ function updateSelectionVisuals(){
     const selected = state.selectedSedeIds.includes(sede.id);
     if(halo) halo.material.opacity = selected ? 0.9 : 0;
   });
-  const matrizHalo = getEntityHaloObject('matriz');
-  if(matrizHalo) matrizHalo.material.opacity = state.selectedSedeIds.includes('matriz') ? 0.9 : 0;
+  state.matrices.forEach(matriz=>{
+    const halo = matriz.group.getObjectByName('matrizHalo');
+    const selected = state.selectedSedeIds.includes(matriz.id);
+    if(halo) halo.material.opacity = selected ? 0.9 : 0;
+  });
   const dcHalo = getEntityHaloObject('datacenter');
   if(dcHalo) dcHalo.material.opacity = state.selectedSedeIds.includes('datacenter') ? 0.9 : 0;
 }
@@ -1415,11 +1491,11 @@ function updateSelectionVisuals(){
    En desktop funciona con arrastre nativo (HTML5 DnD). En touch (celular/tablet) el DnD nativo
    no dispara con el dedo, así que se ofrece una alternativa: tocar la tarjeta/producto lo "arma"
    (aparece un aviso arriba del canvas) y el siguiente toque sobre el canvas lo coloca. */
-let draggingFromPanel = false;
+let draggingFromPanel = null; // null | 'sede' | 'matriz' — respaldo para navegadores que no preservan dataTransfer en 'drop'
 let draggingSubproductoId = null;
 const sedeDragCard = document.getElementById('sedeDragCard');
 sedeDragCard.addEventListener('dragstart', (e)=>{
-  draggingFromPanel = true;
+  draggingFromPanel = 'sede';
   e.dataTransfer.setData('text/plain', 'sede');
 });
 
@@ -1453,6 +1529,59 @@ function placeSedeAtClientPoint(clientX, clientY){
   createSede(EMPLEADOS_DEFAULT, gx, gz);
 }
 
+/* --- Creación de la Matriz (§4B) ---
+   La Matriz ya no aparece por defecto ni está anclada al centro: se crea arrastrando su tarjeta
+   desde el panel izquierdo, exactamente igual que una sede (mismo gesto de dragstart/drop, mismo
+   flujo de "tocar para armar, tocar para colocar" en táctil, misma lógica de celda libre más
+   cercana). A diferencia de la versión anterior, puede haber varias Matrices, y cada una se
+   coloca donde el usuario la suelte — el centro de la grilla ya no tiene ningún significado
+   especial para ellas, solo lleva el punto decorativo (centerMarkerGroup, más arriba). */
+const matrizDragCard = document.getElementById('matrizDragCard');
+
+function createMatriz(gx, gz){
+  const id = uid('matriz','nextMatrizSeq');
+  const nombre = 'Matriz ' + id.split('_')[1];
+  const group = buildMatrizMesh();
+  const pos = gridToWorld(gx,gz);
+  group.position.set(pos.x, 0, pos.z);
+  scene.add(group);
+  const matriz = { id, nombre, tipo:'matriz', gx, gz, group, instancias:[] };
+  // Asignar propiedades sin reemplazar el objeto userData completo: buildMatrizMesh() ya guardó
+  // coreY ahí, y necesitamos conservarlo.
+  Object.assign(group.userData, { sedeId:id, isSedeRoot:true, isMatrizRoot:true });
+  group.traverse(o=>{
+    if(o.name==='matrizHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; o.userData.isMatrizRoot=true; }
+    if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
+  });
+  state.matrices.push(matriz);
+  refreshSedeAssets(matriz);
+  updateSedeNameSprite(matriz);
+  rebuildConnections();
+  return matriz;
+}
+
+function placeMatrizAtClientPoint(clientX, clientY){
+  const rect = wrap.getBoundingClientRect();
+  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
+  const dropRaycaster = new THREE.Raycaster();
+  dropRaycaster.setFromCamera(mouse, camera);
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+  const point = new THREE.Vector3();
+  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  if(!point) return;
+  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  createMatriz(gx, gz);
+}
+
+matrizDragCard.addEventListener('dragstart', (e)=>{
+  draggingFromPanel = 'matriz';
+  e.dataTransfer.setData('text/plain', 'matriz');
+});
+matrizDragCard.addEventListener('click', ()=>{
+  if(state.placing && state.placing.tipo==='matriz'){ disarmPlacing(); return; }
+  armPlacing({ tipo:'matriz' }, 'Toca el canvas para colocar la Matriz');
+});
+
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
    el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
    estuviera "vistiendo"), y solo entonces se abre el formulario para completar sus atributos. */
@@ -1461,7 +1590,7 @@ function playWrapEffect(entityId, subproductoId, onDone){
   const sub = getSubproducto(subproductoId);
   const color = getSubproductoColor(sub);
   let w=1.8, h=1.8, d=1.8;
-  if(entity.id==='matriz'){ w = d = 4.6; h = coreY + 0.5; }
+  if(entity.tipo==='matriz'){ w = d = 4.6; h = entity.group.userData.coreY + 0.5; }
   else if(entity.id==='datacenter'){ w = 3.6; h = dcY + 0.3; d = 2.8; }
   else { const tamano = getTamanoLocal(entity.tamano); w = tamano.box[0]+0.35; h = tamano.box[1]+0.2; d = tamano.box[2]+0.35; }
 
@@ -1506,14 +1635,18 @@ wrap.addEventListener('dragover', (e)=>{ e.preventDefault(); });
 wrap.addEventListener('drop', (e)=>{
   e.preventDefault();
   let payload = e.dataTransfer.getData('text/plain');
-  if(!payload && draggingFromPanel) payload = 'sede';
+  if(!payload && draggingFromPanel) payload = draggingFromPanel;
   if(!payload && draggingSubproductoId) payload = 'subproducto:'+draggingSubproductoId;
-  draggingFromPanel = false;
+  draggingFromPanel = null;
   draggingSubproductoId = null;
   if(!payload) return;
 
   if(payload==='sede'){
     placeSedeAtClientPoint(e.clientX, e.clientY);
+    return;
+  }
+  if(payload==='matriz'){
+    placeMatrizAtClientPoint(e.clientX, e.clientY);
     return;
   }
   if(payload.startsWith('subproducto:')){
@@ -1603,6 +1736,7 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor){
 }
 
 makeTouchDraggable(sedeDragCard, placeSedeAtClientPoint, 'Sede', 'var(--cian)');
+makeTouchDraggable(matrizDragCard, placeMatrizAtClientPoint, 'Matriz', 'var(--indigo)');
 
 
 
@@ -1776,9 +1910,9 @@ function onPointerMove(e){
       connectingHoverId = null;
       startTempCable();
     } else if(!pointerDownInfo.hit.port && moved > DRAG_THRESHOLD){
-      if(pointerDownInfo.hit.sedeId && pointerDownInfo.hit.sedeId!=='matriz' && pointerDownInfo.hit.sedeId!=='datacenter' && !pointerDownInfo.hit.asset){
+      if(pointerDownInfo.hit.sedeId && pointerDownInfo.hit.sedeId!=='datacenter' && !pointerDownInfo.hit.asset){
         pointerMode = 'moveSede';
-        movingSede = state.sedes.find(s=>s.id===pointerDownInfo.hit.sedeId);
+        movingSede = getSedeById(pointerDownInfo.hit.sedeId);
       } else {
         pointerMode = 'orbit';
         isOrbiting = true;
@@ -1850,6 +1984,7 @@ function onPointerUp(e){
       // (flujo táctil de "tocar para armar, tocar para colocar"), o es un clic de selección.
       if(state.placing){
         if(state.placing.tipo==='sede') placeSedeAtClientPoint(e.clientX, e.clientY);
+        else if(state.placing.tipo==='matriz') placeMatrizAtClientPoint(e.clientX, e.clientY);
         else if(state.placing.tipo==='subproducto') assignSubproductoAtClientPoint(state.placing.id, e.clientX, e.clientY);
         disarmPlacing();
       } else {
@@ -1906,7 +2041,7 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
   if(found){
     let inst;
     if(found.isHeredadoAsset){
-      inst = state.matriz.instancias.find(i=>i.instanciaId===found.matrizInstanciaId);
+      inst = findInstanciaEnMatrices(found.matrizInstanciaId);
     } else {
       const sede = getSedeById(found.sedeId);
       inst = sede && sede.instancias.find(i=>i.instanciaId===found.instanciaId);
@@ -1931,10 +2066,12 @@ function animate(){
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
 
-  const shell = hubGroup.getObjectByName('hubShell');
-  if(shell) shell.rotation.y = t * 0.25;
-  const shell2 = hubGroup.getObjectByName('hubShell2');
-  if(shell2) shell2.rotation.y = -t * 0.35;
+  state.matrices.forEach(matriz=>{
+    const shell = matriz.group.getObjectByName('hubShell');
+    if(shell) shell.rotation.y = t * 0.25;
+    const shell2 = matriz.group.getObjectByName('hubShell2');
+    if(shell2) shell2.rotation.y = -t * 0.35;
+  });
 
   connectionAnims.forEach(c=>{
     const tt = (t * c.speed * 0.3 + c.phase) % 1;
@@ -1975,9 +2112,38 @@ const navEmpty = document.getElementById('navEmpty');
 const navContent = document.getElementById('navContent');
 const navSedeLabel = document.getElementById('navSedeLabel');
 const matrizHintEl = document.getElementById('matrizHint');
+const matrizEditBoxEl = document.getElementById('matrizEditBox');
 const instanceSection = document.getElementById('instanceSection');
 const instanceSectionTitle = document.getElementById('instanceSectionTitle');
 const instanceListEl = document.getElementById('instanceList');
+
+/* Bloque de edición de la Matriz seleccionada: nombre editable (igual que una sede) y botón de
+   eliminar. La posición no se edita con un campo numérico — se mueve arrastrándola en el canvas,
+   igual que una sede. */
+function renderMatrizEditBox(matriz){
+  if(!matriz){
+    matrizEditBoxEl.style.display = 'none';
+    matrizEditBoxEl.innerHTML = '';
+    return;
+  }
+  matrizEditBoxEl.style.display = 'flex';
+  matrizEditBoxEl.innerHTML = `
+    <div class="field">
+      <label>Nombre de la Matriz</label>
+      <input type="text" id="matrizNombreInput" value="${escapeHtml(matriz.nombre)}" placeholder="Nombre de la Matriz...">
+    </div>
+    <button class="btn danger-outline" id="btnDeleteMatriz" style="width:100%;">Eliminar Matriz</button>
+  `;
+  document.getElementById('matrizNombreInput').addEventListener('input', (e)=>{
+    matriz.nombre = e.target.value;
+    updateSedeNameSprite(matriz);
+    navSedeLabel.textContent = `Matriz: ${matriz.nombre || '(sin nombre)'}`;
+  });
+  document.getElementById('btnDeleteMatriz').addEventListener('click', ()=>{
+    const ok = confirm(`¿Eliminar "${matriz.nombre}" y todo lo que tiene asignado (productos propios y conexiones)? Esta acción no se puede deshacer.`);
+    if(ok) deleteMatriz(matriz);
+  });
+}
 
 function initials(nombre){
   const words = nombre.replace(/[\/()]/g,' ').split(/\s+/).filter(Boolean);
@@ -1987,8 +2153,8 @@ function initials(nombre){
 
 /* Catálogo del panel izquierdo: acordeón por Vertical (solo una abierta a la vez, para ocupar
    menos espacio), con el ícono del Producto (N2) junto a su nombre, y cada Subproducto (N3) como
-   un "cuadradito" arrastrable con su nombre visible debajo. Al soltarse sobre una sede o la
-   Matriz Central en el canvas, abre el popup de asignación (ver §5, drop handler). */
+   un "cuadradito" arrastrable con su nombre visible debajo. Al soltarse sobre una sede o una
+   Matriz en el canvas, abre el popup de asignación (ver §5, drop handler). */
 let catalogOpenVerticalId = VERTICALES[0].id;
 
 function renderCatalogPanel(){
@@ -2025,7 +2191,7 @@ function renderCatalogPanel(){
         const chip = document.createElement('div');
         chip.className = 'catalog-chip';
         chip.draggable = true;
-        chip.title = s.nombre + ' — arrastra a una sede o a la Matriz Central';
+        chip.title = s.nombre + ' — arrastra a una sede o a una Matriz';
         chip.dataset.subproductoId = s.id;
         chip.style.background = colorHex(getSubproductoColor(s));
         chip.textContent = initials(s.nombre);
@@ -2069,23 +2235,24 @@ function renderRightPanel(){
   navContent.style.display='block';
 
   const singleId = ids.length===1 ? ids[0] : null;
-  const isMatriz = singleId==='matriz';
+  const isMatriz = !!singleId && state.matrices.some(m=>m.id===singleId);
   const isDatacenter = singleId==='datacenter';
   const isSedeSingle = !!singleId && !isMatriz && !isDatacenter;
 
   const nombres = ids.map(id=>getSedeById(id).nombre);
-  navSedeLabel.textContent = isMatriz ? 'Matriz Central'
+  navSedeLabel.textContent = isMatriz ? `Matriz: ${nombres[0]}`
     : isDatacenter ? 'Datacenter Epicentro'
-    : (ids.length===1 ? `Sede: ${nombres[0]}` : `${ids.length} sedes seleccionadas: ${nombres.join(', ')}`);
+    : (ids.length===1 ? `Sede: ${nombres[0]}` : `${ids.length} entidades seleccionadas: ${nombres.join(', ')}`);
 
   matrizHintEl.style.display = (isMatriz || isDatacenter) ? 'block' : 'none';
   matrizHintEl.textContent = isMatriz
-    ? 'Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.'
+    ? 'Arrastra un producto desde el panel izquierdo sobre esta Matriz para agregarlo como producto propio.'
     : isDatacenter
-      ? 'El Datacenter Epicentro es la infraestructura de Puntonet. Arrastra desde el puerto (●) de una sede o de la Matriz hasta aquí para contratar el servicio de Internet/ISP.'
+      ? 'El Datacenter Epicentro es la infraestructura de Puntonet. Arrastra desde el puerto (●) de una sede o de una Matriz hasta aquí para contratar el servicio de Internet/ISP.'
       : '';
 
   renderSedeEditBox(isSedeSingle ? getSedeById(singleId) : null);
+  renderMatrizEditBox(isMatriz ? getMatrizById(singleId) : null);
   renderConnectionsBox(singleId);
   renderHerenciaBox(isSedeSingle ? getSedeById(singleId) : null);
 
@@ -2239,7 +2406,7 @@ function escapeHtml(str){
 const sedeEditBoxEl = document.getElementById('sedeEditBox');
 
 /* Bloque de edición de la sede seleccionada: nombre, empleados (slider 1-100 + override
-   numérico libre) y las dos conexiones opcionales (Matriz Central / Puntonet). */
+   numérico libre) y sus conexiones (Matriz / Puntonet). */
 function renderSedeEditBox(sede){
   if(!sede){
     sedeEditBoxEl.style.display = 'none';
@@ -2297,44 +2464,51 @@ function renderSedeEditBox(sede){
 
 const herenciaBoxEl = document.getElementById('herenciaBox');
 
-/* Sección "Herencia de la Matriz": lista TODOS los productos propios de la Matriz Central con
-   un checkbox para marcar si esta sede los hereda, y una "×" para quitar la herencia rápido. */
+/* Sección "Herencia de Matrices": para cada Matriz CONECTADA a esta sede, lista sus productos
+   propios con un checkbox para marcar si esta sede los hereda, y una "×" para quitar la herencia
+   rápido. Con varias Matrices conectadas, se agrupan en bloques con el nombre de cada una. */
 function renderHerenciaBox(sede){
   if(!sede){
     herenciaBoxEl.style.display = 'none';
     herenciaBoxEl.innerHTML = '';
     return;
   }
-  const productosMatriz = state.matriz.instancias;
   sede.herenciaIds = sede.herenciaIds || [];
-
   herenciaBoxEl.style.display = 'flex';
 
-  if(!conexionExiste(sede.id,'matriz')){
-    herenciaBoxEl.innerHTML = `<label>Herencia de la Matriz</label>
-      <div class="herenciaEmpty">Conecta esta sede con la Matriz Central (arrastra desde su puerto ●) para poder heredar sus productos.</div>`;
+  const conectadas = state.matrices.filter(m=>conexionExiste(sede.id, m.id));
+  if(conectadas.length===0){
+    herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
+      <div class="herenciaEmpty">Conecta esta sede con una Matriz (arrastra desde su puerto ●) para poder heredar sus productos.</div>`;
     return;
   }
-  if(productosMatriz.length===0){
-    herenciaBoxEl.innerHTML = `<label>Herencia de la Matriz</label>
-      <div class="herenciaEmpty">La Matriz Central aún no tiene productos propios que heredar.</div>`;
+  const conProductos = conectadas.filter(m=>m.instancias.length>0);
+  if(conProductos.length===0){
+    herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
+      <div class="herenciaEmpty">Las Matrices conectadas aún no tienen productos propios que heredar.</div>`;
     return;
   }
 
-  const rows = productosMatriz.map(inst=>{
-    const sub = getSubproducto(inst.subproductoId);
-    const shade = colorHex(getSubproductoColor(sub));
-    const checked = sede.herenciaIds.includes(inst.instanciaId);
-    return `<label class="herenciaRow">
-      <input type="checkbox" class="herenciaCheck" data-inst="${inst.instanciaId}" ${checked?'checked':''}>
-      <span class="inst-dot" style="background:${shade};"></span>
-      <span class="herenciaName">${inst.nombreSubproducto}</span>
-      ${checked ? `<span class="herenciaRemove" data-inst="${inst.instanciaId}" title="Quitar herencia">×</span>` : ''}
-    </label>`;
+  const blocks = conProductos.map(m=>{
+    const rows = m.instancias.map(inst=>{
+      const sub = getSubproducto(inst.subproductoId);
+      const shade = colorHex(getSubproductoColor(sub));
+      const checked = sede.herenciaIds.includes(inst.instanciaId);
+      return `<label class="herenciaRow">
+        <input type="checkbox" class="herenciaCheck" data-inst="${inst.instanciaId}" ${checked?'checked':''}>
+        <span class="inst-dot" style="background:${shade};"></span>
+        <span class="herenciaName">${inst.nombreSubproducto}</span>
+        ${checked ? `<span class="herenciaRemove" data-inst="${inst.instanciaId}" title="Quitar herencia">×</span>` : ''}
+      </label>`;
+    }).join('');
+    const heading = conProductos.length>1
+      ? `<div style="font-size:10.5px;color:var(--muted);margin:8px 0 4px;">${escapeHtml(m.nombre)}</div>` : '';
+    return heading + `<div class="herenciaList">${rows}</div>`;
   }).join('');
-  herenciaBoxEl.innerHTML = `<label>Herencia de la Matriz</label>
-    <div class="herenciaList">${rows}</div>
-    <div class="toggleHint">Marca los productos de la Matriz que esta sede debe heredar.</div>`;
+
+  herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
+    ${blocks}
+    <div class="toggleHint">Marca los productos de las Matrices conectadas que esta sede debe heredar.</div>`;
 
   herenciaBoxEl.querySelectorAll('.herenciaCheck').forEach(cb=>{
     cb.addEventListener('change', (e)=>{
@@ -2505,11 +2679,11 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
   renderRightPanel();
 });
 
-/* Elimina un producto propio (de una sede o de la Matriz) sin pasar por el popup. Si el
-   producto pertenece a la Matriz, también limpia la herencia en las sedes que lo tenían marcado. */
+/* Elimina un producto propio (de una sede o de una Matriz) sin pasar por el popup. Si el
+   producto pertenece a una Matriz, también limpia la herencia en las sedes que lo tenían marcado. */
 function deleteInstanceDirect(entity, instanciaId){
   entity.instancias = entity.instancias.filter(i=>i.instanciaId!==instanciaId);
-  if(entity.id==='matriz'){
+  if(entity.tipo==='matriz'){
     state.sedes.forEach(s=>{
       if(s.herenciaIds && s.herenciaIds.includes(instanciaId)){
         s.herenciaIds = s.herenciaIds.filter(id=>id!==instanciaId);
@@ -2533,20 +2707,25 @@ btnDeleteInstance.addEventListener('click', ()=>{
    ya no existe un popup aparte, Ancho de banda y Compartición se editan dentro del acordeón).
    ========================================================================= */
 
-/* Elimina una conexión. Si conectaba una sede con la Matriz, también limpia la herencia de esa
-   sede (ya no tiene sentido seguir heredando productos de la Matriz sin estar conectada a ella). */
+/* Elimina una conexión. Si conectaba una sede con una Matriz, también limpia de esa sede
+   SOLO los productos heredados que venían de esa Matriz en particular (si la sede seguía
+   conectada a alguna otra Matriz, esa otra herencia no se toca). */
 function eliminarConexion(conexionId){
   const c = state.conexiones.find(x=>x.id===conexionId);
   if(!c) return;
   state.conexiones = state.conexiones.filter(x=>x.id!==conexionId);
-  if(c.aId==='matriz' || c.bId==='matriz'){
-    const sedeId = c.aId==='matriz' ? c.bId : c.aId;
-    const sede = getSedeById(sedeId);
-    if(sede && sede.herenciaIds && sede.herenciaIds.length){
-      sede.herenciaIds = [];
-      refreshSedeAssets(sede);
+  [c.aId, c.bId].forEach(id=>{
+    const matriz = getMatrizById(id);
+    if(!matriz) return;
+    const otroId = id===c.aId ? c.bId : c.aId;
+    const sede = getSedeById(otroId);
+    if(sede && sede.tipo!=='matriz' && sede.herenciaIds && sede.herenciaIds.length){
+      const idsDeEstaMatriz = new Set(matriz.instancias.map(i=>i.instanciaId));
+      const before = sede.herenciaIds.length;
+      sede.herenciaIds = sede.herenciaIds.filter(hid=>!idsDeEstaMatriz.has(hid));
+      if(sede.herenciaIds.length!==before) refreshSedeAssets(sede);
     }
-  }
+  });
   if(state.selectedConexionId === conexionId) state.selectedConexionId = null;
   rebuildConnections();
   renderRightPanel();
@@ -2574,17 +2753,17 @@ clienteInput.addEventListener('input', ()=>{ state.clienteNombre = clienteInput.
 
 function buildConfiguracionCliente(){
   return {
-    version: 6, // v6: Datacenter Epicentro + conexiones manuales (cable) entre Sede/Matriz/Datacenter
+    version: 7, // v7: Matrices múltiples y reposicionables (ya no un objeto único fijo en el centro)
     nombreCliente: state.clienteNombre || 'Sin nombre',
     generadoEn: new Date().toISOString(),
-    matriz: {
-      nombre: state.matriz.nombre,
-      instancias: state.matriz.instancias.map(i=>({
+    matrices: state.matrices.map(m=>({
+      id: m.id, nombre: m.nombre, gx: m.gx, gz: m.gz,
+      instancias: m.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
         marca: i.marca, creadoEn: i.creadoEn,
       })),
-    },
+    })),
     datacenter: { nombre: state.datacenter.nombre },
     conexiones: state.conexiones.map(c=>({
       id: c.id, aId: c.aId, bId: c.bId, anchoBanda: c.anchoBanda, comparticion: c.comparticion,
@@ -2606,6 +2785,20 @@ const reportOverlay = document.getElementById('reportOverlay');
 const reportBody = document.getElementById('reportBody');
 const reportSubtitle = document.getElementById('reportSubtitle');
 
+/* Resuelve los productos heredados de una sede (config ya "congelada", tal como la genera
+   buildConfiguracionCliente) buscando en qué Matriz vive cada instanciaId, para poder mostrar
+   "heredado de <nombre de esa Matriz>" en vez de un genérico "la Matriz". Reutilizada por el
+   reporte en pantalla y por la exportación a PDF. */
+function heredadasConNombreMatriz(sede, matrices){
+  return (sede.herenciaIds||[]).map(hid=>{
+    for(const m of matrices){
+      const found = m.instancias.find(mi=>mi.instanciaId===hid);
+      if(found) return { inst: found, matrizNombre: m.nombre };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
 /* Reutilizada por el reporte en pantalla y por la exportación a PDF. */
 function conexionesTexto(entityId){
   const cs = conexionesDe(entityId);
@@ -2619,7 +2812,7 @@ function conexionesTexto(entityId){
 
 function openReport(){
   const config = buildConfiguracionCliente();
-  reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
+  reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
   reportBody.innerHTML='';
 
   function renderInstRow(inst, container, heredadoDe){
@@ -2640,21 +2833,30 @@ function openReport(){
     container.appendChild(row);
   }
 
-  // Sección de la Matriz Central
-  const matrizBox = document.createElement('div');
-  matrizBox.className='report-sede';
-  const mh3 = document.createElement('h3');
-  mh3.innerHTML = `<span>${config.matriz.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${config.matriz.instancias.length} producto(s) propio(s) · ${conexionesTexto('matriz')})</span>`;
-  matrizBox.appendChild(mh3);
-  if(config.matriz.instancias.length===0){
+  // Sección de cada Matriz
+  if(config.matrices.length===0){
     const empty = document.createElement('div');
-    empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
-    empty.textContent='Sin productos propios asignados.';
-    matrizBox.appendChild(empty);
+    empty.className='report-empty';
+    empty.textContent = 'Aún no se ha agregado ninguna Matriz al canvas.';
+    reportBody.appendChild(empty);
   } else {
-    config.matriz.instancias.forEach(inst=>renderInstRow(inst, matrizBox, null));
+    config.matrices.forEach(matriz=>{
+      const matrizBox = document.createElement('div');
+      matrizBox.className='report-sede';
+      const mh3 = document.createElement('h3');
+      mh3.innerHTML = `<span>${matriz.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${matriz.instancias.length} producto(s) propio(s) · ${conexionesTexto(matriz.id)})</span>`;
+      matrizBox.appendChild(mh3);
+      if(matriz.instancias.length===0){
+        const empty = document.createElement('div');
+        empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+        empty.textContent='Sin productos propios asignados.';
+        matrizBox.appendChild(empty);
+      } else {
+        matriz.instancias.forEach(inst=>renderInstRow(inst, matrizBox, null));
+      }
+      reportBody.appendChild(matrizBox);
+    });
   }
-  reportBody.appendChild(matrizBox);
 
   // Sección del Datacenter Epicentro (infraestructura de Puntonet, no tiene productos propios)
   const dcBox = document.createElement('div');
@@ -2677,9 +2879,7 @@ function openReport(){
       const tamanoInfo = getTamanoLocal(sede.tamano);
       h3.innerHTML = `<span>${sede.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${sede.empleados} empleados · ${tamanoInfo.nombre} · ${conexionesTexto(sede.id)})</span>`;
       box.appendChild(h3);
-      const heredadas = conexionExiste(sede.id,'matriz') ? (sede.herenciaIds||[])
-        .map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid))
-        .filter(Boolean) : [];
+      const heredadas = heredadasConNombreMatriz(sede, config.matrices);
       if(sede.instancias.length===0 && heredadas.length===0){
         const empty = document.createElement('div');
         empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
@@ -2687,7 +2887,7 @@ function openReport(){
         box.appendChild(empty);
       } else {
         sede.instancias.forEach(inst=>renderInstRow(inst, box, null));
-        heredadas.forEach(inst=>renderInstRow(inst, box, 'la Matriz'));
+        heredadas.forEach(h=>renderInstRow(h.inst, box, h.matrizNombre));
       }
       reportBody.appendChild(box);
     });
@@ -2717,8 +2917,104 @@ function downloadJSON(){
 }
 document.getElementById('btnExportFromReport').addEventListener('click', downloadJSON);
 
+/* Calcula la caja envolvente (world space) de todo lo que hay en el canvas: cada Matriz, el
+   Datacenter, y cada sede colocada. Se usa para que el snapshot del PDF siempre encuadre TODO,
+   sin importar dónde haya dejado la cámara/zoom el vendedor. */
+function computeSceneBoundingBox(){
+  const box = new THREE.Box3();
+  state.matrices.forEach(m=> box.expandByObject(m.group));
+  box.expandByObject(datacenterGroup);
+  state.sedes.forEach(sede=> box.expandByObject(sede.group));
+  return box;
+}
+
+/* Dada una caja envolvente y el aspect ratio del canvas, calcula el nivel de zoom ortográfico
+   necesario para que la caja completa entre en el frustum (con margen), con la cámara ya
+   posicionada/orientada. Se proyectan las 8 esquinas de la caja al espacio de la cámara para
+   encontrar el semi-ancho/semi-alto requerido — más preciso que estimar solo con el centro y el
+   radio de la caja. */
+function fitZoomToBox(box, aspect){
+  camera.updateMatrixWorld(true);
+  const inv = camera.matrixWorldInverse;
+  const corners = [
+    [box.min.x,box.min.y,box.min.z], [box.min.x,box.min.y,box.max.z],
+    [box.min.x,box.max.y,box.min.z], [box.min.x,box.max.y,box.max.z],
+    [box.max.x,box.min.y,box.min.z], [box.max.x,box.min.y,box.max.z],
+    [box.max.x,box.max.y,box.min.z], [box.max.x,box.max.y,box.max.z],
+  ];
+  let maxAbsX = 0.001, maxAbsY = 0.001;
+  corners.forEach(([x,y,z])=>{
+    const v = new THREE.Vector3(x,y,z).applyMatrix4(inv);
+    maxAbsX = Math.max(maxAbsX, Math.abs(v.x));
+    maxAbsY = Math.max(maxAbsY, Math.abs(v.y));
+  });
+  const PADDING = 0.78; // deja aire alrededor para que nada quede pegado al borde del banner
+  const zoomX = (FRUSTUM*aspect*PADDING) / maxAbsX;
+  const zoomY = (FRUSTUM*PADDING) / maxAbsY;
+  return Math.min(zoomX, zoomY, ZOOM_MAX);
+}
+
+/* Captura un snapshot del canvas 3D para usarlo como header/hero del PDF. En vez de fotografiar
+   la cámara tal como la dejó el vendedor (podía estar zoomeada a un detalle, o mirando desde un
+   ángulo raro), fuerza temporalmente una vista isométrica aérea "de catálogo" — la misma
+   orientación del botón "Restablecer vista" — y calcula el zoom justo para que TODA la
+   infraestructura (Matriz, Datacenter y cada sede) entre en el encuadre. Al terminar, restaura
+   exactamente el ángulo/zoom que el vendedor tenía en pantalla, así el snapshot no altera lo que
+   está viendo mientras sigue trabajando.
+   También renderiza una vez con un color de fondo sólido (el canvas normalmente es transparente,
+   alpha:true, así que sin esto la imagen saldría con fondo transparente/negro al insertarla en
+   una página blanca), y recorta el resultado en un canvas 2D auxiliar al aspect ratio deseado
+   (estilo "cover", igual que un background-size:cover en CSS) para que se vea como un banner
+   prolijo sin deformar la escena. Todo esto es síncrono (drawImage de un canvas WebGL a un canvas
+   2D no requiere esperar a que cargue ninguna imagen), así downloadPDF() no necesita volverse
+   async. */
+function captureHeroSnapshot(targetAspect){
+  // --- Guardar el estado de cámara actual del vendedor, para restaurarlo al final ---
+  const prevAngleX = camAngleX, prevAngleY = camAngleY, prevZoom = zoomLevel;
+  const prevColor = renderer.getClearColor(new THREE.Color());
+  const prevAlpha = renderer.getClearAlpha();
+
+  // --- Vista isométrica aérea por defecto + auto-zoom para encuadrar todo lo colocado ---
+  camAngleX = DEFAULT_CAM_ANGLE_X;
+  camAngleY = DEFAULT_CAM_ANGLE_Y;
+  updateCameraFromAngles();
+  const aspect = renderer.domElement.width / renderer.domElement.height;
+  const fitZoom = fitZoomToBox(computeSceneBoundingBox(), aspect);
+  camera.zoom = fitZoom;
+  camera.updateProjectionMatrix();
+
+  renderer.setClearColor(0x0a0e14, 1);
+  renderer.render(scene, camera);
+
+  const src = renderer.domElement;
+  const sw = src.width, sh = src.height;
+  const srcAspect = sw / sh;
+  let cropW = sw, cropH = sh, sx = 0, sy = 0;
+  if(srcAspect > targetAspect){
+    cropW = sh * targetAspect; sx = (sw - cropW) / 2;
+  } else {
+    cropH = sw / targetAspect; sy = (sh - cropH) / 2;
+  }
+  const outW = 1600, outH = Math.round(outW / targetAspect);
+  const out = document.createElement('canvas');
+  out.width = outW; out.height = outH;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(src, sx, sy, cropW, cropH, 0, 0, outW, outH);
+  const dataUrl = out.toDataURL('image/jpeg', 0.9);
+
+  // --- Restaurar exactamente la vista que tenía el vendedor antes de generar el PDF ---
+  camAngleX = prevAngleX; camAngleY = prevAngleY;
+  updateCameraFromAngles();
+  camera.zoom = prevZoom;
+  camera.updateProjectionMatrix();
+  renderer.setClearColor(prevColor, prevAlpha);
+  renderer.render(scene, camera);
+  return dataUrl;
+}
+
 /* Exportación a PDF: reconstruye el mismo contenido del reporte en pantalla (Matriz, Datacenter,
-   cada Sede con sus productos propios/heredados) usando jsPDF, con salto de página automático. */
+   cada Sede con sus productos propios/heredados) usando jsPDF, con salto de página automático.
+   Empieza con un header/hero: snapshot de la infraestructura 3D tal como quedó armada. */
 function downloadPDF(){
   const config = buildConfiguracionCliente();
   const { jsPDF } = window.jspdf;
@@ -2781,12 +3077,40 @@ function downloadPDF(){
     y += 6;
   }
 
-  addTitle('Configurador de Infraestructura · Puntonet');
-  addSubtitle(`${config.nombreCliente} · ${config.sedes.length} sede(s) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`);
+  // --- Header/Hero: snapshot de la infraestructura 3D tal como la dejó el cliente ---
+  const HERO_ASPECT = 900/320;
+  const heroW = pageW;
+  const heroH = heroW / HERO_ASPECT;
+  const heroDataUrl = captureHeroSnapshot(HERO_ASPECT);
+  doc.addImage(heroDataUrl, 'JPEG', 0, 0, heroW, heroH);
 
-  addSectionHeading(`${config.matriz.nombre}  ·  ${config.matriz.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto('matriz')}`);
-  if(config.matriz.instancias.length===0) addEmpty('Sin productos propios asignados.');
-  else config.matriz.instancias.forEach(inst=>addProduct(inst, null));
+  // Franja inferior sobre el hero con los datos clave, para que quede legible sobre la escena 3D.
+  const stripH = 34;
+  doc.setFillColor(10, 14, 20);
+  doc.rect(0, heroH - stripH, heroW, stripH, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(230,235,240);
+  doc.text(config.nombreCliente || 'Cliente', marginX, heroH - stripH/2 - 3);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(150,200,215);
+  doc.text(`${config.sedes.length} sede(s) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`,
+    marginX, heroH - stripH/2 + 10);
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(120,230,250);
+  doc.text('PUNTONET', heroW - marginX, heroH - stripH/2 + 3, { align:'right' });
+
+  y = heroH + 26;
+
+  addTitle('Configurador de Infraestructura · Puntonet');
+  addSubtitle(`${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`);
+
+  if(config.matrices.length===0){
+    addSectionHeading('Matrices');
+    addEmpty('Aún no se ha agregado ninguna Matriz al canvas.');
+  } else {
+    config.matrices.forEach(matriz=>{
+      addSectionHeading(`${matriz.nombre}  ·  ${matriz.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto(matriz.id)}`);
+      if(matriz.instancias.length===0) addEmpty('Sin productos propios asignados.');
+      else matriz.instancias.forEach(inst=>addProduct(inst, null));
+    });
+  }
 
   addSectionHeading(`${config.datacenter.nombre}  ·  ${conexionesTexto('datacenter')}`);
 
@@ -2797,14 +3121,12 @@ function downloadPDF(){
     config.sedes.forEach(sede=>{
       const tamanoInfo = getTamanoLocal(sede.tamano);
       addSectionHeading(`${sede.nombre}  ·  ${sede.empleados} empleados · ${tamanoInfo.nombre}  ·  ${conexionesTexto(sede.id)}`);
-      const heredadas = conexionExiste(sede.id,'matriz') ? (sede.herenciaIds||[])
-        .map(hid=>state.matriz.instancias.find(mi=>mi.instanciaId===hid))
-        .filter(Boolean) : [];
+      const heredadas = heredadasConNombreMatriz(sede, config.matrices);
       if(sede.instancias.length===0 && heredadas.length===0){
         addEmpty('Sin servicios asignados.');
       } else {
         sede.instancias.forEach(inst=>addProduct(inst, null));
-        heredadas.forEach(inst=>addProduct(inst, 'la Matriz'));
+        heredadas.forEach(h=>addProduct(h.inst, h.matrizNombre));
       }
     });
   }
@@ -2818,15 +3140,10 @@ document.getElementById('btnExportPDF').addEventListener('click', downloadPDF);
    10. ESTADO INICIAL (arranca casi vacío: el usuario agrega todo lo demás)
    ========================================================================= */
 (function seed(){
-  // Único punto de partida: el Datacenter Epicentro conectado a la Matriz Central (su salida
-  // a Internet). Ni sedes, ni productos, ni herencias — todo lo demás lo construye el usuario
-  // desde cero (arrastrando sedes, productos, y conectando puertos).
-  state.conexiones.push({
-    id: uid('conn','nextConexionSeq'),
-    aId: 'matriz', bId: 'datacenter',
-    anchoBanda: '1 Gbps', comparticion: 'Dedicado (1:1)',
-  });
-
+  // Único punto de partida: el Datacenter Epicentro, solo, en su posición fija, con el punto
+  // decorativo del centro de la grilla. Ninguna Matriz existe por defecto — pueden ser varias,
+  // y cada una se agrega arrastrándola desde el panel izquierdo, igual que una sede. Ni sedes, ni
+  // productos, ni conexiones — todo lo construye el usuario desde cero.
   rebuildConnections();
   renderRightPanel();
 })();
