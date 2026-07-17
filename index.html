@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v20</title>
+<title>Configurador de Infraestructura · Puntonet · Prototipo v21</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -122,6 +122,15 @@
   /* ---------- Canvas ---------- */
   #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);touch-action:none;}
   #canvasWrap canvas{display:block;width:100%;height:100%;}
+  /* Etiquetas de nombre (Sede/Matriz/Datacenter) como overlay HTML sobre el canvas 3D en vez de
+     texturas dentro de la escena: así el tamaño de letra es el mismo font-size en px que el
+     resto de la interfaz y no depende de la distancia de cámara ni del nivel de zoom — al
+     acercar o alejar la vista 3D, el texto se mantiene perfectamente legible, ni gigante ni
+     minúsculo, igual que cualquier otro texto de la UI. */
+  #labelLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+  .name-label{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;
+    font-size:12.5px;font-weight:700;color:var(--text);letter-spacing:.01em;
+    text-shadow:0 1px 3px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);will-change:transform;}
   #sceneHint{position:absolute;bottom:10px;left:12px;font-size:10.5px;color:var(--muted);
     background:rgba(16,21,29,.7);padding:6px 10px;border-radius:4px;border:1px solid var(--border);}
   #tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--cian);
@@ -306,6 +315,7 @@
     .btn{ padding:5px 8px; }
     #left, #right{ padding:8px 8px; gap:8px; }
     #sceneHint{ font-size:9px; padding:4px 7px; bottom:6px; left:8px; }
+    .name-label{ font-size:11px; }
     #zoomControls{ bottom:8px; right:8px; gap:5px; }
     .zoom-btn{ width:28px; height:28px; font-size:13px; }
     .modal{ max-height:94vh; }
@@ -317,7 +327,7 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v20</span>
+    <span class="tag">Puntonet · Prototipo v21</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
@@ -361,6 +371,7 @@
   </div>
 
   <div id="canvasWrap">
+    <div id="labelLayer"></div>
     <div id="sceneHint">Arrastrar fondo: orbitar · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</div>
     <div id="placingHint">
       <span id="placingHintText"></span>
@@ -759,6 +770,62 @@ const dirLight = new THREE.DirectionalLight(0xffffff, .6);
 dirLight.position.set(10,20,10);
 scene.add(dirLight);
 
+/* --- Etiquetas de nombre (Sede/Matriz/Datacenter) como overlay HTML sobre el canvas ---
+   Antes eran sprites dentro de la escena 3D (una textura de canvas pintada sobre un plano), así
+   que su tamaño en pantalla dependía de la distancia/zoom de cámara como cualquier otro objeto
+   del mundo — por más que se compensara la escala, seguían "viviendo" en el espacio 3D. Ahora son
+   elementos <div> reales posicionados con CSS sobre el canvas: el font-size queda fijo en px
+   (mismo tratamiento tipográfico que el resto de la interfaz), y en cada frame se recalcula solo
+   la posición en pantalla (proyectando el punto 3D de anclaje con la cámara), nunca el tamaño de
+   letra. Resultado: el texto se ve siempre igual de legible sin importar cuánto se acerque o
+   aleje la vista.
+   nameLabels: Map(id -> { group, localY, el }) — group es el Object3D cuyo movimiento sigue la
+   etiqueta (la sede/Matriz se puede arrastrar; el label la sigue automáticamente vía
+   group.localToWorld), localY es el offset vertical local (mismo criterio que antes: altura de
+   la sede/Matriz + margen), el es el div renderizado. */
+let zoomLevel = 1;
+const labelLayer = document.getElementById('labelLayer');
+const nameLabels = new Map();
+const tmpLabelVec = new THREE.Vector3();
+function upsertNameLabel(id, group, localY, text){
+  let entry = nameLabels.get(id);
+  if(!entry){
+    const el = document.createElement('div');
+    el.className = 'name-label';
+    labelLayer.appendChild(el);
+    entry = { group, localY, el };
+    nameLabels.set(id, entry);
+  }
+  entry.group = group;
+  entry.localY = localY;
+  entry.el.textContent = text;
+  return entry;
+}
+function removeNameLabel(id){
+  const entry = nameLabels.get(id);
+  if(!entry) return;
+  entry.el.remove();
+  nameLabels.delete(id);
+}
+/* Reutilizada tanto por el loop de animación (posiciones en vivo sobre el canvas) como por el
+   snapshot del PDF (posiciones sobre el canvas de salida, en §6 más abajo). */
+function getLabelScreenNDC(entry, outVec){
+  outVec.set(0, entry.localY, 0);
+  entry.group.localToWorld(outVec);
+  outVec.project(camera);
+  return outVec;
+}
+function updateNameLabelPositions(){
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  nameLabels.forEach(entry=>{
+    getLabelScreenNDC(entry, tmpLabelVec);
+    if(tmpLabelVec.z < -1 || tmpLabelVec.z > 1){ entry.el.style.display = 'none'; return; }
+    entry.el.style.display = '';
+    entry.el.style.left = ((tmpLabelVec.x*0.5+0.5) * w) + 'px';
+    entry.el.style.top = ((-tmpLabelVec.y*0.5+0.5) * h) + 'px';
+  });
+}
+
 const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
 scene.add(grid);
 
@@ -876,9 +943,7 @@ for(let i=0;i<7;i++){
   light.position.set(-1.2 + i*0.4, 0.3, 1.11);
   datacenterGroup.add(light);
 }
-const dcLabel = makeNameSprite('Datacenter Epicentro');
-dcLabel.position.set(0, dcY + 0.8, 0);
-datacenterGroup.add(dcLabel);
+upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');
 
 const dcHaloGeo = new THREE.RingGeometry(2.2, 2.38, 40);
 const dcHalo = new THREE.Mesh(dcHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
@@ -1006,7 +1071,6 @@ updateCameraFromAngles();
 
 /* --- Zoom real para cámara ortográfica: se controla con camera.zoom, no con la distancia --- */
 const ZOOM_MIN = 0.4, ZOOM_MAX = 4.5;
-let zoomLevel = 1;
 function applyZoom(newZoom){
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
   camera.zoom = zoomLevel;
@@ -1232,31 +1296,13 @@ function buildSedeMesh(tamanoId){
   return group;
 }
 
-/* --- Etiqueta de nombre flotante sobre la sede (sprite con canvas) --- */
-function makeNameSprite(text){
-  const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  ctx.font = '600 26px Segoe UI, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#e6edf3';
-  ctx.fillText(text, 128, 34);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthWrite:false });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.7, 0.42, 1);
-  sprite.name = 'nameSprite';
-  return sprite;
-}
+/* --- Etiqueta de nombre flotante sobre la sede/Matriz: ver §3, sistema de etiquetas HTML
+   (nameLabels/upsertNameLabel) definido junto con la escena. Se mantiene el mismo nombre de
+   función que antes (updateSedeNameSprite) para no tener que tocar cada punto donde se llama al
+   renombrar, cambiar de tamaño o crear una sede/Matriz. */
 function updateSedeNameSprite(sede){
-  const old = sede.group.getObjectByName('nameSprite');
-  if(old) sede.group.remove(old);
   const y = sede.tipo==='matriz' ? sede.group.userData.coreY + 1.7 : getTamanoLocal(sede.tamano).box[1] + 0.85;
-  const sprite = makeNameSprite(sede.nombre);
-  sprite.position.set(0, y, 0);
-  sede.group.add(sprite);
+  upsertNameLabel(sede.id, sede.group, y, sede.nombre);
 }
 
 /* --- Puerto de conexión: un "botón" cuadrado con un "+", siempre de frente a la cámara
@@ -1433,7 +1479,7 @@ function setSedeEmpleados(sede, empleados){
   rebuildConnections();
 }
 
-function removeSedeVisual(sede){ scene.remove(sede.group); }
+function removeSedeVisual(sede){ scene.remove(sede.group); removeNameLabel(sede.id); }
 
 /* Elimina una sede por completo: su geometría 3D, todos sus productos propios, cualquier
    conexión que la involucre (con la Matriz o el Datacenter), y la limpia de la selección. */
@@ -1457,6 +1503,7 @@ function deleteSede(sede){
 function deleteMatriz(matriz){
   conexionesDe(matriz.id).forEach(c=> eliminarConexion(c.id));
   scene.remove(matriz.group);
+  removeNameLabel(matriz.id);
   state.matrices = state.matrices.filter(m=>m.id!==matriz.id);
   state.selectedSedeIds = state.selectedSedeIds.filter(id=>id!==matriz.id);
   rebuildConnections();
@@ -2084,6 +2131,7 @@ function animate(){
   scene.traverse(o=>{ if(o.userData && o.userData.isPort) o.scale.setScalar(PORT_BASE_SCALE * portPulse); });
 
   renderer.render(scene, camera);
+  updateNameLabelPositions();
 }
 animate();
 
@@ -2970,7 +3018,7 @@ function fitZoomToBox(box, aspect){
    async. */
 function captureHeroSnapshot(targetAspect){
   // --- Guardar el estado de cámara actual del vendedor, para restaurarlo al final ---
-  const prevAngleX = camAngleX, prevAngleY = camAngleY, prevZoom = zoomLevel;
+  const prevAngleX = camAngleX, prevAngleY = camAngleY, prevZoom = camera.zoom;
   const prevColor = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
 
@@ -3000,6 +3048,29 @@ function captureHeroSnapshot(targetAspect){
   out.width = outW; out.height = outH;
   const ctx = out.getContext('2d');
   ctx.drawImage(src, sx, sy, cropW, cropH, 0, 0, outW, outH);
+
+  // --- Nombres de Sede/Matriz/Datacenter: ahora son divs HTML fuera del canvas WebGL (ver §3,
+  // sistema de etiquetas), así que drawImage de arriba no los incluye. Se dibujan acá aparte,
+  // proyectando el mismo punto de anclaje 3D de cada etiqueta con la cámara ya encuadrada, y
+  // mapeando esa posición del espacio del canvas fuente (sw×sh) al recorte/escala del canvas de
+  // salida (mismo sx/sy/cropW/cropH usados arriba para la imagen). */
+  ctx.font = '700 24px Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = '#e6edf3';
+  ctx.shadowColor = 'rgba(0,0,0,.85)';
+  ctx.shadowBlur = 6;
+  nameLabels.forEach(entry=>{
+    getLabelScreenNDC(entry, tmpLabelVec);
+    if(tmpLabelVec.z < -1 || tmpLabelVec.z > 1) return;
+    const px = (tmpLabelVec.x*0.5+0.5) * sw;
+    const py = (-tmpLabelVec.y*0.5+0.5) * sh;
+    const outX = (px - sx) * (outW/cropW);
+    const outY = (py - sy) * (outH/cropH);
+    ctx.fillText(entry.el.textContent, outX, outY);
+  });
+  ctx.shadowBlur = 0;
+
   const dataUrl = out.toDataURL('image/jpeg', 0.9);
 
   // --- Restaurar exactamente la vista que tenía el vendedor antes de generar el PDF ---
