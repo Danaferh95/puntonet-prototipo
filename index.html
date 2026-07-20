@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v21</title>
+<title>Configurador de Infraestructura · Puntonet · Prototipo v35</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -50,7 +50,7 @@
   *::-webkit-scrollbar-thumb:hover{ background:var(--cian); border-color:var(--panel); }
   *::-webkit-scrollbar-corner{ background:transparent; }
 
-  #app{display:grid;grid-template-columns:220px 1fr 300px;grid-template-rows:52px 1fr;height:100vh;}
+  #app{display:grid;grid-template-columns:220px 1fr 300px;grid-template-rows:52px 1fr 60px;height:100vh;}
 
   /* ---------- Header ---------- */
   #header{grid-column:1/4;grid-row:1;display:flex;align-items:center;gap:14px;
@@ -129,15 +129,22 @@
   .chip-dc-badge{position:absolute;top:-5px;right:2px;background:var(--indigo);color:#0c1020;font-size:7px;
     font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;letter-spacing:.02em;pointer-events:none;}
 
-  /* ---------- Salud de infraestructura ---------- */
-  #saludCard{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
-  #saludCard h2{display:flex;align-items:center;justify-content:space-between;}
-  #saludGlobalBadge{font-size:15px;font-weight:700;color:var(--cian);}
-  .salud-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
-  .salud-row:last-child{margin-bottom:0;}
-  .salud-label{width:76px;flex-shrink:0;font-size:10px;color:var(--muted);}
-  .salud-bar-track{flex:1;height:7px;border-radius:4px;background:var(--panel-2);border:1px solid var(--border);overflow:hidden;}
-  .salud-bar-fill{display:block;height:100%;border-radius:4px;transition:width .25s ease;}
+  /* ---------- Salud de infraestructura ----------
+     Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
+     así queda visible sin importar qué sede/Matriz esté seleccionada ni qué tan largo sea el
+     catálogo, y las 4 verticales se leen en una sola fila horizontal. */
+  #saludFooter{grid-column:1/4;grid-row:3;background:var(--panel);border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:22px;padding:0 20px;overflow-x:auto;}
+  #saludGlobalWrap{display:flex;align-items:center;gap:9px;flex-shrink:0;padding-right:20px;
+    border-right:1px solid var(--border);white-space:nowrap;}
+  #saludGlobalLabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+  #saludGlobalBadge{font-size:16px;font-weight:700;color:var(--cian);}
+  #saludBars{display:flex;align-items:center;gap:22px;flex:1;min-width:0;}
+  .salud-row{display:flex;align-items:center;gap:8px;flex:1;min-width:130px;}
+  .salud-label{flex-shrink:0;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+  .salud-bar-track{flex:1;height:8px;border-radius:5px;background:var(--panel-2);border:1px solid var(--border);
+    overflow:hidden;min-width:50px;}
+  .salud-bar-fill{display:block;height:100%;border-radius:5px;transition:width .25s ease;}
   .salud-count{width:34px;flex-shrink:0;text-align:right;font-size:9.5px;color:var(--muted);}
 
   /* ---------- Canvas ---------- */
@@ -215,8 +222,8 @@
   #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
   #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
   #connectionsBox .connList{display:flex;flex-direction:column;gap:6px;}
-  /* --- Conexión: fila colapsada + panel inline que se expande/colapsa (acordeón), en vez de
-     cambiar a otra pantalla — así el usuario nunca pierde de vista la sede/Matriz seleccionada. --- */
+  /* --- Conexión: fila única, clic abre el popup de la instancia que representa (mismo
+     formulario que "Servicios asignados"; ya no hay un editor propio con acordeón). --- */
   .connItem{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--panel-2);}
   .connItem:hover{border-color:var(--cian);}
   .connItem.open{border-color:var(--cian);}
@@ -225,24 +232,10 @@
   .connDot{width:8px;height:8px;border-radius:50%;background:var(--cian);flex-shrink:0;}
   .connName{flex:1;}
   .connDetalle{color:var(--muted);font-weight:400;font-size:10.5px;}
-  .connArrow{color:var(--muted);font-size:11px;transition:transform .15s;flex-shrink:0;}
-  .connItem.open .connArrow{transform:rotate(90deg);color:var(--cian);}
+  .connArrow{color:var(--muted);font-size:11px;flex-shrink:0;}
+  .connItem.open .connArrow{color:var(--cian);}
   .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
   .connDelete:hover{color:#fca5a5;}
-  .connExpand{display:grid;grid-template-rows:0fr;transition:grid-template-rows .2s ease;}
-  .connExpand > div{overflow:hidden;}
-  .connItem.open .connExpand{grid-template-rows:1fr;}
-  .connExpandInner{padding:2px 9px 10px;border-top:1px solid var(--border);}
-  .connExpandInner .field{margin-top:9px;margin-bottom:0;}
-  .connExpandInner .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
-  .connExpandInner .empRow{display:flex;gap:8px;align-items:center;}
-  .connExpandInner input[type="range"]{flex:1;accent-color:var(--cian);}
-  .connExpandInner input[type="number"]{width:72px;flex:none;background:var(--panel);
-    border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:var(--radius);font-size:12px;}
-  .connExpandInner input[type="text"]{width:100%;background:var(--panel);border:1px solid var(--border);
-    color:var(--text);padding:7px 9px;border-radius:var(--radius);font-size:12px;font-family:inherit;}
-  .connExpandInner input[type="text"]:focus, .connExpandInner input[type="number"]:focus{outline:none;border-color:var(--cian);}
-  .connExpandInner .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
   #instanceList{display:flex;flex-direction:column;gap:6px;}
   .inst-row{display:flex;align-items:center;gap:8px;background:var(--panel-2);
     border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:pointer;}
@@ -304,7 +297,7 @@
     #app{ grid-template-columns: 196px 1fr 264px; }
   }
   @media (max-width: 900px){
-    #app{ grid-template-columns: 170px 1fr 236px; grid-template-rows: 46px 1fr; }
+    #app{ grid-template-columns: 170px 1fr 236px; grid-template-rows: 46px 1fr 54px; }
     #header{ gap:8px; padding:0 10px; }
     #header h1{ font-size:12px; }
     #clienteInput{ max-width:150px; font-size:11px; padding:6px 8px; }
@@ -316,6 +309,10 @@
     .site-card{ padding:8px; gap:8px; }
     .modal{ width:380px; }
     .modal.wide{ width:560px; }
+    #saludFooter{ gap:14px; padding:0 12px; }
+    #saludGlobalWrap{ padding-right:14px; gap:6px; }
+    #saludBars{ gap:14px; }
+    .salud-row{ min-width:96px; }
   }
   @media (max-width: 720px){
     #app{ grid-template-columns: 140px 1fr 208px; }
@@ -337,7 +334,7 @@
     .inst-vertical{ display:none; } /* poco espacio: se prioriza el nombre del producto */
   }
   @media (max-height: 440px){
-    #app{ grid-template-rows: 42px 1fr; }
+    #app{ grid-template-rows: 42px 1fr 40px; }
     #header{ padding:0 8px; }
     .btn{ padding:5px 8px; }
     #left, #right{ padding:8px 8px; gap:8px; }
@@ -346,6 +343,12 @@
     #zoomControls{ bottom:8px; right:8px; gap:5px; }
     .zoom-btn{ width:28px; height:28px; font-size:13px; }
     .modal{ max-height:94vh; }
+    #saludFooter{ gap:10px; padding:0 10px; }
+    #saludGlobalWrap{ padding-right:10px; gap:4px; }
+    #saludGlobalLabel{ display:none; }
+    #saludBars{ gap:10px; }
+    .salud-row{ min-width:70px; gap:5px; }
+    .salud-label{ display:none; }
   }
 </style>
 </head>
@@ -354,7 +357,7 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v21</span>
+    <span class="tag">Puntonet · Prototipo v35</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
     <input id="logoFileInput" type="file" accept="image/*" style="display:none;">
@@ -364,11 +367,6 @@
   </div>
 
   <div id="left">
-    <div id="saludCard">
-      <h2>Salud de infraestructura <span id="saludGlobalBadge">0%</span></h2>
-      <div id="saludBars"></div>
-    </div>
-
     <h2>Agregar Sede</h2>
     <div class="site-card" draggable="true" id="sedeDragCard">
       <div class="site-icon size-m">▢</div>
@@ -436,6 +434,14 @@
     </div>
   </div>
 
+  <div id="saludFooter">
+    <div id="saludGlobalWrap">
+      <span id="saludGlobalLabel">Salud de infraestructura</span>
+      <span id="saludGlobalBadge">0%</span>
+    </div>
+    <div id="saludBars"></div>
+  </div>
+
 </div>
 
 <!-- Popup de personalización -->
@@ -449,6 +455,11 @@
       <div id="popupMultiTags"></div>
     </div>
     <div class="modal-body">
+      <div id="popupConexionField" class="field" style="display:none;">
+        <label>Conectar a</label>
+        <select id="popupConexionSelect"></select>
+        <div id="popupConexionHint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;"></div>
+      </div>
       <div id="popupProps"></div>
       <div class="field">
         <label>Marca <span style="color:var(--muted);">(Nivel 4 · opcional)</span></label>
@@ -509,10 +520,12 @@ const VERTICALES = [
 ];
 
 const PRODUCTOS = [
-  // Conectividad — familia cian/azul
-  { id:'datos', verticalId:'conectividad', nombre:'Datos', assetKey:'enlace', hue:190, sat:75, light:55 },
-  { id:'sdwan_prod', verticalId:'conectividad', nombre:'Sdwan', assetKey:'nodo', hue:172, sat:70, light:52 },
-  { id:'internet', verticalId:'conectividad', nombre:'Internet', assetKey:'globo', hue:206, sat:78, light:56 },
+  // Conectividad — familia cian/azul: antes 172-206 (34° de separación) se veían casi como el
+  // mismo azul; ahora 158-224 (66°) para que Sdwan (teal), Datos (cian) e Internet (azul) se
+  // lean como 3 tonos claramente distintos, sin salirse de la familia "azul" de la vertical.
+  { id:'datos', verticalId:'conectividad', nombre:'Datos', assetKey:'enlace', hue:191, sat:85, light:48 },
+  { id:'sdwan_prod', verticalId:'conectividad', nombre:'Sdwan', assetKey:'nodo', hue:158, sat:75, light:45 },
+  { id:'internet', verticalId:'conectividad', nombre:'Internet', assetKey:'globo', hue:224, sat:85, light:53 },
   // Cloud — familia índigo/violeta
   { id:'housing', verticalId:'cloud', nombre:'Housing', assetKey:'rack', hue:255, sat:65, light:60 },
   { id:'hosting', verticalId:'cloud', nombre:'Hosting', assetKey:'nube', hue:275, sat:65, light:62 },
@@ -529,40 +542,53 @@ const PRODUCTOS = [
 
 const SUBPRODUCTOS = [
   // Conectividad — Datos (enlaces punto a punto / hacia nube)
+  // Campo `conexion`: define qué cable/enlace visual genera este subproducto al asignarse a
+  // una Sede o Matriz (ver generaConexionAutomatica/ensureConexionAutomatica más abajo):
+  //   'datacenter' → cable automático hacia el Datacenter Epicentro, sin preguntar nada.
+  //   'entreSedes' → no hay un destino obvio (puede ser cualquier otra Sede o Matriz), así que
+  //                  al asignarlo se muestra un dropdown para elegir el destino del cable.
+  //   'satelital'  → no conecta a otra entidad del cliente: es un enlace hacia el proveedor
+  //                  satelital (p.ej. Starlink), se dibuja como un cable hacia "el cielo".
+  //   (sin campo)  → no genera ningún cable.
+  // Campo `ocultaEnServiciosAsignados`: el nombre del producto por sí solo no dice nada sin su
+  // destino (a diferencia de "Sdwan" o "Internet Corporativo", que se entienden solos) — así que
+  // en vez de listarse también en "Servicios asignados" (donde solo se ve el nombre, sin
+  // contexto de a dónde conecta), vive únicamente en "Conexiones", que sí muestra el destino.
   { id:'canal_conexion', productoNivel2Id:'datos', nombre:'Canal de Conexión',
     eslogan:'¡Conecta tus sedes como si fueran una sola oficina!',
     descripcion:'Enlace de comunicación punto a punto entre al menos 2 ubicaciones.',
-    parametros:['Ancho de banda','Ubicaciones geográficas'] },
+    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'entreSedes',
+    ocultaEnServiciosAsignados:true },
   { id:'cloud_interconnect', productoNivel2Id:'datos', nombre:'Cloud Interconnect',
     eslogan:'¡El camino más directo y seguro hacia tu nube!',
     descripcion:'Enlace de comunicación entre la ubicación del cliente y una nube.',
-    parametros:['Ancho de banda','Nube'] },
+    parametros:['Ancho de banda','Nube'], conexion:'datacenter', ocultaEnServiciosAsignados:true },
   // Conectividad — Sdwan
   { id:'sdwan', productoNivel2Id:'sdwan_prod', nombre:'Sdwan',
     eslogan:'¡La red inteligente que prioriza lo que tu negocio necesita!',
     descripcion:'Red definida por software que optimiza el uso de ancho de banda.',
-    parametros:['Ancho de banda','Tipo (SD-WAN / SD-WAN Segura)'] },
+    parametros:['Ancho de banda','Tipo (SD-WAN / SD-WAN Segura)'], conexion:'entreSedes' },
   // Conectividad — Internet (incluye variantes satelital y wifi)
   { id:'internet_corporativo', productoNivel2Id:'internet', nombre:'Internet Corporativo',
     eslogan:'¡Internet dedicado, toda la velocidad solo para ti!',
     descripcion:'Enlace de internet dedicado.',
-    parametros:['Ancho de banda','Ubicaciones geográficas'] },
+    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'datacenter' },
   { id:'internet_startup', productoNivel2Id:'internet', nombre:'Internet Startup',
     eslogan:'¡Arranca con internet confiable al mejor precio!',
     descripcion:'Enlace de internet compartido.',
-    parametros:['Ancho de banda','Ubicaciones geográficas'] },
+    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'datacenter' },
   { id:'internet_teleworking', productoNivel2Id:'internet', nombre:'Internet Teleworking',
     eslogan:'¡Lleva la oficina a la casa de cada colaborador!',
     descripcion:'Enlaces de internet compartido para colaboradores en sus hogares.',
-    parametros:['Planes','Número de enlaces','Ubicaciones geográficas'] },
+    parametros:['Planes','Número de enlaces','Ubicaciones geográficas'], conexion:'datacenter' },
   { id:'puntonet_space', productoNivel2Id:'internet', nombre:'Puntonet Space',
     eslogan:'¡Internet satelital donde la fibra no llega, sin excusas!',
     descripcion:'Enlace de internet satelital atado a una bolsa de Gigas mensuales.',
-    parametros:['Tipo de antena','Plan','Con/sin firewall'] },
+    parametros:['Tipo de antena','Plan','Con/sin firewall'], conexion:'satelital' },
   { id:'zona_wireless', productoNivel2Id:'internet', nombre:'Zona Wireless',
     eslogan:'¡Wifi potente y estable en cada rincón del negocio!',
     descripcion:'Equipamiento (APs) para distribución del servicio de conectividad a través de Wifi.',
-    parametros:['Modelo de equipo','Ancho de banda','Número de usuarios'] },
+    parametros:['Modelo de equipo','Ancho de banda','Número de usuarios'], conexion:'datacenter' },
   // Cloud — soloDatacenter:true: es equipamiento que se renta/instala físicamente en el
   // Datacenter de Puntonet, no un servicio que "se pone" en la Sede/Matriz del cliente. Por eso
   // solo se pueden arrastrar y soltar sobre el nodo Datacenter Epicentro (ver §4/§5, punto 1).
@@ -649,8 +675,10 @@ function getSubproductosByProducto(productoId){ return SUBPRODUCTOS.filter(s=>s.
 function getSubproducto(id){ return SUBPRODUCTOS.find(s=>s.id===id); }
 function colorHex(intColor){ return '#'+intColor.toString(16).padStart(6,'0'); }
 
-/* --- Color: el Producto (N2) define hue/sat/light base; el Subproducto (N3)
-   solo varía la luminosidad dentro de esa misma familia de color. --- */
+/* --- Color: el Producto (N2) define hue/sat/light base; el Subproducto (N3) varía dentro de
+   esa misma familia de color, pero corriendo matiz + saturación + luminosidad juntos (no solo
+   luminosidad) — así cada subproducto se ve como un color realmente distinto, no como el mismo
+   tono "más claro o más oscuro". --- */
 function hslToHex(h, s, l){
   const c = new THREE.Color();
   c.setHSL(((h % 360) + 360) % 360 / 360, s/100, l/100);
@@ -665,9 +693,14 @@ function getSubproductoColor(sub){
   const n = siblings.length;
   const idx = siblings.findIndex(s=>s.id===sub.id);
   if(n<=1) return getProductoColor(producto);
-  const SPREAD = 24; // rango total de luminosidad repartido entre hermanos, en puntos porcentuales
-  const l = producto.light - SPREAD/2 + (SPREAD/(n-1))*idx;
-  return hslToHex(producto.hue, producto.sat, Math.max(30, Math.min(80, l)));
+  const HUE_SPREAD = 18;   // grados de matiz repartidos entre hermanos
+  const SAT_SPREAD = 18;   // puntos de saturación repartidos entre hermanos
+  const LIGHT_SPREAD = 30; // puntos de luminosidad repartidos entre hermanos
+  const t = idx/(n-1); // 0..1 a través de los hermanos, en el mismo orden que aparecen en el catálogo
+  const hue = producto.hue - HUE_SPREAD/2 + HUE_SPREAD*t;
+  const sat = Math.max(45, Math.min(90, producto.sat - SAT_SPREAD/2 + SAT_SPREAD*t));
+  const light = Math.max(30, Math.min(78, producto.light - LIGHT_SPREAD/2 + LIGHT_SPREAD*t));
+  return hslToHex(hue, sat, light);
 }
 
 /* --- Tamaños de Cede — ahora derivados de la cantidad de empleados (1 solo tipo de arrastre,
@@ -720,7 +753,9 @@ const state = {
   matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
                           // las sedes: se crean arrastrando, pueden ser varias, y van donde el usuario quiera.
   datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[] }, // edificio fijo de Puntonet
-  conexiones: [],        // { id, aId, bId, anchoBanda, comparticion } — cable manual entre 2 entidades
+  conexiones: [],        // { id, aId, bId, subproductoId, instanciaId, ownerId } — cable entre 2
+                          // entidades; instanciaId+ownerId lo ligan al "servicio asignado" que
+                          // representa (misma cosa, no dos registros — ver ensureConexionAutomatica)
   selectedSedeIds: [],   // ids de sede/Matriz, y opcionalmente 'datacenter'
   selectedConexionId: null, // id de la conexión seleccionada (mutuamente excluyente con selectedSedeIds)
   nextSedeSeq: 1,
@@ -758,12 +793,15 @@ function findInstanciaEnMatrices(instanciaId){
   return null;
 }
 
-/* --- Conexiones: cables manuales entre Sede↔Matriz, Sede↔Datacenter y Matriz↔Datacenter ---
-   No se conectan sede-sede. No hay checkboxes: se crean arrastrando desde el "puerto" (§5). */
+/* --- Conexiones: cables entre 2 entidades cualquiera (Sede↔Sede, Sede↔Matriz, Matriz↔Matriz,
+   Sede/Matriz↔Datacenter) — se crean arrastrando desde el "puerto" (§5) o, para Canal de
+   Conexión/Sdwan, eligiendo el destino en el dropdown "Conectar a" del popup de asignación.
+   Sede↔Sede estaba deshabilitado hasta esta fase (quedó como pregunta abierta pendiente de
+   validar con el cliente final, ver documentación adjunta); ya está confirmado y habilitado —
+   Canal de Conexión es justamente "enlace punto a punto entre al menos 2 ubicaciones", así que
+   Sede↔Sede es un caso de negocio real. */
 function parValidoConexion(aId, bId){
-  if(aId===bId) return false;
-  if(tipoEntidad(aId)==='sede' && tipoEntidad(bId)==='sede') return false;
-  return true;
+  return aId!==bId;
 }
 function conexionExiste(aId, bId){
   return state.conexiones.some(c=>(c.aId===aId&&c.bId===bId)||(c.aId===bId&&c.bId===aId));
@@ -785,24 +823,35 @@ function tipoConexionPorDestino(aId, bId){
 }
 
 /* --- Auto-conexión: ¿este subproducto, al asignarse a una Sede/Matriz, debe generar también
-   una línea de conexión hacia el Datacenter? Aplica a todo lo de Conectividad (Datos, Sdwan,
-   Internet) y a lo de Cloud que no sea soloDatacenter — hoy todo Cloud es soloDatacenter, así
-   que en la práctica esto cubre la vertical Conectividad completa. --- */
+   una línea de conexión hacia el Datacenter, sin preguntar nada? Solo los subproductos marcados
+   `conexion:'datacenter'` en el catálogo (ver definición de SUBPRODUCTOS más arriba). Los
+   marcados `conexion:'entreSedes'` (Canal de Conexión, Sdwan) NO se auto-conectan aquí: se
+   resuelven con un dropdown de destino en el propio popup de asignación (ver openPopupForNew /
+   btnSavePopup). Los marcados `conexion:'satelital'` (Puntonet Space) tampoco pasan por acá: se
+   dibujan directamente en rebuildConnections() como un enlace hacia el cielo, sin conexión real
+   a otra entidad. --- */
 function generaConexionAutomatica(sub){
-  if(sub.soloDatacenter) return false;
-  const producto = getProducto(sub.productoNivel2Id);
-  return producto.verticalId==='conectividad' || producto.verticalId==='cloud';
+  return sub.conexion === 'datacenter';
 }
 
-/* Crea (si no existe ya) la conexión automática entityId → Datacenter. No duplica: si el
-   vendedor ya había conectado esa entidad al Datacenter a mano, no se toca esa conexión. */
-function ensureConexionAutomatica(entityId){
+/* Crea la conexión automática entityId → Datacenter, usando como tipo el MISMO subproducto que
+   se acaba de arrastrar, y ligada a la instancia que la originó (instanciaId + ownerId). Antes
+   se recalculaba el tipo con tipoConexionPorDestino() según los IDs de los extremos, lo que
+   podía des-sincronizar el tipo de cable del producto real asignado (p.ej. asignar "Internet
+   Corporativo" podía terminar coloreando el cable como "Cloud Interconnect" solo porque un
+   extremo era el Datacenter). La conexión y la instancia son la MISMA cosa desde el punto de
+   vista del panel derecho: no hay dos formularios separados con valores que puedan
+   desincronizarse — ver renderConnectionsBox, que al hacer clic en la conexión abre el mismo
+   popup que "Servicios asignados". Cada producto `conexion:'datacenter'` obtiene SU PROPIO cable
+   (ya no se comparte uno solo entre varios productos): así, entre más productos de una sede
+   conecten al Datacenter, más líneas delgadas en paralelo se ven — no una sola línea más gruesa
+   (ver el "abanico" en rebuildConnections). */
+function ensureConexionAutomatica(entityId, subproductoId, instanciaId){
   if(entityId==='datacenter') return;
   if(!parValidoConexion(entityId,'datacenter')) return;
-  if(conexionExiste(entityId,'datacenter')) return;
   const conexion = {
     id: uid('conn','nextConexionSeq'), aId:entityId, bId:'datacenter',
-    anchoBanda:'', comparticion:'', subproductoId: tipoConexionPorDestino(entityId,'datacenter'),
+    subproductoId, instanciaId, ownerId: entityId,
   };
   state.conexiones.push(conexion);
 }
@@ -1039,16 +1088,18 @@ dcPort.userData = { isPort:true, entityId:'datacenter' };
 datacenterGroup.add(dcPort);
 
 /* --- Cables entre entidades (arcos suaves con partícula viajera) ---
-   Cada conexión manual (state.conexiones) se dibuja como un arco entre los "puertos" de sus
-   2 extremos (Sede, Matriz o Datacenter), curvado hacia arriba — el estilo que pidió el cliente.
-   El "poder" visual (grosor/brillo/partículas) escala con la cantidad de servicios de la sede
-   involucrada (o de la Matriz, si es Matriz↔Datacenter). Los tubos son clickeables: al hacer
-   clic se selecciona la conexión (panel derecho); el popup solo aparece al crearla o al pedir
-   editarla explícitamente. */
+   Cada conexión (state.conexiones) es un producto contratado independiente, se dibuja como un
+   arco delgado, de grosor FIJO, entre los "puertos" de sus 2 extremos (Sede, Matriz o
+   Datacenter), curvado hacia arriba. Ya NO escala su grosor/brillo según cuántos servicios tenga
+   la sede: si una sede tiene varios productos que conectan al mismo destino (p.ej. 3 productos
+   distintos hacia el Datacenter), se ven 3 líneas delgadas en paralelo — una por producto, cada
+   una con el color de SU producto (ver el "abanico" de mid.addScaledVector más abajo) — en vez
+   de una sola línea gruesa. Si solo hay 1 conexión, es 1 línea delgada nomás, sin ensanchar. Los
+   tubos son clickeables: al hacer clic se selecciona la conexión (panel derecho); el popup solo
+   aparece al crearla o al pedir editarla explícitamente. */
 const connectionsGroup = new THREE.Group();
 scene.add(connectionsGroup);
 let connectionAnims = [];
-const CONNECTION_POWER_CAP = 6; // a partir de ~6 servicios el enlace llega a su máximo "brillo"
 
 function getEntityPortWorldPos(entityId){
   const entity = getSedeById(entityId);
@@ -1058,78 +1109,166 @@ function getEntityPortWorldPos(entityId){
   return pos;
 }
 
-function connectionPower(c){
-  const sedeSideId = [c.aId, c.bId].find(id=>tipoEntidad(id)==='sede');
-  let entity;
-  if(sedeSideId){
-    entity = getSedeById(sedeSideId);
-  } else {
-    // ninguno de los 2 extremos es una sede real (p.ej. Matriz↔Datacenter o Matriz↔Matriz): usa
-    // el que tenga más productos propios, para que el cable "brille" según el extremo más activo.
-    const a = getSedeById(c.aId), b = getSedeById(c.bId);
-    entity = (a && b) ? (a.instancias.length >= b.instancias.length ? a : b) : (a || b);
-  }
-  const n = entity ? entity.instancias.length : 0;
-  return Math.min(1, n / CONNECTION_POWER_CAP);
-}
-
 function rebuildConnections(){
   connectionsGroup.clear();
   connectionAnims = [];
+  // Puede haber más de una conexión entre el mismo par de entidades (p.ej. Canal de Conexión Y
+  // Sdwan entre las mismas 2 sedes, o varios productos `conexion:'datacenter'` hacia el mismo
+  // Datacenter, cada uno con su propio producto/instancia). Sin esto, esos cables se dibujarían
+  // exactamente superpuestos e indistinguibles; con esto, cada uno adicional entre el mismo par
+  // se abre lateralmente un poco (efecto "abanico"), alternando de lado — así entre más
+  // productos conectan el mismo par de puntos, más líneas paralelas se ven.
+  const pairDrawnCount = {};
+  function pairKey(aId,bId){ return [aId,bId].sort().join('|'); }
+
   state.conexiones.forEach((c, idx)=>{
     const start = getEntityPortWorldPos(c.aId);
     const end = getEntityPortWorldPos(c.bId);
     const dist = start.distanceTo(end);
     const mid = start.clone().add(end).multiplyScalar(0.5);
     mid.y = Math.max(start.y, end.y) + Math.min(3, 0.9 + dist*0.12);
+    const key = pairKey(c.aId, c.bId);
+    const idxInPair = pairDrawnCount[key] || 0;
+    pairDrawnCount[key] = idxInPair + 1;
+    if(idxInPair>0){
+      const dir = end.clone().sub(start).normalize();
+      const perp = new THREE.Vector3(-dir.z, 0, dir.x); // perpendicular horizontal a la curva
+      const side = idxInPair%2===1 ? 1 : -1;
+      const mag = Math.ceil(idxInPair/2) * 0.55;
+      mid.addScaledVector(perp, side*mag);
+    }
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
 
-    const power = connectionPower(c);
     const selected = state.selectedConexionId === c.id;
-    // Color según el tipo inferido (Canal de Conexión vs Cloud Interconnect); si la conexión no
+    // Color según el producto real que representa (ver getSubproductoColor); si la conexión no
     // tiene tipo asignado (compatibilidad hacia atrás), usa el cian por defecto de siempre.
     const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
     const baseColor = tipoSub ? getSubproductoColor(tipoSub) : 0x22d3ee;
 
-    // núcleo del enlace: un tubo cuyo radio crece con la cantidad de servicios; clickeable
-    const coreRadius = (0.028 + power * 0.07) * (selected ? 1.35 : 1);
+    // núcleo del enlace: grosor fijo y delgado — la cantidad de servicios se lee en la cantidad
+    // de líneas, no en el grosor de una sola. Blending NORMAL (no aditivo): el aditivo sumaba luz
+    // sobre el fondo oscuro y terminaba "lavando" cualquier color hacia el mismo blanco-cian
+    // brillante, por más distinto que fuera el matiz real — así el color se ve tal cual es.
+    const coreRadius = 0.032 * (selected ? 1.6 : 1);
     const coreGeo = new THREE.TubeGeometry(curve, 48, coreRadius, 8, false);
     const coreMat = new THREE.MeshBasicMaterial({
-      color: selected ? 0x67e3fa : baseColor, transparent:true, opacity: (selected?0.85:0.35) + power*0.45,
-      blending: THREE.AdditiveBlending, depthWrite:false,
+      color: selected ? 0x67e3fa : baseColor, transparent:true, opacity: selected ? 1 : 0.95,
     });
     const coreMesh = new THREE.Mesh(coreGeo, coreMat);
     coreMesh.userData = { isConexion:true, conexionId:c.id };
     connectionsGroup.add(coreMesh);
 
-    // halo exterior: más ancho (más fácil de clickear) y más brillante mientras más cargada está la sede
-    const glowRadius = coreRadius * (2.2 + power*1.3);
+    // halo exterior, del mismo color que el cable — este sí queda aditivo (es un brillo suave,
+    // no necesita leerse con precisión de matiz), grosor fijo, solo para que sea más fácil de
+    // clickear, no como indicador de carga.
+    const glowRadius = coreRadius * 2.6;
     const glowGeo = new THREE.TubeGeometry(curve, 48, glowRadius, 8, false);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: 0x8be9ff, transparent:true, opacity: (selected?0.22:0.06) + power*0.28,
+      color: baseColor, transparent:true, opacity: selected ? 0.24 : 0.11,
       blending: THREE.AdditiveBlending, depthWrite:false,
     });
     const glowMesh = new THREE.Mesh(glowGeo, glowMat);
     glowMesh.userData = { isConexion:true, conexionId:c.id };
     connectionsGroup.add(glowMesh);
 
-    // partículas viajeras: más cantidad y más velocidad cuanto más "potente" es el enlace
-    const particleCount = 1 + Math.round(power*3); // 1 a 4 partículas
-    const particleSize = 0.065 + power*0.05;
-    for(let pi=0; pi<particleCount; pi++){
-      const particleGeo = new THREE.SphereGeometry(particleSize, 8, 8);
-      const particleMat = new THREE.MeshBasicMaterial({
-        color: 0xbdf3ff, transparent:true, opacity: 0.85 + power*0.15,
-        blending: THREE.AdditiveBlending, depthWrite:false,
-      });
-      const particle = new THREE.Mesh(particleGeo, particleMat);
-      connectionsGroup.add(particle);
-      connectionAnims.push({
-        curve, particle,
-        speed: (0.22 + power*0.3) + (idx%3)*0.05,
-        phase: (idx*0.37 + pi/particleCount) % 1,
-      });
+    // una sola partícula viajera por cable, ritmo fijo (ya no escala con "potencia")
+    const particleGeo = new THREE.SphereGeometry(0.075, 8, 8);
+    const particleMat = new THREE.MeshBasicMaterial({
+      color: 0xbdf3ff, transparent:true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite:false,
+    });
+    const particle = new THREE.Mesh(particleGeo, particleMat);
+    connectionsGroup.add(particle);
+    connectionAnims.push({ curve, particle, speed: 0.3 + (idx%3)*0.05, phase: (idx*0.37)%1 });
+  });
+
+  rebuildSatelliteLinks();
+}
+
+/* --- Enlaces satelitales (Puntonet Space, `conexion:'satelital'` en el catálogo) ---
+   No son una conexión real entre 2 entidades del cliente (no hay checkbox de destino ni cable
+   manual), así que no viven en state.conexiones: se generan solos, uno por cada instancia de un
+   subproducto satelital que tenga la Sede o Matriz. Visualmente NO es un cable/línea fija: son
+   ondas concéntricas (como una señal Wifi) que nacen en el puerto y suben desapareciendo, en
+   TANDAS — SATELLITE_RINGS_PER_LINK ondas seguidas (escalonadas) y luego una pausa sin ninguna
+   onda visible (SATELLITE_REST_SECONDS) antes de la siguiente tanda, en vez de un goteo
+   continuo. La animación se actualiza cada frame en animate() (§ más abajo), usando
+   satelliteAnims (reconstruido en cada rebuildSatelliteLinks, igual que connectionAnims). */
+let satelliteAnims = [];
+const SATELLITE_RISE_HEIGHT = 3.2;    // cuánto sube cada onda antes de desvanecerse del todo
+const SATELLITE_RISE_SECONDS = 2.6;   // duración de la subida de UNA onda (antes ~2.2s de loop; ahora más lento)
+const SATELLITE_BURST_STAGGER = 0.45; // separación entre el inicio de cada onda dentro de una misma tanda
+const SATELLITE_REST_SECONDS = 1.5;   // pausa sin ondas entre el final de una tanda y el inicio de la siguiente
+const SATELLITE_RINGS_PER_LINK = 4;   // ondas por tanda
+const SATELLITE_CYCLE_SECONDS =
+  (SATELLITE_RINGS_PER_LINK-1)*SATELLITE_BURST_STAGGER + SATELLITE_RISE_SECONDS + SATELLITE_REST_SECONDS;
+
+function rebuildSatelliteLinks(){
+  satelliteAnims = [];
+  [...state.sedes, ...state.matrices].forEach(entity=>{
+    const satInstancias = entity.instancias.filter(inst=>{
+      const sub = getSubproducto(inst.subproductoId);
+      return sub && sub.conexion==='satelital';
+    });
+    if(satInstancias.length===0) return;
+    const start = getEntityPortWorldPos(entity.id);
+    satInstancias.forEach((inst, i)=>{
+      const sub = getSubproducto(inst.subproductoId);
+      const color = getSubproductoColor(sub);
+      // ligera inclinación (no 100% vertical) para diferenciar varios enlaces satelitales en la
+      // misma entidad, y para que se lea más "hacia el cielo, en esa dirección" que un poste recto
+      const baseAngle = i * 2.4 + start.x*0.13 + start.z*0.17;
+      const dir = new THREE.Vector3(Math.cos(baseAngle)*0.3, 1, Math.sin(baseAngle)*0.3).normalize();
+      // desfase determinístico por posición, para que las tandas de distintas sedes no pulsen
+      // todas al mismo tiempo (puramente estético, no afecta el ritmo tanda/descanso de cada una)
+      const cycleOffset = Math.abs((start.x*13.7 + start.z*7.3) % SATELLITE_CYCLE_SECONDS);
+
+      // pequeño marcador (antena) en el puerto: de ahí "nacen" las ondas
+      const antennaGeo = new THREE.OctahedronGeometry(0.12, 0);
+      const antennaMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.85 });
+      const antenna = new THREE.Mesh(antennaGeo, antennaMat);
+      antenna.position.copy(start);
+      connectionsGroup.add(antenna);
+
+      // ondas concéntricas (anillos planos, estilo señal Wifi) que suben y se desvanecen, en
+      // tanda: las 4 nacen escalonadas (SATELLITE_BURST_STAGGER entre cada una) y luego hay una
+      // pausa de SATELLITE_REST_SECONDS sin ninguna onda antes de que nazca la siguiente tanda.
+      for(let ri=0; ri<SATELLITE_RINGS_PER_LINK; ri++){
+        const ringGeo = new THREE.RingGeometry(0.15, 0.21, 28);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color, transparent:true, opacity:0, side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending, depthWrite:false,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI/2;
+        connectionsGroup.add(ring);
+        satelliteAnims.push({
+          ring, start, dir, cycleOffset,
+          localStart: ri * SATELLITE_BURST_STAGGER, // cuándo nace esta onda dentro de su tanda
+        });
+      }
+    });
+  });
+}
+
+/* Avanza cada onda satelital un frame, dentro de su ciclo tanda+descanso: si el reloj del ciclo
+   cae fuera de la ventana [localStart, localStart+SATELLITE_RISE_SECONDS] de esta onda, queda
+   invisible (eso es justamente la pausa entre tandas). Dentro de su ventana, sube en línea
+   recta desde el puerto, crece levemente de tamaño y se desvanece hacia el final del recorrido. */
+function updateSatelliteAnims(t){
+  satelliteAnims.forEach(s=>{
+    const cycleT = ((t + s.cycleOffset) % SATELLITE_CYCLE_SECONDS + SATELLITE_CYCLE_SECONDS) % SATELLITE_CYCLE_SECONDS;
+    const elapsed = cycleT - s.localStart;
+    if(elapsed < 0 || elapsed > SATELLITE_RISE_SECONDS){
+      s.ring.material.opacity = 0;
+      return;
     }
+    const tt = elapsed / SATELLITE_RISE_SECONDS;
+    s.ring.position.copy(s.start).addScaledVector(s.dir, tt * SATELLITE_RISE_HEIGHT);
+    s.ring.scale.setScalar(1 + tt * 2.6);
+    const fadeIn = Math.min(1, elapsed / 0.18);
+    const fadeOut = 1 - Math.max(0, (tt - 0.55) / 0.45);
+    s.ring.material.opacity = 0.7 * fadeIn * Math.max(0, fadeOut);
   });
 }
 
@@ -1366,7 +1505,7 @@ function buildSedeMesh(tamanoId){
   halo.name = 'halo';
   group.add(halo);
 
-  // Puerto de conexión: desde aquí el usuario arrastra un cable hacia la Matriz o el Datacenter.
+  // Puerto de conexión: desde aquí el usuario arrastra un cable hacia otra Sede, la Matriz o el Datacenter.
   const port = makePortSprite();
   port.position.set(w/2 + 0.28, h*0.7, 0);
   group.add(port);
@@ -1961,6 +2100,7 @@ function handleCanvasClick(hit, shiftKey){
   // que "seleccionar la sede" y "editar un producto" fueran el mismo gesto sin querer. Ahora un
   // clic (sobre la sede, la Matriz, o cualquiera de sus íconos de producto) solo selecciona la
   // entidad; el usuario elige qué producto editar desde la lista en el panel derecho.
+  const hadConexion = !!state.selectedConexionId;
   if(hit.sedeId){
     state.selectedConexionId = null;
     if(shiftKey){
@@ -1975,6 +2115,9 @@ function handleCanvasClick(hit, shiftKey){
     state.selectedConexionId = null;
   }
   updateSelectionVisuals();
+  // si había una conexión resaltada, hay que reconstruir los cables para que se le quite el
+  // resalte visual en la escena 3D — antes solo se limpiaba el estado, no el cable en pantalla.
+  if(hadConexion) rebuildConnections();
   renderRightPanel();
 }
 
@@ -2117,19 +2260,43 @@ function onPointerUp(e){
     if(pointerMode==='connecting'){
       endTempCable();
       if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
+        const subproductoId = tipoConexionPorDestino(connectingFromId, connectingHoverId);
+        const sub = getSubproducto(subproductoId);
+        const producto = getProducto(sub.productoNivel2Id);
+        // Dueño de la instancia: el lado que no es el Datacenter (si aplica), o el origen del
+        // arrastre si ninguno de los 2 extremos es el Datacenter (p.ej. Sede↔Matriz) — mismo
+        // criterio que ensureConexionAutomatica, así da igual si el vendedor arrastra el chip
+        // del catálogo o el cable a mano desde el puerto: ambos terminan siendo la misma
+        // instancia de servicio (cuenta en "Servicios asignados" y en la Salud de
+        // infraestructura, no solo como un cable sin producto detrás).
+        const ownerId = connectingFromId==='datacenter' ? connectingHoverId
+          : connectingHoverId==='datacenter' ? connectingFromId
+          : connectingFromId;
+        const owner = getSedeById(ownerId);
+        const instancia = {
+          instanciaId: uid('inst','nextInstanceSeq'),
+          subproductoId: sub.id,
+          verticalId: producto.verticalId,
+          nombreSubproducto: sub.nombre,
+          propiedades: {}, notas:'', marca:'',
+          creadoEn: new Date().toISOString(),
+        };
+        owner.instancias.push(instancia);
+        refreshSedeAssets(owner);
         const conexion = {
           id: uid('conn','nextConexionSeq'), aId:connectingFromId, bId:connectingHoverId,
-          anchoBanda:'', comparticion:'', subproductoId: tipoConexionPorDestino(connectingFromId, connectingHoverId),
+          subproductoId: sub.id, instanciaId: instancia.instanciaId, ownerId,
         };
         state.conexiones.push(conexion);
-        // recién conectado: se deja seleccionada la entidad de origen y la conexión se abre
-        // expandida ahí mismo (acordeón), invitando a completar Ancho de banda/Compartición
-        // sin salir del panel ni abrir otra ventana.
+        // recién conectada: se deja seleccionada la entidad de origen y se abre de una vez el
+        // popup de la instancia recién creada para completar Ancho de banda y demás propiedades
+        // — es el mismo formulario que "Servicios asignados", no uno aparte.
         state.selectedSedeIds = [connectingFromId];
         state.selectedConexionId = conexion.id;
         updateSelectionVisuals();
         rebuildConnections();
         renderRightPanel();
+        openPopupForEdit(ownerId, instancia.instanciaId);
       }
       connectingFromId = null;
       connectingHoverId = null;
@@ -2239,6 +2406,7 @@ function animate(){
     const p = c.curve.getPointAt(tt);
     c.particle.position.copy(p);
   });
+  updateSatelliteAnims(t);
 
   // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
   const portPulse = 1 + Math.sin(t*3) * 0.14;
@@ -2488,10 +2656,15 @@ function renderRightPanel(){
   if(ids.length===1 && !isDatacenter){
     const entity = getSedeById(ids[0]);
     instanceSectionTitle.textContent = isMatriz ? 'Productos propios de la Matriz' : 'Servicios asignados';
-    if(entity.instancias.length>0){
+    // Los productos `ocultaEnServiciosAsignados` (Canal de Conexión, Cloud Interconnect) viven únicamente
+    // en el panel "Conexiones": ahí sí se ve a qué sede/Matriz están conectados, mientras que acá
+    // solo se vería el nombre del producto sin ese contexto — confuso. Sdwan y los productos de
+    // Internet SÍ se siguen mostrando acá (sus nombres se entienden solos, con o sin destino).
+    const visibles = entity.instancias.filter(inst=>!getSubproducto(inst.subproductoId).ocultaEnServiciosAsignados);
+    if(visibles.length>0){
       instanceSection.style.display='block';
       instanceListEl.innerHTML='';
-      entity.instancias.forEach(inst=>{
+      visibles.forEach(inst=>{
         const vertical = getVertical(inst.verticalId);
         const sub = getSubproducto(inst.subproductoId);
         const row = document.createElement('div');
@@ -2517,18 +2690,37 @@ function renderRightPanel(){
 
 const connectionsBoxEl = document.getElementById('connectionsBox');
 
-/* Alterna qué conexión está expandida inline (acordeón: colapsado ↔ expuesto). Un solo elemento
-   abierto a la vez, en el mismo panel — nunca se navega a otra pantalla para editarla. */
-function toggleConexionExpand(conexionId){
-  state.selectedConexionId = state.selectedConexionId===conexionId ? null : conexionId;
-  rebuildConnections(); // resalta (o quita el resalte de) el cable en la escena 3D
-  renderRightPanel();
+/* Devuelve la instancia (el "servicio asignado") que originó una conexión, si la tiene ligada.
+   Desde esta fase, TODA conexión nueva (auto al Datacenter, por dropdown "Conectar a", o
+   arrastrando el cable a mano desde el puerto) queda ligada a una instancia — son un solo
+   registro. */
+function getInstanciaLigada(c){
+  if(!c.instanciaId || !c.ownerId) return null;
+  const owner = getSedeById(c.ownerId);
+  if(!owner) return null;
+  return owner.instancias.find(i=>i.instanciaId===c.instanciaId) || null;
 }
 
-/* Lista de conexiones activas de la entidad seleccionada (Sede, Matriz o Datacenter). Cada
-   conexión es un acordeón: clic en la fila la expande/colapsa en el mismo lugar mostrando
-   Ancho de banda (slider) y Compartición, editables sin salir del panel ni abrir otra ventana.
-   Las conexiones se crean arrastrando el cable desde el puerto (●) de la entidad. */
+/* Selecciona una conexión (resalta el cable en la escena 3D) y, si tiene una instancia ligada,
+   abre directamente su popup de edición — el MISMO formulario que "Servicios asignados" usa
+   para el mismo producto. Ya no hay un editor de Ancho de banda/Compartición aparte: la
+   conexión y el servicio asignado son una sola cosa, se editan en un solo lugar. */
+function abrirConexion(c){
+  state.selectedConexionId = c.id;
+  rebuildConnections();
+  const inst = getInstanciaLigada(c);
+  if(inst){
+    openPopupForEdit(c.ownerId, c.instanciaId);
+  } else {
+    renderRightPanel();
+  }
+}
+
+/* Lista de conexiones activas de la entidad seleccionada (Sede, Matriz o Datacenter). Cada fila
+   resume el producto que representa (mismo color/nombre que su chip del catálogo) y, al hacer
+   clic, abre su popup de edición. Las conexiones se crean arrastrando un producto de
+   Conectividad sobre una Sede/Matriz (con o sin dropdown de destino, según el producto) o
+   arrastrando el cable a mano desde el puerto (●) de la entidad. */
 function renderConnectionsBox(entityId){
   if(!entityId){
     connectionsBoxEl.style.display = 'none';
@@ -2547,84 +2739,36 @@ function renderConnectionsBox(entityId){
 
   conexiones.forEach(c=>{
     const otro = otroExtremo(c, entityId);
-    const detalle = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-    const isOpen = state.selectedConexionId === c.id;
     const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
     const dotColor = tipoSub ? colorHex(getSubproductoColor(tipoSub)) : 'var(--cian)';
     const tipoLabel = tipoSub ? tipoSub.nombre : '';
+    const inst = getInstanciaLigada(c);
+    // El detalle mostrado sale de las propiedades reales de la instancia (Ancho de banda,
+    // Ubicaciones, Nube, etc. — lo que sea que tenga ese subproducto), no de un campo aparte.
+    const detalle = inst
+      ? Object.values(inst.propiedades||{}).filter(Boolean).join(' · ')
+      : [c.anchoBanda, c.comparticion].filter(Boolean).join(' · '); // compatibilidad con conexiones legado sin instancia ligada
+    const isSelected = state.selectedConexionId === c.id;
 
     const item = document.createElement('div');
-    item.className = 'connItem' + (isOpen ? ' open' : '');
+    item.className = 'connItem' + (isSelected ? ' open' : '');
 
     const row = document.createElement('div');
     row.className = 'connRow';
     row.innerHTML = `
       <span class="connDot" style="background:${dotColor};"></span>
       <span class="connName">${nombreEntidad(otro)}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
-      <span class="connArrow">▸</span>
-      <span class="connDelete" title="Eliminar conexión">−</span>`;
+      <span class="connArrow" title="Editar">✎</span>
+      <span class="connDelete" title="Eliminar conexión (y el servicio asignado que representa)">−</span>`;
     row.addEventListener('click', (e)=>{
       if(e.target.classList.contains('connDelete')) return;
-      toggleConexionExpand(c.id);
+      abrirConexion(c);
     });
     row.querySelector('.connDelete').addEventListener('click', (e)=>{
       e.stopPropagation();
       eliminarConexion(c.id);
     });
     item.appendChild(row);
-
-    const expand = document.createElement('div');
-    expand.className = 'connExpand';
-    if(isOpen){
-      const mbpsVal = parseAnchoBandaMbps(c.anchoBanda);
-      const sliderVal = Math.min(mbpsVal, ANCHO_BANDA_SLIDER_MAX);
-      expand.innerHTML = `<div><div class="connExpandInner">
-        <div class="field">
-          <label>Ancho de banda</label>
-          <div class="empRow">
-            <input type="range" class="connAnchoRange" min="1" max="${ANCHO_BANDA_SLIDER_MAX}" value="${sliderVal}">
-            <input type="number" class="connAnchoNumber" min="1" step="1" value="${mbpsVal}">
-          </div>
-          <div class="tamanoInfo connAnchoInfo">${formatAnchoBandaMbps(mbpsVal) || 'Sin definir'}</div>
-        </div>
-        <div class="field">
-          <label>Compartición</label>
-          <input type="text" class="connComparticionInput" value="${escapeHtml(c.comparticion||'')}" placeholder="Ej. Dedicado (1:1), Compartido 4:1...">
-        </div>
-      </div></div>`;
-
-      const rangeEl = expand.querySelector('.connAnchoRange');
-      const numEl = expand.querySelector('.connAnchoNumber');
-      const infoEl = expand.querySelector('.connAnchoInfo');
-      const comparticionEl = expand.querySelector('.connComparticionInput');
-
-      function applyAncho(v){
-        v = Math.max(1, Math.round(v));
-        c.anchoBanda = formatAnchoBandaMbps(v);
-        infoEl.textContent = c.anchoBanda;
-        rebuildConnections();
-        // refleja el nuevo detalle en la fila colapsada sin perder el foco de los inputs
-        const otroNombre = nombreEntidad(otroExtremo(c, entityId));
-        const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-        row.querySelector('.connName').innerHTML = `${otroNombre}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
-      }
-      rangeEl.addEventListener('input', ()=>{
-        numEl.value = rangeEl.value;
-        applyAncho(parseInt(rangeEl.value,10));
-      });
-      numEl.addEventListener('input', ()=>{
-        const v = Math.max(1, parseInt(numEl.value,10) || 1);
-        if(v<=ANCHO_BANDA_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
-        applyAncho(v);
-      });
-      comparticionEl.addEventListener('input', ()=>{
-        c.comparticion = comparticionEl.value.trim();
-        const otroNombre = nombreEntidad(otroExtremo(c, entityId));
-        const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-        row.querySelector('.connName').innerHTML = `${otroNombre}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
-      });
-    }
-    item.appendChild(expand);
     listEl.appendChild(item);
   });
 }
@@ -2779,6 +2923,9 @@ const popupMarca = document.getElementById('popupMarca');
 const popupProps = document.getElementById('popupProps');
 const popupNotas = document.getElementById('popupNotas');
 const btnDeleteInstance = document.getElementById('btnDeleteInstance');
+const popupConexionField = document.getElementById('popupConexionField');
+const popupConexionSelect = document.getElementById('popupConexionSelect');
+const popupConexionHint = document.getElementById('popupConexionHint');
 
 let popupContext = null; // { mode:'new', subproductoId, sedeIds } | { mode:'edit', sedeId, instanciaId }
 
@@ -2815,8 +2962,90 @@ function openPopupForNew(subproductoId, targetIds){
   }
 
   renderPopupProps(sub.parametros.slice(0,3), {});
+  renderPopupConexionField(sub, ids);
   popupOverlay.classList.add('show');
   focusFirstPopupField();
+}
+
+/* --- Dropdown "Conectar a" del popup: aplica a subproductos `conexion:'entreSedes'`
+   (Canal de Conexión, Sdwan), tanto al crear la instancia como al editarla después — antes solo
+   se podía conectar arrastrando el cable a mano desde el puerto; ahora también se puede resolver
+   la conexión pendiente reabriendo el popup del producto y eligiendo el destino ahí. Solo
+   aplica cuando se asigna/edita UNA sola sede/Matriz a la vez (el multi-asignado a varias sedes
+   a la vez no intenta adivinar destinos individuales; el vendedor puede crear esos cables a mano
+   después, arrastrando desde el puerto — ver §5), y solo si esa instancia todavía NO tiene una
+   conexión ligada (si ya está conectada, no se ofrece cambiar el destino desde acá).
+   Los candidatos son TODAS las demás Sedes/Matrices, estén o no ya conectadas a esta: cada
+   producto `entreSedes` es un servicio independiente con su propia instancia y su propio cable
+   (p.ej. Canal de Conexión Y Sdwan pueden existir entre las mismas 2 sedes a la vez), así que no
+   se excluyen pares ya conectados — eso llevaba a que, al agregar un segundo producto de este
+   tipo a una sede que ya tenía uno, la única Matriz/Sede disponible desapareciera del dropdown. */
+function candidatosConexionEntreSedes(entityId){
+  return [...state.sedes, ...state.matrices].filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
+}
+function instanciaTieneConexionLigada(instanciaId){
+  return state.conexiones.some(c=>c.instanciaId===instanciaId);
+}
+
+const CONEXION_NUEVA_SEDE = '__nueva_sede__';
+const CONEXION_NUEVA_MATRIZ = '__nueva_matriz__';
+let popupConexionEntityId = null; // entidad "origen" vigente en el popup, para el listener de abajo
+
+/* Dibuja las opciones del <select>: candidatos existentes + 2 accesos rápidos para crear una
+   Sede o una Matriz nueva al vuelo si todavía no hay ninguna disponible (o si igual se quiere
+   agregar otra) — se ubica sola en una celda libre de la grilla, sin que el vendedor tenga que
+   ir a arrastrarla y colocarla aparte. */
+function renderPopupConexionOptions(entityId){
+  const candidatos = candidatosConexionEntreSedes(entityId);
+  const opciones = ['<option value="">Sin conectar por ahora</option>']
+    .concat(candidatos.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)} (${tipoEntidad(e.id)==='matriz'?'Matriz':'Sede'})</option>`))
+    .concat([
+      `<option value="${CONEXION_NUEVA_SEDE}">+ Agregar nueva Sede</option>`,
+      `<option value="${CONEXION_NUEVA_MATRIZ}">+ Agregar nueva Matriz</option>`,
+    ]);
+  popupConexionSelect.innerHTML = opciones.join('');
+}
+// Un solo listener persistente (no uno nuevo por cada render): si se elige una de las opciones
+// "+ Agregar...", crea la entidad de una vez, refresca la lista de opciones y la deja
+// seleccionada — lista para guardarse como destino al aceptar el popup.
+popupConexionSelect.addEventListener('change', ()=>{
+  const val = popupConexionSelect.value;
+  if(val!==CONEXION_NUEVA_SEDE && val!==CONEXION_NUEVA_MATRIZ) return;
+  const {gx,gz} = nearestFreeCell(0,0);
+  const nueva = val===CONEXION_NUEVA_SEDE ? createSede(EMPLEADOS_DEFAULT, gx, gz) : createMatriz(gx, gz);
+  showToast(`"${nueva.nombre}" agregada — ya puedes conectarte a ella.`);
+  renderPopupConexionOptions(popupConexionEntityId);
+  popupConexionSelect.value = nueva.id;
+});
+
+function renderPopupConexionField(sub, ids, yaConectada){
+  if(sub.conexion!=='entreSedes' || ids.length!==1 || yaConectada){
+    popupConexionField.style.display = 'none';
+    popupConexionSelect.innerHTML = '';
+    popupConexionHint.style.display = 'none';
+    popupConexionEntityId = null;
+    return;
+  }
+  popupConexionEntityId = ids[0];
+  popupConexionField.style.display = 'block';
+  popupConexionSelect.style.display = '';
+  popupConexionHint.style.display = 'none';
+  renderPopupConexionOptions(ids[0]);
+}
+
+/* Crea (si corresponde) el cable elegido en el dropdown "Conectar a", ligado a la instancia
+   indicada — reutilizada tanto al crear la instancia como al editarla después. No se excluye el
+   caso en que ya exista otra conexión entre el mismo par: cada producto `entreSedes` es un
+   cable propio (ver candidatosConexionEntreSedes). */
+function crearConexionDesdeDropdownSiAplica(sub, origenId, instanciaId){
+  if(sub.conexion!=='entreSedes') return;
+  const destinoId = popupConexionSelect.value;
+  if(!destinoId || destinoId===CONEXION_NUEVA_SEDE || destinoId===CONEXION_NUEVA_MATRIZ) return;
+  if(!parValidoConexion(origenId, destinoId)) return;
+  state.conexiones.push({
+    id: uid('conn','nextConexionSeq'), aId:origenId, bId:destinoId,
+    subproductoId: sub.id, instanciaId, ownerId: origenId,
+  });
 }
 
 function openPopupForEdit(sedeId, instanciaId){
@@ -2835,6 +3064,7 @@ function openPopupForEdit(sedeId, instanciaId){
   popupNotas.value = inst.notas || '';
   popupMultiTags.innerHTML='';
   btnDeleteInstance.style.display='inline-block';
+  renderPopupConexionField(sub, [sedeId], instanciaTieneConexionLigada(instanciaId));
 
   renderPopupProps(sub.parametros.slice(0,3), inst.propiedades || {});
   popupOverlay.classList.add('show');
@@ -2885,6 +3115,7 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
   if(popupContext.mode==='new'){
     const sub = getSubproducto(popupContext.subproductoId);
     const producto = getProducto(sub.productoNivel2Id);
+    const instanciaPorSedeId = {}; // para poder ligar la conexión (auto o por dropdown) a la instancia recién creada
     popupContext.sedeIds.forEach(sedeId=>{
       const sede = getSedeById(sedeId);
       const instancia = {
@@ -2896,11 +3127,18 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
         creadoEn: new Date().toISOString(),
       };
       sede.instancias.push(instancia);
+      instanciaPorSedeId[sedeId] = instancia;
       refreshSedeAssets(sede);
       if(generaConexionAutomatica(sub) && sedeId!=='datacenter'){
-        ensureConexionAutomatica(sedeId);
+        ensureConexionAutomatica(sedeId, sub.id, instancia.instanciaId);
       }
     });
+    // Canal de Conexión / Sdwan: si se eligió un destino en el dropdown "Conectar a", crea el
+    // cable manual entre la sede/Matriz asignada y ese destino, ligado a la MISMA instancia que
+    // se acaba de crear arriba — no es un registro aparte, es su representación como cable.
+    if(popupContext.sedeIds.length===1){
+      crearConexionDesdeDropdownSiAplica(sub, popupContext.sedeIds[0], instanciaPorSedeId[popupContext.sedeIds[0]].instanciaId);
+    }
     rebuildConnections();
   } else if(popupContext.mode==='edit'){
     const sede = getSedeById(popupContext.sedeId);
@@ -2909,15 +3147,27 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
     inst.notas = notas;
     inst.marca = marca;
     refreshSedeAssets(sede);
+    // Si el producto es Canal de Conexión/Sdwan y todavía no tenía cable (por eso se mostró el
+    // dropdown), y el vendedor eligió un destino ahora, se crea recién en este momento.
+    const sub = getSubproducto(inst.subproductoId);
+    crearConexionDesdeDropdownSiAplica(sub, popupContext.sedeId, popupContext.instanciaId);
+    rebuildConnections();
   }
   closePopup();
   renderRightPanel();
 });
 
 /* Elimina un producto propio (de una sede o de una Matriz) sin pasar por el popup. Si el
-   producto pertenece a una Matriz, también limpia la herencia en las sedes que lo tenían marcado. */
+   producto pertenece a una Matriz, también limpia la herencia en las sedes que lo tenían marcado.
+   Si esta instancia era la que originó un cable (conexion.instanciaId), el cable es la MISMA
+   cosa que el producto — no un registro aparte — así que se elimina junto con ella. */
 function deleteInstanceDirect(entity, instanciaId){
   entity.instancias = entity.instancias.filter(i=>i.instanciaId!==instanciaId);
+  const conexionLigada = state.conexiones.find(c=>c.instanciaId===instanciaId);
+  if(conexionLigada){
+    state.conexiones = state.conexiones.filter(c=>c.id!==conexionLigada.id);
+    if(state.selectedConexionId===conexionLigada.id) state.selectedConexionId = null;
+  }
   if(entity.tipo==='matriz'){
     state.sedes.forEach(s=>{
       if(s.herenciaIds && s.herenciaIds.includes(instanciaId)){
@@ -2938,17 +3188,29 @@ btnDeleteInstance.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   7b. CONEXIONES — edición inline (ver renderConnectionsBox / toggleConexionExpand más arriba;
-   ya no existe un popup aparte, Ancho de banda y Compartición se editan dentro del acordeón).
+   7b. CONEXIONES — cada conexión (cable) que representa un producto de Conectividad está ligada
+   a la instancia que la originó (conexion.instanciaId + conexion.ownerId): son un solo registro,
+   no dos formularios separados. Ver renderConnectionsBox más arriba, que al hacer clic abre el
+   mismo popup que "Servicios asignados" en vez de un editor propio.
    ========================================================================= */
 
-/* Elimina una conexión. Si conectaba una sede con una Matriz, también limpia de esa sede
-   SOLO los productos heredados que venían de esa Matriz en particular (si la sede seguía
-   conectada a alguna otra Matriz, esa otra herencia no se toca). */
+/* Elimina una conexión. Si tenía una instancia ligada (el caso normal desde esta fase en
+   adelante), esa instancia ES el producto contratado — se elimina también, como si se hubiera
+   borrado desde "Servicios asignados" (misma cosa, dos puntos de entrada). Si conectaba una sede
+   con una Matriz, también limpia de esa sede SOLO los productos heredados que venían de esa
+   Matriz en particular (si la sede seguía conectada a alguna otra Matriz, esa otra herencia no
+   se toca). */
 function eliminarConexion(conexionId){
   const c = state.conexiones.find(x=>x.id===conexionId);
   if(!c) return;
   state.conexiones = state.conexiones.filter(x=>x.id!==conexionId);
+  if(c.instanciaId && c.ownerId){
+    const owner = getSedeById(c.ownerId);
+    if(owner){
+      owner.instancias = owner.instancias.filter(i=>i.instanciaId!==c.instanciaId);
+      refreshSedeAssets(owner);
+    }
+  }
   [c.aId, c.bId].forEach(id=>{
     const matriz = getMatrizById(id);
     if(!matriz) return;
@@ -3018,8 +3280,9 @@ renderLogoButton();
 
 function buildConfiguracionCliente(){
   return {
-    version: 8, // v8: Datacenter con productos propios (soloDatacenter), tipo de conexión inferido,
-                // logo del cliente y score de salud de infraestructura (antes/después)
+    version: 11, // v11: conexiones Sede↔Sede habilitadas (antes solo Sede/Matriz↔Datacenter y
+                 // Sede↔Matriz) — Canal de Conexión y el cable manual del puerto ahora pueden
+                 // unir dos Sedes directamente
     nombreCliente: state.clienteNombre || 'Sin nombre',
     clienteLogo: state.clienteLogo || null,
     generadoEn: new Date().toISOString(),
@@ -3045,9 +3308,10 @@ function buildConfiguracionCliente(){
       })),
     },
     conexiones: state.conexiones.map(c=>({
-      id: c.id, aId: c.aId, bId: c.bId, anchoBanda: c.anchoBanda, comparticion: c.comparticion,
+      id: c.id, aId: c.aId, bId: c.bId,
       subproductoId: c.subproductoId || null,
       tipoNombre: c.subproductoId ? getSubproducto(c.subproductoId).nombre : null,
+      instanciaId: c.instanciaId || null, ownerId: c.ownerId || null,
     })),
     sedes: state.sedes.map(s=>({
       id: s.id, nombre: s.nombre, tipo: s.tipo, tamano: s.tamano, empleados: s.empleados,
@@ -3081,13 +3345,21 @@ function heredadasConNombreMatriz(sede, matrices){
 }
 
 /* Reutilizada por el reporte en pantalla y por la exportación a PDF. */
+/* Antes solo podía haber 1 conexión por par de entidades; ahora puede haber varias hacia el
+   mismo destino (p.ej. 3 productos distintos hacia el Datacenter), así que se agrupan por
+   destino en vez de repetir el nombre una vez por cada una. */
 function conexionesTexto(entityId){
   const cs = conexionesDe(entityId);
   if(cs.length===0) return 'sin conexiones activas';
-  return cs.map(c=>{
+  const porDestino = new Map();
+  cs.forEach(c=>{
     const otro = otroExtremo(c, entityId);
-    const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-    return nombreEntidad(otro) + (det ? ` (${det})` : '');
+    const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
+    if(!porDestino.has(otro)) porDestino.set(otro, []);
+    if(tipoSub) porDestino.get(otro).push(tipoSub.nombre);
+  });
+  return [...porDestino.entries()].map(([otro, nombres])=>{
+    return nombreEntidad(otro) + (nombres.length ? ` (${nombres.join(', ')})` : '');
   }).join(' + ');
 }
 
@@ -3130,8 +3402,16 @@ function openReport(){
     const propsHtml = Object.entries(inst.propiedades||{})
       .filter(([,v])=>v)
       .map(([k,v])=>`<span class="rprop">${k}: ${v}</span>`).join('');
+    // Canal de Conexión / Cloud Interconnect ya no aparecen en "Servicios asignados" en pantalla
+    // (viven solo en "Conexiones", que muestra el destino) — pero acá en el reporte SÍ se siguen
+    // listando, así que hace falta el destino inline: si no, dos "Canal de Conexión" se ven
+    // idénticos y no se sabe a qué sede va cada uno.
+    const conexionLigada = sub.ocultaEnServiciosAsignados
+      ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId) : null;
+    const destinoTxt = conexionLigada
+      ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}</span>` : '';
     row.innerHTML = `
-      <div class="rline1"><span>${inst.nombreSubproducto}${heredadoDe?' <span style="color:var(--muted);font-weight:400;">(heredado de '+heredadoDe+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
+      <div class="rline1"><span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span style="color:var(--muted);font-weight:400;">(heredado de '+heredadoDe+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
       <div class="rmeta">${inst.marca ? 'Marca: '+inst.marca : 'Marca: —'}</div>
       ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
       ${inst.notas ? `<div class="rnotes">"${inst.notas}"</div>` : ''}
@@ -3406,7 +3686,14 @@ function downloadPDF(){
     const sub = getSubproducto(inst.subproductoId);
     const producto = getProducto(sub.productoNivel2Id);
     const vertical = getVertical(inst.verticalId);
-    addLine(`${inst.nombreSubproducto}${heredadoDe ? ' (heredado de '+heredadoDe+')' : ''}  —  ${vertical.nombre} · ${producto.nombre}`,
+    // Igual que en el reporte en pantalla: Canal de Conexión/Cloud Interconnect ya no aparecen
+    // en "Servicios asignados" del panel (viven en "Conexiones"), pero acá en el PDF sí se
+    // siguen listando — así que necesitan el destino inline, o dos líneas de "Canal de Conexión"
+    // serían indistinguibles entre sí.
+    const conexionLigada = sub.ocultaEnServiciosAsignados
+      ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId) : null;
+    const destinoTxt = conexionLigada ? `  →  ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}` : '';
+    addLine(`${inst.nombreSubproducto}${destinoTxt}${heredadoDe ? ' (heredado de '+heredadoDe+')' : ''}  —  ${vertical.nombre} · ${producto.nombre}`,
       { bold:true, size:10.5, color:[20,24,30] });
     addLine(inst.marca ? `Marca: ${inst.marca}` : 'Marca: —', { size:9, color:[130,138,150] });
     const props = Object.entries(inst.propiedades||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('   ·   ');
