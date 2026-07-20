@@ -61,6 +61,13 @@
   #clienteInput{flex:1;max-width:280px;background:var(--panel-2);border:1px solid var(--border);
     color:var(--text);padding:7px 10px;border-radius:var(--radius);font-size:12px;}
   #clienteInput:focus{outline:none;border-color:var(--cian);}
+  #logoUploadBtn{width:32px;height:32px;flex-shrink:0;border-radius:var(--radius);border:1px dashed var(--border);
+    background:var(--panel-2);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:14px;padding:0;overflow:hidden;transition:.15s;}
+  #logoUploadBtn:hover{border-color:var(--cian);color:var(--cian);}
+  #logoUploadBtn.has-logo{border-style:solid;padding:0;}
+  #logoUploadBtn img{width:100%;height:100%;object-fit:contain;background:#fff;}
+  #logoUploadBtn .logoRemove{position:absolute;}
   .spacer{flex:1;}
   .btn{background:var(--panel-2);border:1px solid var(--border);color:var(--text);
     padding:7px 12px;border-radius:var(--radius);font-size:12px;cursor:pointer;transition:.15s;white-space:nowrap;}
@@ -118,6 +125,20 @@
   .catalog-chip:hover{transform:translateY(-2px);box-shadow:0 3px 9px rgba(0,0,0,.4);}
   .catalog-chip:active{cursor:grabbing;}
   .catalog-chip-label{font-size:9px;color:var(--muted);text-align:center;line-height:1.25;word-break:break-word;}
+  .catalog-chip-item{position:relative;}
+  .chip-dc-badge{position:absolute;top:-5px;right:2px;background:var(--indigo);color:#0c1020;font-size:7px;
+    font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;letter-spacing:.02em;pointer-events:none;}
+
+  /* ---------- Salud de infraestructura ---------- */
+  #saludCard{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  #saludCard h2{display:flex;align-items:center;justify-content:space-between;}
+  #saludGlobalBadge{font-size:15px;font-weight:700;color:var(--cian);}
+  .salud-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+  .salud-row:last-child{margin-bottom:0;}
+  .salud-label{width:76px;flex-shrink:0;font-size:10px;color:var(--muted);}
+  .salud-bar-track{flex:1;height:7px;border-radius:4px;background:var(--panel-2);border:1px solid var(--border);overflow:hidden;}
+  .salud-bar-fill{height:100%;border-radius:4px;transition:width .25s ease;}
+  .salud-count{width:34px;flex-shrink:0;text-align:right;font-size:9.5px;color:var(--muted);}
 
   /* ---------- Canvas ---------- */
   #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);touch-action:none;}
@@ -137,6 +158,12 @@
     border-radius:4px;padding:6px 9px;font-size:11px;color:var(--text);display:none;z-index:20;max-width:220px;}
   #tooltip .t-title{font-weight:600;margin-bottom:2px;}
   #tooltip .t-sub{color:var(--muted);font-size:10px;}
+  #toastStack{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:30;
+    display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+  .toast{background:#2a1418;border:1px solid var(--danger);color:var(--text);padding:9px 14px;
+    border-radius:8px;font-size:12px;box-shadow:0 8px 20px rgba(0,0,0,.45);opacity:0;
+    transform:translateY(-8px);transition:opacity .18s ease, transform .18s ease;max-width:360px;text-align:center;}
+  .toast.show{opacity:1;transform:translateY(0);}
   #placingHint{position:absolute;left:50%;top:10px;transform:translateX(-50%);
     background:var(--panel);border:1px solid var(--cian);color:var(--text);padding:8px 10px 8px 14px;
     border-radius:8px;font-size:12px;z-index:20;box-shadow:0 6px 18px rgba(0,0,0,.4);
@@ -329,12 +356,19 @@
     <h1>Configurador de Infraestructura</h1>
     <span class="tag">Puntonet · Prototipo v21</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
+    <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
+    <input id="logoFileInput" type="file" accept="image/*" style="display:none;">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
     <button class="btn primary" id="btnReport">Generar Reporte</button>
   </div>
 
   <div id="left">
+    <div id="saludCard">
+      <h2>Salud de infraestructura <span id="saludGlobalBadge">0%</span></h2>
+      <div id="saludBars"></div>
+    </div>
+
     <h2>Agregar Sede</h2>
     <div class="site-card" draggable="true" id="sedeDragCard">
       <div class="site-icon size-m">▢</div>
@@ -362,8 +396,7 @@
 
     <div class="hint">
       Arrastra una sede o una Matriz al canvas para crearlas — puede haber varias de cada una, en
-      cualquier celda libre de la grilla (el punto del centro es solo una referencia visual, no
-      una posición reservada). Arrastra un producto sobre una sede o una Matriz para asignarlo (se
+      cualquier celda libre de la grilla. Arrastra un producto sobre una sede o una Matriz para asignarlo (se
       abre el formulario al soltar). Clic sobre una sede o una Matriz para ver/editar su detalle.
       Arrastra una sede o Matriz ya colocada para moverla en la grilla. Shift + clic para
       seleccionar varias a la vez.
@@ -383,6 +416,7 @@
       <button class="zoom-btn reset" id="zoomReset" title="Restablecer vista">⤾</button>
     </div>
     <div id="tooltip"></div>
+    <div id="toastStack"></div>
   </div>
 
   <div id="right">
@@ -439,6 +473,10 @@
     <div class="modal-head">
       <div class="title">Resumen de configuración</div>
       <div class="desc" id="reportSubtitle"></div>
+      <div class="field" style="max-width:260px;margin-top:10px;">
+        <label>Estado inicial del cliente (antes de Puntonet) — score 0-100, opcional</label>
+        <input type="number" id="saludInicialInput" min="0" max="100" placeholder="Ej. 20">
+      </div>
     </div>
     <div class="modal-body" id="reportBody"></div>
     <div class="modal-foot">
@@ -525,27 +563,29 @@ const SUBPRODUCTOS = [
     eslogan:'¡Wifi potente y estable en cada rincón del negocio!',
     descripcion:'Equipamiento (APs) para distribución del servicio de conectividad a través de Wifi.',
     parametros:['Modelo de equipo','Ancho de banda','Número de usuarios'] },
-  // Cloud
+  // Cloud — soloDatacenter:true: es equipamiento que se renta/instala físicamente en el
+  // Datacenter de Puntonet, no un servicio que "se pone" en la Sede/Matriz del cliente. Por eso
+  // solo se pueden arrastrar y soltar sobre el nodo Datacenter Epicentro (ver §4/§5, punto 1).
   { id:'collocation', productoNivel2Id:'housing', nombre:'Collocation/Energía',
     eslogan:'¡Tu infraestructura, protegida en un Datacenter de clase mundial!',
     descripcion:'Renta de espacio y energía en el Datacenter de Puntonet.',
-    parametros:['Unidades de rack','KVAs'] },
+    parametros:['Unidades de rack','KVAs'], soloDatacenter:true },
   { id:'crossconexion', productoNivel2Id:'housing', nombre:'Crossconexión',
     eslogan:'¡La ruta más rápida hacia tu Datacenter!',
     descripcion:'Interconexión hacia el Datacenter.',
-    parametros:['Ancho de banda'] },
+    parametros:['Ancho de banda'], soloDatacenter:true },
   { id:'iaas', productoNivel2Id:'hosting', nombre:'IaaS',
     eslogan:'¡Servidores virtuales listos en minutos, sin comprar hardware!',
     descripcion:'Renta de máquinas virtuales.',
-    parametros:['RAM','ROM','Procesador'] },
+    parametros:['RAM','ROM','Procesador'], soloDatacenter:true },
   { id:'baas', productoNivel2Id:'hosting', nombre:'BaaS',
     eslogan:'¡Duerme tranquilo: tu información siempre respaldada!',
     descripcion:'Respaldos de información en la nube.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'] },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloDatacenter:true },
   { id:'draas', productoNivel2Id:'hosting', nombre:'DRaaS',
     eslogan:'¡Recupera tu negocio en minutos, pase lo que pase!',
     descripcion:'Copias de seguridad y recuperación ante desastres.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'] },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloDatacenter:true },
   // Ciberseguridad
   { id:'firewall_on_premise', productoNivel2Id:'perimetral', nombre:'Firewall On Premise',
     eslogan:'¡Tu primera línea de defensa, instalada en casa!',
@@ -674,10 +714,12 @@ function formatAnchoBandaMbps(mbps){
 
 const state = {
   clienteNombre: '',
+  clienteLogo: null,     // dataURL (base64) del logo del cliente, opcional — se incluye en el PDF
+  saludInicial: null,    // score 0-100 ingresado a mano por el vendedor: "así estaba antes de Puntonet"
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
   matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
                           // las sedes: se crean arrastrando, pueden ser varias, y van donde el usuario quiera.
-  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', group:null, instancias:[] }, // edificio fijo de Puntonet
+  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[] }, // edificio fijo de Puntonet
   conexiones: [],        // { id, aId, bId, anchoBanda, comparticion } — cable manual entre 2 entidades
   selectedSedeIds: [],   // ids de sede/Matriz, y opcionalmente 'datacenter'
   selectedConexionId: null, // id de la conexión seleccionada (mutuamente excluyente con selectedSedeIds)
@@ -731,6 +773,38 @@ function conexionesDe(entityId){
 }
 function otroExtremo(conexion, entityId){
   return conexion.aId===entityId ? conexion.bId : conexion.aId;
+}
+
+/* --- Regla provisional de tipo de conexión (pendiente de validar con el cliente final, ver
+   documentación adjunta): si cualquiera de los 2 extremos es el Datacenter Epicentro, la
+   conexión se guarda como "Cloud Interconnect"; si es Sede↔Matriz, como "Canal de Conexión".
+   Se aplica igual sea que la conexión se haya creado arrastrando el cable a mano desde el
+   puerto (§5) o soltando un chip del catálogo sobre una entidad (§4, auto-conexión). */
+function tipoConexionPorDestino(aId, bId){
+  return (aId==='datacenter' || bId==='datacenter') ? 'cloud_interconnect' : 'canal_conexion';
+}
+
+/* --- Auto-conexión: ¿este subproducto, al asignarse a una Sede/Matriz, debe generar también
+   una línea de conexión hacia el Datacenter? Aplica a todo lo de Conectividad (Datos, Sdwan,
+   Internet) y a lo de Cloud que no sea soloDatacenter — hoy todo Cloud es soloDatacenter, así
+   que en la práctica esto cubre la vertical Conectividad completa. --- */
+function generaConexionAutomatica(sub){
+  if(sub.soloDatacenter) return false;
+  const producto = getProducto(sub.productoNivel2Id);
+  return producto.verticalId==='conectividad' || producto.verticalId==='cloud';
+}
+
+/* Crea (si no existe ya) la conexión automática entityId → Datacenter. No duplica: si el
+   vendedor ya había conectado esa entidad al Datacenter a mano, no se toca esa conexión. */
+function ensureConexionAutomatica(entityId){
+  if(entityId==='datacenter') return;
+  if(!parValidoConexion(entityId,'datacenter')) return;
+  if(conexionExiste(entityId,'datacenter')) return;
+  const conexion = {
+    id: uid('conn','nextConexionSeq'), aId:entityId, bId:'datacenter',
+    anchoBanda:'', comparticion:'', subproductoId: tipoConexionPorDestino(entityId,'datacenter'),
+  };
+  state.conexiones.push(conexion);
 }
 
 function uid(prefix, seqField){
@@ -1012,12 +1086,16 @@ function rebuildConnections(){
 
     const power = connectionPower(c);
     const selected = state.selectedConexionId === c.id;
+    // Color según el tipo inferido (Canal de Conexión vs Cloud Interconnect); si la conexión no
+    // tiene tipo asignado (compatibilidad hacia atrás), usa el cian por defecto de siempre.
+    const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
+    const baseColor = tipoSub ? getSubproductoColor(tipoSub) : 0x22d3ee;
 
     // núcleo del enlace: un tubo cuyo radio crece con la cantidad de servicios; clickeable
     const coreRadius = (0.028 + power * 0.07) * (selected ? 1.35 : 1);
     const coreGeo = new THREE.TubeGeometry(curve, 48, coreRadius, 8, false);
     const coreMat = new THREE.MeshBasicMaterial({
-      color: selected ? 0x67e3fa : 0x22d3ee, transparent:true, opacity: (selected?0.85:0.35) + power*0.45,
+      color: selected ? 0x67e3fa : baseColor, transparent:true, opacity: (selected?0.85:0.35) + power*0.45,
       blending: THREE.AdditiveBlending, depthWrite:false,
     });
     const coreMesh = new THREE.Mesh(coreGeo, coreMat);
@@ -1353,6 +1431,8 @@ function refreshSedeAssets(sede){
   let radius, assetY;
   if(sede.tipo==='matriz'){
     radius = 2.6; assetY = sede.group.userData.coreY + 0.55; // anillo propio alrededor del hub
+  } else if(sede.tipo==='datacenter'){
+    radius = 3.4; assetY = dcY + 0.55; // anillo amplio, por fuera de los 3 tiers del edificio
   } else {
     const tamano = getTamanoLocal(sede.tamano);
     radius = tamano.assetRadius; assetY = tamano.box[1] + 0.35;
@@ -1558,6 +1638,22 @@ function disarmPlacing(){
   placingHintEl.style.display = 'none';
 }
 document.getElementById('placingHintCancel').addEventListener('click', disarmPlacing);
+
+/* --- Toast: aviso corto y no bloqueante sobre el canvas (p.ej. "este producto solo va en el
+   Datacenter"). Varios se apilan si se disparan seguidos; cada uno se retira solo. --- */
+const toastStackEl = document.getElementById('toastStack');
+function showToast(text, duration=2600){
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  toastStackEl.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{
+    el.classList.remove('show');
+    setTimeout(()=>el.remove(), 220);
+  }, duration);
+}
+
 sedeDragCard.addEventListener('click', ()=>{
   if(state.placing && state.placing.tipo==='sede'){ disarmPlacing(); return; }
   armPlacing({ tipo:'sede' }, 'Toca el canvas para colocar la sede');
@@ -1667,15 +1763,29 @@ function playWrapEffect(entityId, subproductoId, onDone){
 }
 
 function assignSubproductoAtClientPoint(subproductoId, clientX, clientY){
-  const hit = hitTestAtEvent({ clientX, clientY }); // ¿sobre qué sede o la Matriz se soltó el producto?
-  // El Datacenter es un punto de conexión (infraestructura de Puntonet), no tiene catálogo
-  // propio: los productos solo se asignan a sedes o a la Matriz.
-  if(hit.sedeId && hit.sedeId!=='datacenter'){
+  const hit = hitTestAtEvent({ clientX, clientY }); // ¿sobre qué sede, Matriz o Datacenter se soltó?
+  if(!hit.sedeId) return; // se soltó fuera de cualquier entidad válida: sin efecto.
+  const sub = getSubproducto(subproductoId);
+  // Housing/Hosting (Collocation, Crossconexión, IaaS, BaaS, DRaaS): equipamiento que se renta
+  // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo.
+  if(sub.soloDatacenter){
+    if(hit.sedeId!=='datacenter'){
+      showToast(`"${sub.nombre}" solo se puede agregar al Datacenter Epicentro.`);
+      return;
+    }
     playWrapEffect(hit.sedeId, subproductoId, ()=>{
       openPopupForNew(subproductoId, [hit.sedeId]);
     });
+    return;
   }
-  // si se soltó fuera de cualquier entidad válida, no se asigna nada (sin efecto).
+  // Resto del catálogo: se asigna a una sede o a una Matriz (el Datacenter no tiene catálogo propio).
+  if(hit.sedeId!=='datacenter'){
+    playWrapEffect(hit.sedeId, subproductoId, ()=>{
+      openPopupForNew(subproductoId, [hit.sedeId]);
+    });
+  } else {
+    showToast(`"${sub.nombre}" se asigna a una sede o a una Matriz, no al Datacenter.`);
+  }
 }
 
 wrap.addEventListener('dragover', (e)=>{ e.preventDefault(); });
@@ -1723,7 +1833,8 @@ function setDragHoverHighlight(entityId){
 
 const activeTouchDragCancels = [];
 
-function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor){
+function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor, isValidTarget){
+  isValidTarget = isValidTarget || (id=>id!=='datacenter');
   let touchId = null, startX=0, startY=0, dragging=false, ghost=null;
 
   function forceCancel(){
@@ -1759,7 +1870,7 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor){
       const overCanvas = t.clientX>=wrapRect.left && t.clientX<=wrapRect.right && t.clientY>=wrapRect.top && t.clientY<=wrapRect.bottom;
       if(overCanvas){
         const hit = hitTestAtEvent({ clientX:t.clientX, clientY:t.clientY });
-        setDragHoverHighlight(hit.sedeId && hit.sedeId!=='datacenter' ? hit.sedeId : null);
+        setDragHoverHighlight(hit.sedeId && isValidTarget(hit.sedeId) ? hit.sedeId : null);
       } else {
         setDragHoverHighlight(null);
       }
@@ -2006,7 +2117,10 @@ function onPointerUp(e){
     if(pointerMode==='connecting'){
       endTempCable();
       if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
-        const conexion = { id: uid('conn','nextConexionSeq'), aId:connectingFromId, bId:connectingHoverId, anchoBanda:'', comparticion:'' };
+        const conexion = {
+          id: uid('conn','nextConexionSeq'), aId:connectingFromId, bId:connectingHoverId,
+          anchoBanda:'', comparticion:'', subproductoId: tipoConexionPorDestino(connectingFromId, connectingHoverId),
+        };
         state.conexiones.push(conexion);
         // recién conectado: se deja seleccionada la entidad de origen y la conexión se abre
         // expandida ahí mismo (acordeón), invitando a completar Ancho de banda/Compartición
@@ -2199,6 +2313,60 @@ function initials(nombre){
   return (words[0][0]+words[1][0]).toUpperCase();
 }
 
+/* =========================================================================
+   3.5 SALUD DE INFRAESTRUCTURA — barra de progreso por vertical + score global
+   Cuenta cuántos subproductos DISTINTOS del catálogo de cada vertical están contratados en
+   algún punto de la configuración (Sede, Matriz o Datacenter), sobre el total de subproductos
+   que existen en esa vertical. El score global es el promedio simple de las 4 verticales
+   (cada vertical pesa igual, "regla de tres" por vertical y luego promedio entre las 4).
+   ========================================================================= */
+function totalSubproductosVertical(verticalId){
+  return getProductosByVertical(verticalId)
+    .reduce((sum,p)=>sum+getSubproductosByProducto(p.id).length, 0);
+}
+function subproductosAsignadosVertical(verticalId){
+  const productoIds = new Set(getProductosByVertical(verticalId).map(p=>p.id));
+  const ids = new Set();
+  [...state.sedes, ...state.matrices, state.datacenter].forEach(entity=>{
+    (entity.instancias||[]).forEach(inst=>{
+      const sub = getSubproducto(inst.subproductoId);
+      if(sub && productoIds.has(sub.productoNivel2Id)) ids.add(sub.id);
+    });
+  });
+  return ids.size;
+}
+function saludPorVertical(){
+  return VERTICALES.map(v=>{
+    const total = totalSubproductosVertical(v.id);
+    const asignados = subproductosAsignadosVertical(v.id);
+    const pct = total>0 ? Math.round((asignados/total)*100) : 0;
+    return { vertical:v, asignados, total, pct };
+  });
+}
+function saludGlobal(){
+  const porVertical = saludPorVertical();
+  if(porVertical.length===0) return 0;
+  return Math.round(porVertical.reduce((s,v)=>s+v.pct,0)/porVertical.length);
+}
+const VERTICAL_BAR_COLOR = { conectividad:'var(--cian)', cloud:'var(--indigo)', ciberseguridad:'var(--rosa)', colaboracion:'var(--verde)' };
+
+const saludBarsEl = document.getElementById('saludBars');
+const saludGlobalBadgeEl = document.getElementById('saludGlobalBadge');
+function renderSaludPanel(){
+  const porVertical = saludPorVertical();
+  saludGlobalBadgeEl.textContent = saludGlobal() + '%';
+  saludBarsEl.innerHTML = '';
+  porVertical.forEach(v=>{
+    const row = document.createElement('div');
+    row.className = 'salud-row';
+    row.innerHTML = `
+      <span class="salud-label">${v.vertical.nombre}</span>
+      <span class="salud-bar-track"><span class="salud-bar-fill" style="width:${v.pct}%;background:${VERTICAL_BAR_COLOR[v.vertical.id]||'var(--cian)'};"></span></span>
+      <span class="salud-count">${v.asignados}/${v.total}</span>`;
+    saludBarsEl.appendChild(row);
+  });
+}
+
 /* Catálogo del panel izquierdo: acordeón por Vertical (solo una abierta a la vez, para ocupar
    menos espacio), con el ícono del Producto (N2) junto a su nombre, y cada Subproducto (N3) como
    un "cuadradito" arrastrable con su nombre visible debajo. Al soltarse sobre una sede o una
@@ -2239,7 +2407,9 @@ function renderCatalogPanel(){
         const chip = document.createElement('div');
         chip.className = 'catalog-chip';
         chip.draggable = true;
-        chip.title = s.nombre + ' — arrastra a una sede o a una Matriz';
+        chip.title = s.soloDatacenter
+          ? s.nombre + ' — solo se asigna al Datacenter Epicentro (equipamiento propio de Puntonet)'
+          : s.nombre + ' — arrastra a una sede o a una Matriz';
         chip.dataset.subproductoId = s.id;
         chip.style.background = colorHex(getSubproductoColor(s));
         chip.textContent = initials(s.nombre);
@@ -2251,13 +2421,23 @@ function renderCatalogPanel(){
         chip.addEventListener('dragend', ()=>{ draggingSubproductoId = null; });
         chip.addEventListener('click', ()=>{
           if(state.placing && state.placing.tipo==='subproducto' && state.placing.id===s.id){ disarmPlacing(); return; }
-          armPlacing({ tipo:'subproducto', id:s.id }, `Toca una sede o la Matriz para asignar "${s.nombre}"`);
+          const hint = s.soloDatacenter
+            ? `Toca el Datacenter Epicentro para asignar "${s.nombre}"`
+            : `Toca una sede o la Matriz para asignar "${s.nombre}"`;
+          armPlacing({ tipo:'subproducto', id:s.id }, hint);
         });
-        makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)));
+        makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)),
+          s.soloDatacenter ? (id=>id==='datacenter') : (id=>id!=='datacenter'));
         const chipLabel = document.createElement('div');
         chipLabel.className = 'catalog-chip-label';
         chipLabel.textContent = s.nombre;
         chipItem.appendChild(chip);
+        if(s.soloDatacenter){
+          const badge = document.createElement('span');
+          badge.className = 'chip-dc-badge';
+          badge.textContent = 'DC';
+          chipItem.appendChild(badge);
+        }
         chipItem.appendChild(chipLabel);
         chipsWrap.appendChild(chipItem);
       });
@@ -2271,6 +2451,7 @@ function renderCatalogPanel(){
 renderCatalogPanel();
 
 function renderRightPanel(){
+  renderSaludPanel();
   const ids = state.selectedSedeIds;
 
   if(ids.length===0){
@@ -2368,6 +2549,9 @@ function renderConnectionsBox(entityId){
     const otro = otroExtremo(c, entityId);
     const detalle = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
     const isOpen = state.selectedConexionId === c.id;
+    const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
+    const dotColor = tipoSub ? colorHex(getSubproductoColor(tipoSub)) : 'var(--cian)';
+    const tipoLabel = tipoSub ? tipoSub.nombre : '';
 
     const item = document.createElement('div');
     item.className = 'connItem' + (isOpen ? ' open' : '');
@@ -2375,8 +2559,8 @@ function renderConnectionsBox(entityId){
     const row = document.createElement('div');
     row.className = 'connRow';
     row.innerHTML = `
-      <span class="connDot"></span>
-      <span class="connName">${nombreEntidad(otro)}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
+      <span class="connDot" style="background:${dotColor};"></span>
+      <span class="connName">${nombreEntidad(otro)}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
       <span class="connArrow">▸</span>
       <span class="connDelete" title="Eliminar conexión">−</span>`;
     row.addEventListener('click', (e)=>{
@@ -2422,7 +2606,7 @@ function renderConnectionsBox(entityId){
         // refleja el nuevo detalle en la fila colapsada sin perder el foco de los inputs
         const otroNombre = nombreEntidad(otroExtremo(c, entityId));
         const det = [c.anchoBanda, c.comparticion].filter(Boolean).join(' · ');
-        row.querySelector('.connName').innerHTML = `${otroNombre}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
+        row.querySelector('.connName').innerHTML = `${otroNombre}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${det ? ` <span class="connDetalle">(${det})</span>` : ''}`;
       }
       rangeEl.addEventListener('input', ()=>{
         numEl.value = rangeEl.value;
@@ -2713,6 +2897,9 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
       };
       sede.instancias.push(instancia);
       refreshSedeAssets(sede);
+      if(generaConexionAutomatica(sub) && sedeId!=='datacenter'){
+        ensureConexionAutomatica(sedeId);
+      }
     });
     rebuildConnections();
   } else if(popupContext.mode==='edit'){
@@ -2799,11 +2986,48 @@ document.getElementById('btnDeselect').addEventListener('click', ()=>{
 const clienteInput = document.getElementById('clienteInput');
 clienteInput.addEventListener('input', ()=>{ state.clienteNombre = clienteInput.value; });
 
+/* --- Logo del cliente: opcional, se sube junto al nombre y va en el header del PDF (§9). Se
+   guarda como dataURL (base64) directamente en el estado — no hay backend, así que no hace
+   falta subir el archivo a ningún lado; jsPDF puede insertar un dataURL tal cual. --- */
+const logoUploadBtn = document.getElementById('logoUploadBtn');
+const logoFileInput = document.getElementById('logoFileInput');
+function renderLogoButton(){
+  if(state.clienteLogo){
+    logoUploadBtn.classList.add('has-logo');
+    logoUploadBtn.innerHTML = `<img src="${state.clienteLogo}" alt="Logo del cliente">`;
+    logoUploadBtn.title = 'Logo del cliente cargado — clic para cambiarlo';
+  } else {
+    logoUploadBtn.classList.remove('has-logo');
+    logoUploadBtn.innerHTML = '+ logo';
+    logoUploadBtn.title = 'Subir logo del cliente (aparece en el PDF)';
+  }
+}
+logoUploadBtn.addEventListener('click', ()=>logoFileInput.click());
+logoFileInput.addEventListener('change', ()=>{
+  const file = logoFileInput.files && logoFileInput.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    state.clienteLogo = reader.result;
+    renderLogoButton();
+  };
+  reader.readAsDataURL(file);
+  logoFileInput.value = '';
+});
+renderLogoButton();
+
 function buildConfiguracionCliente(){
   return {
-    version: 7, // v7: Matrices múltiples y reposicionables (ya no un objeto único fijo en el centro)
+    version: 8, // v8: Datacenter con productos propios (soloDatacenter), tipo de conexión inferido,
+                // logo del cliente y score de salud de infraestructura (antes/después)
     nombreCliente: state.clienteNombre || 'Sin nombre',
+    clienteLogo: state.clienteLogo || null,
     generadoEn: new Date().toISOString(),
+    salud: {
+      inicial: state.saludInicial, // ingresado a mano por el vendedor, o null si no se completó
+      actual: saludGlobal(),
+      porVertical: saludPorVertical().map(v=>({ vertical: v.vertical.nombre, asignados: v.asignados, total: v.total, pct: v.pct })),
+    },
     matrices: state.matrices.map(m=>({
       id: m.id, nombre: m.nombre, gx: m.gx, gz: m.gz,
       instancias: m.instancias.map(i=>({
@@ -2812,9 +3036,18 @@ function buildConfiguracionCliente(){
         marca: i.marca, creadoEn: i.creadoEn,
       })),
     })),
-    datacenter: { nombre: state.datacenter.nombre },
+    datacenter: {
+      nombre: state.datacenter.nombre,
+      instancias: state.datacenter.instancias.map(i=>({
+        instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
+        nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
+        marca: i.marca, creadoEn: i.creadoEn,
+      })),
+    },
     conexiones: state.conexiones.map(c=>({
       id: c.id, aId: c.aId, bId: c.bId, anchoBanda: c.anchoBanda, comparticion: c.comparticion,
+      subproductoId: c.subproductoId || null,
+      tipoNombre: c.subproductoId ? getSubproducto(c.subproductoId).nombre : null,
     })),
     sedes: state.sedes.map(s=>({
       id: s.id, nombre: s.nombre, tipo: s.tipo, tamano: s.tamano, empleados: s.empleados,
@@ -2858,10 +3091,35 @@ function conexionesTexto(entityId){
   }).join(' + ');
 }
 
+const saludInicialInput = document.getElementById('saludInicialInput');
+saludInicialInput.addEventListener('input', ()=>{
+  const v = saludInicialInput.value;
+  state.saludInicial = v==='' ? null : Math.max(0, Math.min(100, parseInt(v,10)||0));
+});
+
 function openReport(){
   const config = buildConfiguracionCliente();
   reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
+  saludInicialInput.value = state.saludInicial===null || state.saludInicial===undefined ? '' : state.saludInicial;
   reportBody.innerHTML='';
+
+  // --- Bloque de Salud de infraestructura: estado actual (barras por vertical + score global)
+  // y, si el vendedor lo completó, el estado inicial del cliente antes de Puntonet, para poder
+  // mostrar el "antes vs después" en la conversación comercial. ---
+  const saludBox = document.createElement('div');
+  saludBox.className = 'report-sede';
+  const saludHeader = document.createElement('h3');
+  const antesTxt = (state.saludInicial===null || state.saludInicial===undefined) ? '' :
+    `<span style="color:var(--muted);font-weight:400;font-size:11px;"> · Estado inicial: ${state.saludInicial}%</span>`;
+  saludHeader.innerHTML = `<span>Salud de infraestructura — ${config.salud.actual}%</span>${antesTxt}`;
+  saludBox.appendChild(saludHeader);
+  config.salud.porVertical.forEach(v=>{
+    const row = document.createElement('div');
+    row.className = 'report-inst';
+    row.innerHTML = `<div class="rline1"><span>${v.vertical}</span><span style="font-size:11px;color:var(--muted);">${v.asignados}/${v.total} · ${v.pct}%</span></div>`;
+    saludBox.appendChild(row);
+  });
+  reportBody.appendChild(saludBox);
 
   function renderInstRow(inst, container, heredadoDe){
     const sub = getSubproducto(inst.subproductoId);
@@ -2906,12 +3164,21 @@ function openReport(){
     });
   }
 
-  // Sección del Datacenter Epicentro (infraestructura de Puntonet, no tiene productos propios)
+  // Sección del Datacenter Epicentro — infraestructura de Puntonet, pero ahora puede tener
+  // productos propios (Collocation, Crossconexión, IaaS, BaaS, DRaaS — soloDatacenter, punto 1).
   const dcBox = document.createElement('div');
   dcBox.className='report-sede';
   const dch3 = document.createElement('h3');
-  dch3.innerHTML = `<span>${config.datacenter.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${conexionesTexto('datacenter')})</span>`;
+  dch3.innerHTML = `<span>${config.datacenter.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${config.datacenter.instancias.length} producto(s) propio(s) · ${conexionesTexto('datacenter')})</span>`;
   dcBox.appendChild(dch3);
+  if(config.datacenter.instancias.length===0){
+    const empty = document.createElement('div');
+    empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+    empty.textContent='Sin productos propios asignados.';
+    dcBox.appendChild(empty);
+  } else {
+    config.datacenter.instancias.forEach(inst=>renderInstRow(inst, dcBox, null));
+  }
   reportBody.appendChild(dcBox);
 
   if(config.sedes.length===0){
@@ -3155,6 +3422,19 @@ function downloadPDF(){
   const heroDataUrl = captureHeroSnapshot(HERO_ASPECT);
   doc.addImage(heroDataUrl, 'JPEG', 0, 0, heroW, heroH);
 
+  // Logo del cliente (opcional, §9 punto 7): esquina superior izquierda del hero, sobre un fondo
+  // blanco redondeado para que se lea bien encima de la escena 3D oscura.
+  if(config.clienteLogo){
+    const logoSize = 40, logoX = 14, logoY = 12;
+    const fmtMatch = config.clienteLogo.match(/^data:image\/(\w+);/);
+    let logoFormat = fmtMatch ? fmtMatch[1].toUpperCase() : 'PNG';
+    if(logoFormat==='JPG') logoFormat = 'JPEG';
+    doc.setFillColor(255,255,255);
+    doc.roundedRect(logoX-5, logoY-5, logoSize+10, logoSize+10, 4, 4, 'F');
+    try{ doc.addImage(config.clienteLogo, logoFormat, logoX, logoY, logoSize, logoSize); }
+    catch(err){ /* si el formato no es soportado por jsPDF, se omite el logo sin romper el PDF */ }
+  }
+
   // Franja inferior sobre el hero con los datos clave, para que quede legible sobre la escena 3D.
   const stripH = 34;
   doc.setFillColor(10, 14, 20);
@@ -3172,6 +3452,26 @@ function downloadPDF(){
   addTitle('Configurador de Infraestructura · Puntonet');
   addSubtitle(`${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`);
 
+  // --- Salud de infraestructura: score global (y, si se completó, el "antes" del cliente) más
+  // una barra de progreso por vertical, para respaldar la conversación de "tenías X, con
+  // Puntonet llegas a Y" que pidió el cliente. ---
+  const antesTxt = (state.saludInicial===null || state.saludInicial===undefined) ? ''
+    : `  ·  Estado inicial del cliente: ${state.saludInicial}%`;
+  addSectionHeading(`Salud de infraestructura — ${config.salud.actual}%${antesTxt}`);
+  config.salud.porVertical.forEach(v=>{
+    ensureSpace(20);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(70,78,90);
+    doc.text(v.vertical, marginX+10, y);
+    doc.text(`${v.asignados}/${v.total} · ${v.pct}%`, pageW-marginX, y, { align:'right' });
+    y += 6;
+    const barX = marginX+10, barW = maxWidth-20, barH = 5;
+    doc.setFillColor(228,232,238);
+    doc.roundedRect(barX, y, barW, barH, 2, 2, 'F');
+    doc.setFillColor(34,211,238);
+    if(v.pct>0) doc.roundedRect(barX, y, Math.max(barH, barW*(v.pct/100)), barH, 2, 2, 'F');
+    y += barH + 10;
+  });
+
   if(config.matrices.length===0){
     addSectionHeading('Matrices');
     addEmpty('Aún no se ha agregado ninguna Matriz al canvas.');
@@ -3183,7 +3483,9 @@ function downloadPDF(){
     });
   }
 
-  addSectionHeading(`${config.datacenter.nombre}  ·  ${conexionesTexto('datacenter')}`);
+  addSectionHeading(`${config.datacenter.nombre}  ·  ${config.datacenter.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto('datacenter')}`);
+  if(config.datacenter.instancias.length===0) addEmpty('Sin productos propios asignados.');
+  else config.datacenter.instancias.forEach(inst=>addProduct(inst, null));
 
   if(config.sedes.length===0){
     addSectionHeading('Sedes');
