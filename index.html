@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Configurador de Infraestructura · Puntonet · Prototipo v35</title>
+<title>Configurador de Infraestructura · Puntonet · Prototipo v36</title>
 <style>
   :root{
     --bg: #0a0e14;
@@ -357,7 +357,7 @@
 
   <div id="header">
     <h1>Configurador de Infraestructura</h1>
-    <span class="tag">Puntonet · Prototipo v35</span>
+    <span class="tag">Puntonet · Prototipo v36</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
     <input id="logoFileInput" type="file" accept="image/*" style="display:none;">
@@ -2645,7 +2645,7 @@ function renderRightPanel(){
   matrizHintEl.textContent = isMatriz
     ? 'Arrastra un producto desde el panel izquierdo sobre esta Matriz para agregarlo como producto propio.'
     : isDatacenter
-      ? 'El Datacenter Epicentro es la infraestructura de Puntonet. Arrastra desde el puerto (●) de una sede o de una Matriz hasta aquí para contratar el servicio de Internet/ISP.'
+      ? 'Arrastra un producto de Cloud (Housing/Hosting) desde el panel izquierdo para agregarlo como producto propio, o arrastra desde el puerto (●) de una sede o Matriz hasta aquí para contratar Internet/ISP.'
       : '';
 
   renderSedeEditBox(isSedeSingle ? getSedeById(singleId) : null);
@@ -2653,9 +2653,11 @@ function renderRightPanel(){
   renderConnectionsBox(singleId);
   renderHerenciaBox(isSedeSingle ? getSedeById(singleId) : null);
 
-  if(ids.length===1 && !isDatacenter){
+  if(ids.length===1){
     const entity = getSedeById(ids[0]);
-    instanceSectionTitle.textContent = isMatriz ? 'Productos propios de la Matriz' : 'Servicios asignados';
+    instanceSectionTitle.textContent = isMatriz ? 'Productos propios de la Matriz'
+      : isDatacenter ? 'Productos propios del Datacenter'
+      : 'Servicios asignados';
     // Los productos `ocultaEnServiciosAsignados` (Canal de Conexión, Cloud Interconnect) viven únicamente
     // en el panel "Conexiones": ahí sí se ve a qué sede/Matriz están conectados, mientras que acá
     // solo se vería el nombre del producto sin ese contexto — confuso. Sdwan y los productos de
