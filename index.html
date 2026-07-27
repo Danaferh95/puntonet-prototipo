@@ -393,6 +393,17 @@
       </div>
     </div>
 
+    <div id="nubeDragWrap">
+      <h2>Agregar Nube</h2>
+      <div class="site-card" draggable="true" id="nubeDragCard">
+        <div class="site-icon size-m" style="color:#a78bfa;border-color:#a78bfa;">☁</div>
+        <div>
+          <div class="lbl">Nube</div>
+          <div class="sub">Hosting (AWS/Azure/GCP) · destino de Cloud Interconnect</div>
+        </div>
+      </div>
+    </div>
+
     <div class="legend">
       <h2 style="margin-bottom:8px;">Productos (arrastra a una sede)</h2>
       <div id="productLegend"></div>
@@ -467,6 +478,11 @@
         <select id="popupConexionSelect"></select>
         <div id="popupConexionHint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;"></div>
       </div>
+      <div id="popupSdwanField" class="field" style="display:none;">
+        <label>Aplicar Sdwan a</label>
+        <select id="popupSdwanSelect"></select>
+        <div id="popupSdwanHint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;"></div>
+      </div>
       <div id="popupProps"></div>
       <div id="popupBackupField" class="field">
         <label class="toggleRow"><input type="checkbox" id="popupBackupCheckbox"> Backup (segundo enlace en paralelo hacia el mismo destino)</label>
@@ -535,7 +551,7 @@ const PRODUCTOS = [
   // mismo azul; ahora 158-224 (66°) para que Sdwan (teal), Datos (cian) e Internet (azul) se
   // lean como 3 tonos claramente distintos, sin salirse de la familia "azul" de la vertical.
   { id:'datos', verticalId:'conectividad', nombre:'Datos', assetKey:'enlace', hue:191, sat:85, light:48 },
-  { id:'sdwan_prod', verticalId:'conectividad', nombre:'Sdwan', assetKey:'nodo', hue:158, sat:75, light:45 },
+  { id:'sdwan_prod', verticalId:'conectividad', nombre:'SD-WAN / Optimización de Enlace', assetKey:'nodo', hue:158, sat:75, light:45 },
   { id:'internet', verticalId:'conectividad', nombre:'Internet', assetKey:'globo', hue:224, sat:85, light:53 },
   // Cloud — familia índigo/violeta
   { id:'housing', verticalId:'cloud', nombre:'Housing', assetKey:'rack', hue:255, sat:65, light:60 },
@@ -566,6 +582,10 @@ const SUBPRODUCTOS = [
   // Interconnect, v9 §4) lista Nubes en su lugar — ver candidatosConexionEntreSedes.
   // Campo `permiteBackup`: habilita el checkbox "Backup" en el popup (v9 §2) — genera un segundo
   // enlace en paralelo hacia el mismo destino, ligado a la misma instancia (ver syncBackupConexion).
+  // Campo `requiereConexionExistente`: en vez del dropdown "Conectar a" (que crea un cable
+  // nuevo), muestra "Aplicar Sdwan a" con las conexiones YA EXISTENTES de la sede — la instancia
+  // guarda `targetConexionId` apuntando a esa conexión, y su ícono se dibuja sobre ella (ver
+  // renderPopupSdwanField / rebuildSdwanBadges). Por ahora solo lo usa Sdwan.
   // Campo `ocultaEnServiciosAsignados`: el nombre del producto por sí solo no dice nada sin su
   // destino (a diferencia de "Sdwan" o "Internet Corporativo", que se entienden solos) — así que
   // en vez de listarse también en "Servicios asignados" (donde solo se ve el nombre, sin
@@ -589,23 +609,41 @@ const SUBPRODUCTOS = [
   // overlay/indicador sobre canales ya existentes. No tiene campo `conexion`, así que no genera
   // cable ni dropdown de destino (ver generaConexionAutomatica/renderPopupConexionField). Se
   // muestra como un cuadrado parpadeante sobre el origen (ver rebuildSdwanBadges).
+  // Sdwan (v9 §3, ajustado tras feedback): overlay que se aplica sobre un canal YA EXISTENTE de
+  // esa sede (Canal de Conexión, Cloud Interconnect, Internet, Túnel IPsec) — no crea su propio
+  // cable. `requiereConexionExistente:true` hace que el popup muestre un dropdown "Aplicar
+  // Sdwan a" con las conexiones ya activas de la sede en vez del dropdown "Conectar a" (que crea
+  // un destino nuevo) — ver renderPopupSdwanField. El ícono se dibuja sobre esa conexión elegida
+  // (rebuildSdwanBadges), no flotando sobre la sede.
   { id:'sdwan', productoNivel2Id:'sdwan_prod', nombre:'Sdwan',
     eslogan:'¡La red inteligente que prioriza lo que tu negocio necesita!',
     descripcion:'Red definida por software que optimiza el uso de ancho de banda.',
-    parametros:['Ancho de banda','Tipo (SD-WAN / SD-WAN Segura)'] },
-  // Conectividad — Internet (incluye variantes satelital y wifi)
+    parametros:['Ancho de banda','Tipo (SD-WAN / SD-WAN Segura)'], requiereConexionExistente:true },
+  // Túnel IPsec (v9 §7): SD-WAN (o firewalls en los extremos) emulando un enlace de datos
+  // dedicado a través de Internet — producto nuevo y paralelo a Sdwan (no un atributo de este).
+  // Mismos parámetros/flujo que Canal de Conexión (dropdown "Conectar a" Sede/Matriz, Ancho de
+  // banda), pero `lineStyle:'dashed'` lo dibuja punteado en el canvas 3D (ver buildTubeMeshes en
+  // rebuildConnections) para leerse como canal virtualizado, no fibra física dedicada.
+  { id:'tunel_ipsec', productoNivel2Id:'sdwan_prod', nombre:'Túnel IPsec',
+    eslogan:'¡Un enlace dedicado, sin tender un solo metro de fibra!',
+    descripcion:'Enlace de datos emulado sobre Internet mediante SD-WAN o firewalls en los extremos.',
+    parametros:['Ancho de banda'], conexion:'entreSedes', lineStyle:'dashed',
+    ocultaEnServiciosAsignados:true },
+  // Conectividad — Internet (incluye variantes satelital y wifi). v9 §6: el destino automático
+  // deja de ser el Datacenter Epicentro (conceptualmente el internet no va ahí) — converge a una
+  // única Nube "Internet" por proyecto, creada sola la primera vez (ver getOrCreateNubeInternetAuto).
   { id:'internet_corporativo', productoNivel2Id:'internet', nombre:'Internet Corporativo',
     eslogan:'¡Internet dedicado, toda la velocidad solo para ti!',
     descripcion:'Enlace de internet dedicado.',
-    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'datacenter', permiteBackup:true },
+    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'internetAuto', permiteBackup:true },
   { id:'internet_startup', productoNivel2Id:'internet', nombre:'Internet Startup',
     eslogan:'¡Arranca con internet confiable al mejor precio!',
     descripcion:'Enlace de internet compartido.',
-    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'datacenter', permiteBackup:true },
+    parametros:['Ancho de banda','Ubicaciones geográficas'], conexion:'internetAuto', permiteBackup:true },
   { id:'internet_teleworking', productoNivel2Id:'internet', nombre:'Internet Teleworking',
     eslogan:'¡Lleva la oficina a la casa de cada colaborador!',
     descripcion:'Enlaces de internet compartido para colaboradores en sus hogares.',
-    parametros:['Planes','Número de enlaces','Ubicaciones geográficas'], conexion:'datacenter', permiteBackup:true },
+    parametros:['Planes','Número de enlaces','Ubicaciones geográficas'], conexion:'internetAuto', permiteBackup:true },
   { id:'puntonet_space', productoNivel2Id:'internet', nombre:'Puntonet Space',
     eslogan:'¡Internet satelital donde la fibra no llega, sin excusas!',
     descripcion:'Enlace de internet satelital atado a una bolsa de Gigas mensuales.',
@@ -614,9 +652,11 @@ const SUBPRODUCTOS = [
     eslogan:'¡Wifi potente y estable en cada rincón del negocio!',
     descripcion:'Equipamiento (APs) para distribución del servicio de conectividad a través de Wifi.',
     parametros:['Modelo de equipo','Ancho de banda','Número de usuarios'], conexion:'datacenter' },
-  // Cloud — soloDatacenter:true: es equipamiento que se renta/instala físicamente en el
-  // Datacenter de Puntonet, no un servicio que "se pone" en la Sede/Matriz del cliente. Por eso
-  // solo se pueden arrastrar y soltar sobre el nodo Datacenter Epicentro (ver §4/§5, punto 1).
+  // Cloud — Housing (Collocation/Energía, Crossconexión): equipamiento que se renta/instala
+  // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo
+  // (soloDatacenter:true). Hosting (IaaS/BaaS/DRaaS) representa cómputo/backup en la nube — desde
+  // v9 §5 se monta sobre una Nube (soloNube:true), no sobre el Datacenter: mismo patrón de "solo
+  // se puede soltar sobre este tipo de nodo específico", pero el nodo cambió.
   { id:'collocation', productoNivel2Id:'housing', nombre:'Collocation/Energía',
     eslogan:'¡Tu infraestructura, protegida en un Datacenter de clase mundial!',
     descripcion:'Renta de espacio y energía en el Datacenter de Puntonet.',
@@ -628,15 +668,15 @@ const SUBPRODUCTOS = [
   { id:'iaas', productoNivel2Id:'hosting', nombre:'IaaS',
     eslogan:'¡Servidores virtuales listos en minutos, sin comprar hardware!',
     descripcion:'Renta de máquinas virtuales.',
-    parametros:['RAM','ROM','Procesador'], soloDatacenter:true },
+    parametros:['RAM','ROM','Procesador'], soloNube:true },
   { id:'baas', productoNivel2Id:'hosting', nombre:'BaaS',
     eslogan:'¡Duerme tranquilo: tu información siempre respaldada!',
     descripcion:'Respaldos de información en la nube.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloDatacenter:true },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloNube:true },
   { id:'draas', productoNivel2Id:'hosting', nombre:'DRaaS',
     eslogan:'¡Recupera tu negocio en minutos, pase lo que pase!',
     descripcion:'Copias de seguridad y recuperación ante desastres.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloDatacenter:true },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloNube:true },
   // Ciberseguridad
   { id:'firewall_on_premise', productoNivel2Id:'perimetral', nombre:'Firewall On Premise',
     eslogan:'¡Tu primera línea de defensa, instalada en casa!',
@@ -876,26 +916,46 @@ function tipoConexionPorDestino(aId, bId){
    dibujan directamente en rebuildConnections() como un enlace hacia el cielo, sin conexión real
    a otra entidad. --- */
 function generaConexionAutomatica(sub){
-  return sub.conexion === 'datacenter';
+  return sub.conexion === 'datacenter' || sub.conexion === 'internetAuto';
 }
 
-/* Crea la conexión automática entityId → Datacenter, usando como tipo el MISMO subproducto que
-   se acaba de arrastrar, y ligada a la instancia que la originó (instanciaId + ownerId). Antes
-   se recalculaba el tipo con tipoConexionPorDestino() según los IDs de los extremos, lo que
-   podía des-sincronizar el tipo de cable del producto real asignado (p.ej. asignar "Internet
-   Corporativo" podía terminar coloreando el cable como "Cloud Interconnect" solo porque un
-   extremo era el Datacenter). La conexión y la instancia son la MISMA cosa desde el punto de
-   vista del panel derecho: no hay dos formularios separados con valores que puedan
-   desincronizarse — ver renderConnectionsBox, que al hacer clic en la conexión abre el mismo
-   popup que "Servicios asignados". Cada producto `conexion:'datacenter'` obtiene SU PROPIO cable
-   (ya no se comparte uno solo entre varios productos): así, entre más productos de una sede
-   conecten al Datacenter, más líneas delgadas en paralelo se ven — no una sola línea más gruesa
-   (ver el "abanico" en rebuildConnections). */
+/* --- Destino automático de Internet (v9 §6): una sola Nube "Internet" por proyecto ---
+   Internet Corporativo/Startup/Teleworking (`conexion:'internetAuto'`) ya NO van al Datacenter
+   Epicentro (conceptualmente incorrecto: el internet sale hacia afuera, no hacia el datacenter
+   físico de Puntonet) — convergen todos a UNA sola Nube automática, creada sola la primera vez
+   que se necesita (el vendedor no la crea ni la nombra) y reutilizada después. El Datacenter NO
+   se conecta automáticamente a esta nube (decisión explícita del cliente, por seguridad: p.ej.
+   storage privado sin salida a Internet) — si se necesita, es una conexión manual aparte (cable
+   a mano desde el puerto, fuera del alcance de esta función). Se marca `esAutoInternet:true`
+   para distinguirla de una Nube de Hosting creada a mano (AWS/Azure/etc., v9 §5). */
+function getOrCreateNubeInternetAuto(){
+  const existente = state.nubes.find(n=>n.esAutoInternet);
+  if(existente) return existente;
+  const {gx,gz} = nearestFreeCell(GRID_SPACING*6, DATACENTER_GZ*GRID_SPACING);
+  const nube = createNube('Internet', gx, gz);
+  nube.esAutoInternet = true;
+  return nube;
+}
+
+/* Crea la conexión automática entityId → su destino correspondiente, usando como tipo el MISMO
+   subproducto que se acaba de arrastrar, y ligada a la instancia que la originó (instanciaId +
+   ownerId). El destino depende del `conexion` del subproducto: 'datacenter' → el Datacenter
+   Epicentro (Zona Wireless, sin cambios); 'internetAuto' → la Nube de Internet (única, v9 §6).
+   Antes se recalculaba el tipo con tipoConexionPorDestino() según los IDs de los extremos, lo que
+   podía des-sincronizar el tipo de cable del producto real asignado. La conexión y la instancia
+   son la MISMA cosa desde el punto de vista del panel derecho: no hay dos formularios separados
+   con valores que puedan desincronizarse — ver renderConnectionsBox, que al hacer clic en la
+   conexión abre el mismo popup que "Servicios asignados". Cada producto obtiene SU PROPIO cable
+   (no se comparte uno solo entre varios productos): así, entre más productos de una sede conecten
+   al mismo destino, más líneas delgadas en paralelo se ven — no una sola línea más gruesa (ver el
+   "abanico" en rebuildConnections). */
 function ensureConexionAutomatica(entityId, subproductoId, instanciaId){
   if(entityId==='datacenter') return;
-  if(!parValidoConexion(entityId,'datacenter')) return;
+  const sub = getSubproducto(subproductoId);
+  const destinoId = sub.conexion==='internetAuto' ? getOrCreateNubeInternetAuto().id : 'datacenter';
+  if(!parValidoConexion(entityId, destinoId)) return;
   const conexion = {
-    id: uid('conn','nextConexionSeq'), aId:entityId, bId:'datacenter',
+    id: uid('conn','nextConexionSeq'), aId:entityId, bId:destinoId,
     subproductoId, instanciaId, ownerId: entityId,
   };
   state.conexiones.push(conexion);
@@ -1207,6 +1267,38 @@ function getEntityPortWorldPos(entityId){
   return pos;
 }
 
+/* --- Construye el/los tubo(s) 3D de un cable, sólido o punteado ---
+   Túnel IPsec (v9 §7) se dibuja punteado para leerse como "canal virtualizado sobre Internet",
+   no una fibra física dedicada (a diferencia de Canal de Conexión, línea sólida). THREE r128 no
+   trae BufferGeometryUtils para fusionar geometrías, así que un tramo punteado es, literalmente,
+   varios TubeGeometry cortos con huecos entre ellos — cada uno samplea un tramo de la curva
+   completa (vía puntos + CatmullRomCurve3) y se agrega como su propio Mesh, todos con el mismo
+   userData (isConexion/conexionId) para que sigan siendo clickeables como un solo cable. */
+function buildTubeMeshes(curve, radius, material, dashed){
+  if(!dashed){
+    return [new THREE.Mesh(new THREE.TubeGeometry(curve, 48, radius, 8, false), material)];
+  }
+  const SAMPLES = 96;
+  const pts = curve.getPoints(SAMPLES);
+  const totalLen = curve.getLength();
+  const DASH_LEN = 0.32, GAP_LEN = 0.2;
+  const dashFrac = DASH_LEN/totalLen, gapFrac = GAP_LEN/totalLen;
+  const meshes = [];
+  let t = 0;
+  while(t < 1){
+    const tEnd = Math.min(1, t + dashFrac);
+    const i0 = Math.max(0, Math.round(t*SAMPLES));
+    const i1 = Math.min(SAMPLES, Math.round(tEnd*SAMPLES));
+    if(i1 > i0+1){
+      const subCurve = new THREE.CatmullRomCurve3(pts.slice(i0, i1+1));
+      const segGeo = new THREE.TubeGeometry(subCurve, Math.max(2, i1-i0), radius, 8, false);
+      meshes.push(new THREE.Mesh(segGeo, material));
+    }
+    t = tEnd + gapFrac;
+  }
+  return meshes;
+}
+
 function rebuildConnections(){
   connectionsGroup.clear();
   connectionAnims = [];
@@ -1218,6 +1310,10 @@ function rebuildConnections(){
   // productos conectan el mismo par de puntos, más líneas paralelas se ven.
   const pairDrawnCount = {};
   function pairKey(aId,bId){ return [aId,bId].sort().join('|'); }
+  // Curva de cada conexión, indexada por id — Sdwan (v9 §3, ajustado) ya no flota sobre la sede:
+  // se dibuja SOBRE la conexión específica que balancea, así que rebuildSdwanBadges necesita la
+  // misma curva (con el desfase del "abanico" ya aplicado) que se usó para dibujar ese cable.
+  const curveByConexionId = {};
 
   state.conexiones.forEach((c, idx)=>{
     const start = getEntityPortWorldPos(c.aId);
@@ -1236,6 +1332,7 @@ function rebuildConnections(){
       mid.addScaledVector(perp, side*mag);
     }
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    curveByConexionId[c.id] = curve;
 
     const selected = state.selectedConexionId === c.id;
     // Color según el producto real que representa (ver getSubproductoColor); si la conexión no
@@ -1248,6 +1345,7 @@ function rebuildConnections(){
     // sobre el fondo oscuro y terminaba "lavando" cualquier color hacia el mismo blanco-cian
     // brillante, por más distinto que fuera el matiz real — así el color se ve tal cual es.
     const coreRadius = 0.032 * (selected ? 1.6 : 1);
+    const dashed = tipoSub && tipoSub.lineStyle==='dashed';
 
     // Backup (v9 §2): un tubo levemente más grueso y OSCURO detrás del núcleo, a modo de outline
     // — mismo matiz que el producto, luminosidad más baja — para distinguir "misma contratación
@@ -1255,35 +1353,35 @@ function rebuildConnections(){
     // se leen como líneas paralelas de color propio, sin outline).
     if(c.esBackup){
       const outlineRadius = coreRadius * 1.75;
-      const outlineGeo = new THREE.TubeGeometry(curve, 48, outlineRadius, 8, false);
       const outlineMat = new THREE.MeshBasicMaterial({
         color: darkenColor(baseColor, 0.42), transparent:true, opacity: selected ? 1 : 0.95,
       });
-      const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
-      outlineMesh.userData = { isConexion:true, conexionId:c.id };
-      connectionsGroup.add(outlineMesh);
+      buildTubeMeshes(curve, outlineRadius, outlineMat, dashed).forEach(m=>{
+        m.userData = { isConexion:true, conexionId:c.id };
+        connectionsGroup.add(m);
+      });
     }
 
-    const coreGeo = new THREE.TubeGeometry(curve, 48, coreRadius, 8, false);
     const coreMat = new THREE.MeshBasicMaterial({
       color: selected ? 0x67e3fa : baseColor, transparent:true, opacity: selected ? 1 : 0.95,
     });
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    coreMesh.userData = { isConexion:true, conexionId:c.id };
-    connectionsGroup.add(coreMesh);
+    buildTubeMeshes(curve, coreRadius, coreMat, dashed).forEach(m=>{
+      m.userData = { isConexion:true, conexionId:c.id };
+      connectionsGroup.add(m);
+    });
 
     // halo exterior, del mismo color que el cable — este sí queda aditivo (es un brillo suave,
     // no necesita leerse con precisión de matiz), grosor fijo, solo para que sea más fácil de
     // clickear, no como indicador de carga.
     const glowRadius = coreRadius * 2.6;
-    const glowGeo = new THREE.TubeGeometry(curve, 48, glowRadius, 8, false);
     const glowMat = new THREE.MeshBasicMaterial({
       color: baseColor, transparent:true, opacity: selected ? 0.24 : 0.11,
       blending: THREE.AdditiveBlending, depthWrite:false,
     });
-    const glowMesh = new THREE.Mesh(glowGeo, glowMat);
-    glowMesh.userData = { isConexion:true, conexionId:c.id };
-    connectionsGroup.add(glowMesh);
+    buildTubeMeshes(curve, glowRadius, glowMat, dashed).forEach(m=>{
+      m.userData = { isConexion:true, conexionId:c.id };
+      connectionsGroup.add(m);
+    });
 
     // una sola partícula viajera por cable, ritmo fijo (ya no escala con "potencia")
     const particleGeo = new THREE.SphereGeometry(0.075, 8, 8);
@@ -1297,7 +1395,7 @@ function rebuildConnections(){
   });
 
   rebuildSatelliteLinks();
-  rebuildSdwanBadges();
+  rebuildSdwanBadges(curveByConexionId);
 }
 
 /* --- Enlaces satelitales (Puntonet Space, `conexion:'satelital'` en el catálogo) ---
@@ -1394,42 +1492,53 @@ function updateSatelliteAnims(t){
    sobre el origen (la Sede/Matriz que tiene Sdwan activo), anclado un poco por encima del puerto
    — no vive en state.conexiones (no hay un segundo extremo), igual que los enlaces satelitales;
    se reconstruye junto con ellos en cada rebuildConnections(). */
+/* --- Sdwan: ícono de "balanceador" sobre un canal existente (ajuste post-v9 §3) ---
+   Ya no flota sobre el origen: cada instancia de Sdwan referencia una conexión puntual
+   (`inst.targetConexionId`, elegida en el popup — ver renderPopupSdwanField) y su ícono se
+   dibuja en el punto medio de ESA curva específica, orientado a lo largo del cable — se lee como
+   "esto está balanceando este canal", no como un estado genérico de la sede. No vive en
+   state.conexiones (no es un cable propio), así que se reconstruye junto con el resto en cada
+   rebuildConnections(), usando las curvas ya calculadas (curveByConexionId) para que el punto
+   coincida exactamente con el cable dibujado (incluido el desfase del "abanico"). */
 let sdwanAnims = [];
-const SDWAN_BADGE_Y_OFFSET = 1.1; // altura extra sobre el puerto de la entidad
-const SDWAN_BLINK_SPEED = 2.2;    // ciclos de parpadeo por segundo (ajustado a ojo, sin ritmo "tanda")
+const SDWAN_BLINK_SPEED = 2.2; // ciclos de parpadeo por segundo (ajustado a ojo, sin ritmo "tanda")
 
-function rebuildSdwanBadges(){
+function rebuildSdwanBadges(curveByConexionId){
   sdwanAnims = [];
+  const sub = getSubproducto('sdwan');
+  const color = getSubproductoColor(sub);
   [...state.sedes, ...state.matrices].forEach(entity=>{
-    const tieneSdwan = entity.instancias.some(inst=>inst.subproductoId==='sdwan');
-    if(!tieneSdwan) return;
-    const sub = getSubproducto('sdwan');
-    const color = getSubproductoColor(sub);
-    const start = getEntityPortWorldPos(entity.id);
+    entity.instancias.forEach(inst=>{
+      if(inst.subproductoId!=='sdwan' || !inst.targetConexionId) return;
+      const curve = curveByConexionId[inst.targetConexionId];
+      if(!curve) return; // conexión inexistente/borrada: no se dibuja (limpiarSdwanQueApuntanA debería evitar este caso)
+      const pos = curve.getPointAt(0.5);
+      const tangent = curve.getTangentAt(0.5); // para orientar el ícono a lo largo del cable, no siempre de frente
 
-    const badgeGeo = new THREE.PlaneGeometry(0.34, 0.34);
-    const badgeMat = new THREE.MeshBasicMaterial({
-      color, transparent:true, opacity:0.5, side:THREE.DoubleSide,
-      blending: THREE.AdditiveBlending, depthWrite:false,
+      const badgeGeo = new THREE.PlaneGeometry(0.34, 0.34);
+      const badgeMat = new THREE.MeshBasicMaterial({
+        color, transparent:true, opacity:0.5, side:THREE.DoubleSide,
+        blending: THREE.AdditiveBlending, depthWrite:false,
+      });
+      const badge = new THREE.Mesh(badgeGeo, badgeMat);
+      badge.position.copy(pos).add(new THREE.Vector3(0, 0.22, 0)); // apenas por encima del cable, para no clipear con el tubo
+      badge.lookAt(pos.clone().add(tangent));
+      badge.rotation.z += Math.PI/4; // rombo en vez de cuadrado alineado a ejes: se lee más como "nodo sobre el cable"
+      connectionsGroup.add(badge);
+
+      // pequeño marco (edges), mismo patrón que antes: ancla la lectura del ícono, no parpadea.
+      const frameGeo = new THREE.EdgesGeometry(badgeGeo);
+      const frameMat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.85 });
+      const frame = new THREE.LineSegments(frameGeo, frameMat);
+      frame.position.copy(badge.position);
+      frame.rotation.copy(badge.rotation);
+      connectionsGroup.add(frame);
+
+      // desfase determinístico por posición, para que los badges de distintos canales no
+      // parpadeen todos en fase (puramente estético).
+      const phase = Math.abs((pos.x*9.1 + pos.z*5.3) % (Math.PI*2));
+      sdwanAnims.push({ badge, phase });
     });
-    const badge = new THREE.Mesh(badgeGeo, badgeMat);
-    badge.position.copy(start).add(new THREE.Vector3(0, SDWAN_BADGE_Y_OFFSET, 0));
-    badge.rotation.x = -Math.PI/4; // ligera inclinación, se lee mejor desde la vista isométrica que un plano vertical puro
-    connectionsGroup.add(badge);
-
-    // pequeño marco (edges) alrededor del cuadrado, para que se lea como "badge" y no como un
-    // destello suelto — mismo color, opacidad fija (no parpadea, ancla la lectura del cuadrado).
-    const frameGeo = new THREE.EdgesGeometry(badgeGeo);
-    const frameMat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.8 });
-    const frame = new THREE.LineSegments(frameGeo, frameMat);
-    frame.position.copy(badge.position);
-    frame.rotation.copy(badge.rotation);
-    connectionsGroup.add(frame);
-
-    // desfase determinístico por posición, para que los badges de distintas entidades no
-    // parpadeen todos en fase (puramente estético).
-    const phase = Math.abs((start.x*9.1 + start.z*5.3) % (Math.PI*2));
-    sdwanAnims.push({ badge, phase });
   });
 }
 
@@ -1743,6 +1852,8 @@ function refreshSedeAssets(sede){
     radius = 2.6; assetY = sede.group.userData.coreY + 0.55; // anillo propio alrededor del hub
   } else if(sede.tipo==='datacenter'){
     radius = 3.4; assetY = dcY + 0.55; // anillo amplio, por fuera de los 3 tiers del edificio
+  } else if(sede.tipo==='nube'){
+    radius = 2.1; assetY = sede.group.userData.coreY + 0.45; // anillo alrededor del cúmulo de nube (v9 §5)
   } else {
     const tamano = getTamanoLocal(sede.tamano);
     radius = tamano.assetRadius; assetY = tamano.box[1] + 0.35;
@@ -1797,6 +1908,7 @@ function occupied(gx,gz,excludeId){
   if(gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro
   if(state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId)) return true;
   if(state.matrices.some(m=>m.gx===gx && m.gz===gz && m.id!==excludeId)) return true;
+  if(state.nubes.some(n=>n.gx===gx && n.gz===gz && n.id!==excludeId)) return true;
   return false;
 }
 
@@ -1874,7 +1986,10 @@ function removeSedeVisual(sede){ scene.remove(sede.group); removeNameLabel(sede.
 /* Elimina una sede por completo: su geometría 3D, todos sus productos propios, cualquier
    conexión que la involucre (con la Matriz o el Datacenter), y la limpia de la selección. */
 function deleteSede(sede){
-  conexionesDe(sede.id).forEach(c=>{ state.conexiones = state.conexiones.filter(x=>x.id!==c.id); });
+  conexionesDe(sede.id).forEach(c=>{
+    state.conexiones = state.conexiones.filter(x=>x.id!==c.id);
+    limpiarSdwanQueApuntanA(c.id);
+  });
   if(state.selectedConexionId){
     const stillExists = state.conexiones.some(c=>c.id===state.selectedConexionId);
     if(!stillExists) state.selectedConexionId = null;
@@ -2033,6 +2148,7 @@ function createNube(nombreProveedor, gx, gz){
     if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
   });
   state.nubes.push(nube);
+  refreshSedeAssets(nube);
   updateSedeNameSprite(nube);
   rebuildConnections();
   return nube;
@@ -2074,6 +2190,32 @@ matrizDragCard.addEventListener('click', ()=>{
   armPlacing({ tipo:'matriz' }, 'Toca el canvas para colocar la Matriz');
 });
 
+/* Crear una Nube directamente desde el catálogo (v9 §5), sin pasar por el dropdown de Cloud
+   Interconnect — mismo patrón de arrastre que Sede/Matriz. Pide el proveedor con un prompt de
+   texto libre, igual que "+ Agregar nueva Nube" en el dropdown (misma función createNube). */
+const nubeDragCard = document.getElementById('nubeDragCard');
+function placeNubeAtClientPoint(clientX, clientY){
+  const rect = wrap.getBoundingClientRect();
+  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
+  const dropRaycaster = new THREE.Raycaster();
+  dropRaycaster.setFromCamera(mouse, camera);
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+  const point = new THREE.Vector3();
+  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  if(!point) return;
+  const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
+  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  createNube(nombre, gx, gz);
+}
+nubeDragCard.addEventListener('dragstart', (e)=>{
+  draggingFromPanel = 'nube';
+  e.dataTransfer.setData('text/plain', 'nube');
+});
+nubeDragCard.addEventListener('click', ()=>{
+  if(state.placing && state.placing.tipo==='nube'){ disarmPlacing(); return; }
+  armPlacing({ tipo:'nube' }, 'Toca el canvas para colocar la Nube');
+});
+
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
    el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
    estuviera "vistiendo"), y solo entonces se abre el formulario para completar sus atributos. */
@@ -2083,6 +2225,7 @@ function playWrapEffect(entityId, subproductoId, onDone){
   const color = getSubproductoColor(sub);
   let w=1.8, h=1.8, d=1.8;
   if(entity.tipo==='matriz'){ w = d = 4.6; h = entity.group.userData.coreY + 0.5; }
+  else if(entity.tipo==='nube'){ w = d = 2.8; h = entity.group.userData.coreY + 0.5; }
   else if(entity.id==='datacenter'){ w = 3.6; h = dcY + 0.3; d = 2.8; }
   else { const tamano = getTamanoLocal(entity.tamano); w = tamano.box[0]+0.35; h = tamano.box[1]+0.2; d = tamano.box[2]+0.35; }
 
@@ -2115,15 +2258,9 @@ function assignSubproductoAtClientPoint(subproductoId, clientX, clientY){
   const hit = hitTestAtEvent({ clientX, clientY }); // ¿sobre qué sede, Matriz, Nube o Datacenter se soltó?
   if(!hit.sedeId) return; // se soltó fuera de cualquier entidad válida: sin efecto.
   const sub = getSubproducto(subproductoId);
-  // Nube (v9 §4/§5): por ahora solo es destino de Cloud Interconnect — el catálogo de productos
-  // montables (IaaS/BaaS/DRaaS) llega en una fase siguiente, así que ningún producto se puede
-  // soltar directamente sobre ella todavía.
-  if(tipoEntidad(hit.sedeId)==='nube'){
-    showToast('Por ahora la Nube solo se conecta mediante Cloud Interconnect. El montaje de productos Hosting se habilita en una fase siguiente.');
-    return;
-  }
-  // Housing/Hosting (Collocation, Crossconexión, IaaS, BaaS, DRaaS): equipamiento que se renta
-  // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo.
+  const tipoHit = tipoEntidad(hit.sedeId);
+  // Housing (Collocation, Crossconexión): equipamiento que se renta físicamente en el Datacenter
+  // de Puntonet, así que solo se puede soltar sobre ese nodo.
   if(sub.soloDatacenter){
     if(hit.sedeId!=='datacenter'){
       showToast(`"${sub.nombre}" solo se puede agregar al Datacenter Epicentro.`);
@@ -2134,11 +2271,27 @@ function assignSubproductoAtClientPoint(subproductoId, clientX, clientY){
     });
     return;
   }
-  // Resto del catálogo: se asigna a una sede o a una Matriz (el Datacenter no tiene catálogo propio).
-  if(hit.sedeId!=='datacenter'){
+  // Hosting (IaaS, BaaS, DRaaS) — v9 §5: se monta sobre una Nube, no sobre el Datacenter ni una
+  // Sede/Matriz. Si todavía no existe ninguna Nube, se lo indica (se crea desde el dropdown
+  // "Conectar a" de Cloud Interconnect, o soltando este mismo producto sobre una Nube existente).
+  if(sub.soloNube){
+    if(tipoHit!=='nube'){
+      showToast(`"${sub.nombre}" solo se puede agregar a una Nube. Crea una arrastrando "Nube" desde el panel izquierdo, o desde el popup de Cloud Interconnect, y suelta el producto ahí.`);
+      return;
+    }
     playWrapEffect(hit.sedeId, subproductoId, ()=>{
       openPopupForNew(subproductoId, [hit.sedeId]);
     });
+    return;
+  }
+  // Resto del catálogo: se asigna a una sede o a una Matriz (ni el Datacenter ni la Nube tienen
+  // catálogo propio abierto — cada uno solo acepta sus productos designados arriba).
+  if(hit.sedeId!=='datacenter' && tipoHit!=='nube'){
+    playWrapEffect(hit.sedeId, subproductoId, ()=>{
+      openPopupForNew(subproductoId, [hit.sedeId]);
+    });
+  } else if(tipoHit==='nube'){
+    showToast(`"${sub.nombre}" se asigna a una sede o a una Matriz, no a una Nube.`);
   } else {
     showToast(`"${sub.nombre}" se asigna a una sede o a una Matriz, no al Datacenter.`);
   }
@@ -2160,6 +2313,10 @@ wrap.addEventListener('drop', (e)=>{
   }
   if(payload==='matriz'){
     placeMatrizAtClientPoint(e.clientX, e.clientY);
+    return;
+  }
+  if(payload==='nube'){
+    placeNubeAtClientPoint(e.clientX, e.clientY);
     return;
   }
   if(payload.startsWith('subproducto:')){
@@ -2251,6 +2408,7 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor, isValidTarget
 
 makeTouchDraggable(sedeDragCard, placeSedeAtClientPoint, 'Sede', 'var(--cian)');
 makeTouchDraggable(matrizDragCard, placeMatrizAtClientPoint, 'Matriz', 'var(--indigo)');
+makeTouchDraggable(nubeDragCard, placeNubeAtClientPoint, 'Nube', '#a78bfa');
 
 
 
@@ -2536,6 +2694,7 @@ function onPointerUp(e){
       if(state.placing){
         if(state.placing.tipo==='sede') placeSedeAtClientPoint(e.clientX, e.clientY);
         else if(state.placing.tipo==='matriz') placeMatrizAtClientPoint(e.clientX, e.clientY);
+        else if(state.placing.tipo==='nube') placeNubeAtClientPoint(e.clientX, e.clientY);
         else if(state.placing.tipo==='subproducto') assignSubproductoAtClientPoint(state.placing.id, e.clientX, e.clientY);
         disarmPlacing();
       } else {
@@ -2702,9 +2861,8 @@ function renderMatrizEditBox(matriz){
 const nubeEditBoxEl = document.getElementById('nubeEditBox');
 
 /* Bloque de edición de la Nube seleccionada (v9 §4/§5): nombre/proveedor editable y botón de
-   eliminar — mismo patrón que renderMatrizEditBox. Sin catálogo de productos propios todavía
-   (IaaS/BaaS/DRaaS montables sobre la Nube llegan en una fase siguiente); por ahora solo sirve
-   como destino de Cloud Interconnect. */
+   eliminar — mismo patrón que renderMatrizEditBox. Sus productos propios (IaaS/BaaS/DRaaS) se
+   editan desde "Productos propios de la Nube" (ver renderRightPanel), igual que en una Matriz. */
 function renderNubeEditBox(nube){
   if(!nube){
     nubeEditBoxEl.style.display = 'none';
@@ -2712,20 +2870,36 @@ function renderNubeEditBox(nube){
     return;
   }
   nubeEditBoxEl.style.display = 'flex';
-  nubeEditBoxEl.innerHTML = `
-    <div class="field">
-      <label>Nombre / proveedor de la Nube</label>
-      <input type="text" id="nubeNombreInput" value="${escapeHtml(nube.nombre)}" placeholder="Ej. AWS, Azure, GCP...">
-    </div>
-    <button class="btn danger-outline" id="btnDeleteNube" style="width:100%;">Eliminar Nube</button>
-  `;
-  document.getElementById('nubeNombreInput').addEventListener('input', (e)=>{
-    nube.nombre = e.target.value;
-    updateSedeNameSprite(nube);
-    navSedeLabel.textContent = `Nube: ${nube.nombre || '(sin nombre)'}`;
-  });
+  if(nube.esAutoInternet){
+    // v9 §6: la Nube automática de Internet no tiene nombre editable por el vendedor — es única
+    // por proyecto y su identidad ("es la salida de Internet") no debe poder confundirse
+    // renombrándola. El branding definitivo (ícono/nombre visual) queda para otra fase.
+    nubeEditBoxEl.innerHTML = `
+      <div class="field">
+        <label>Nube automática de Internet</label>
+        <input type="text" value="${escapeHtml(nube.nombre)}" disabled style="opacity:.6;cursor:not-allowed;">
+        <div class="toggleHint" style="margin-top:5px;">Es la salida de Internet compartida por todos los productos de Internet del proyecto — su nombre no es editable.</div>
+      </div>
+      <button class="btn danger-outline" id="btnDeleteNube" style="width:100%;">Eliminar Nube</button>
+    `;
+  } else {
+    nubeEditBoxEl.innerHTML = `
+      <div class="field">
+        <label>Nombre / proveedor de la Nube</label>
+        <input type="text" id="nubeNombreInput" value="${escapeHtml(nube.nombre)}" placeholder="Ej. AWS, Azure, GCP...">
+      </div>
+      <button class="btn danger-outline" id="btnDeleteNube" style="width:100%;">Eliminar Nube</button>
+    `;
+    document.getElementById('nubeNombreInput').addEventListener('input', (e)=>{
+      nube.nombre = e.target.value;
+      updateSedeNameSprite(nube);
+      navSedeLabel.textContent = `Nube: ${nube.nombre || '(sin nombre)'}`;
+    });
+  }
   document.getElementById('btnDeleteNube').addEventListener('click', ()=>{
-    const ok = confirm(`¿Eliminar "${nube.nombre}" y las conexiones (Cloud Interconnect) que apuntan a ella? Esta acción no se puede deshacer.`);
+    const ok = nube.esAutoInternet
+      ? confirm(`"${nube.nombre}" es la Nube automática de Internet: TODOS los productos de Internet (Corporativo/Startup/Teleworking) de cualquier sede que apunten a ella se eliminarán también. Si luego se agrega otro producto de Internet, se creará una Nube nueva. ¿Eliminar de todos modos?`)
+      : confirm(`¿Eliminar "${nube.nombre}" y las conexiones (Cloud Interconnect) que apuntan a ella? Esta acción no se puede deshacer.`);
     if(ok) deleteNube(nube);
   });
 }
@@ -2750,7 +2924,7 @@ function totalSubproductosVertical(verticalId){
 function subproductosAsignadosVertical(verticalId){
   const productoIds = new Set(getProductosByVertical(verticalId).map(p=>p.id));
   const ids = new Set();
-  [...state.sedes, ...state.matrices, state.datacenter].forEach(entity=>{
+  [...state.sedes, ...state.matrices, ...state.nubes, state.datacenter].forEach(entity=>{
     (entity.instancias||[]).forEach(inst=>{
       const sub = getSubproducto(inst.subproductoId);
       if(sub && productoIds.has(sub.productoNivel2Id)) ids.add(sub.id);
@@ -2832,7 +3006,9 @@ function renderCatalogPanel(){
         chip.draggable = true;
         chip.title = s.soloDatacenter
           ? s.nombre + ' — solo se asigna al Datacenter Epicentro (equipamiento propio de Puntonet)'
-          : s.nombre + ' — arrastra a una sede o a una Matriz';
+          : s.soloNube
+            ? s.nombre + ' — solo se asigna a una Nube (Hosting)'
+            : s.nombre + ' — arrastra a una sede o a una Matriz';
         chip.dataset.subproductoId = s.id;
         chip.style.background = colorHex(getSubproductoColor(s));
         chip.textContent = initials(s.nombre);
@@ -2846,11 +3022,15 @@ function renderCatalogPanel(){
           if(state.placing && state.placing.tipo==='subproducto' && state.placing.id===s.id){ disarmPlacing(); return; }
           const hint = s.soloDatacenter
             ? `Toca el Datacenter Epicentro para asignar "${s.nombre}"`
-            : `Toca una sede o la Matriz para asignar "${s.nombre}"`;
+            : s.soloNube
+              ? `Toca una Nube para asignar "${s.nombre}" (créala primero desde un Cloud Interconnect si aún no tienes una)`
+              : `Toca una sede o la Matriz para asignar "${s.nombre}"`;
           armPlacing({ tipo:'subproducto', id:s.id }, hint);
         });
         makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)),
-          s.soloDatacenter ? (id=>id==='datacenter') : (id=>id!=='datacenter'));
+          s.soloDatacenter ? (id=>id==='datacenter')
+            : s.soloNube ? (id=>tipoEntidad(id)==='nube')
+            : (id=>id!=='datacenter' && tipoEntidad(id)!=='nube'));
         const chipLabel = document.createElement('div');
         chipLabel.className = 'catalog-chip-label';
         chipLabel.textContent = s.nombre;
@@ -2859,6 +3039,12 @@ function renderCatalogPanel(){
           const badge = document.createElement('span');
           badge.className = 'chip-dc-badge';
           badge.textContent = 'DC';
+          chipItem.appendChild(badge);
+        }
+        if(s.soloNube){
+          const badge = document.createElement('span');
+          badge.className = 'chip-dc-badge';
+          badge.textContent = 'NUBE';
           chipItem.appendChild(badge);
         }
         chipItem.appendChild(chipLabel);
@@ -2894,7 +3080,7 @@ function renderRightPanel(){
 
   const nombres = ids.map(id=>getSedeById(id).nombre);
   navSedeLabel.textContent = isMatriz ? `Matriz: ${nombres[0]}`
-    : isNube ? `Nube: ${nombres[0]}`
+    : isNube ? `Nube: ${nombres[0]}${getNubeById(singleId) && getNubeById(singleId).esAutoInternet ? ' (automática de Internet)' : ''}`
     : isDatacenter ? 'Datacenter Epicentro'
     : (ids.length===1 ? `Sede: ${nombres[0]}` : `${ids.length} entidades seleccionadas: ${nombres.join(', ')}`);
 
@@ -2902,7 +3088,7 @@ function renderRightPanel(){
   matrizHintEl.textContent = isMatriz
     ? 'Arrastra un producto desde el panel izquierdo sobre esta Matriz para agregarlo como producto propio.'
     : isNube
-      ? 'Por ahora la Nube solo sirve como destino de Cloud Interconnect — el montaje de productos Hosting (IaaS/BaaS/DRaaS) se habilita en una fase siguiente.'
+      ? 'Arrastra un producto de Hosting (IaaS/BaaS/DRaaS) desde el panel izquierdo sobre esta Nube para agregarlo como producto propio.'
       : isDatacenter
       ? 'Arrastra un producto de Cloud (Housing/Hosting) desde el panel izquierdo para agregarlo como producto propio, o arrastra desde el puerto (●) de una sede o Matriz hasta aquí para contratar Internet/ISP.'
       : '';
@@ -2930,10 +3116,19 @@ function renderRightPanel(){
       visibles.forEach(inst=>{
         const vertical = getVertical(inst.verticalId);
         const sub = getSubproducto(inst.subproductoId);
+        // Sdwan (v9 §3, ajustado): el nombre solo no dice a qué canal se está aplicando — se
+        // agrega el destino inline, igual que Canal de Conexión/Cloud Interconnect en el reporte.
+        let nombreMostrado = inst.nombreSubproducto;
+        if(sub.id==='sdwan'){
+          const target = inst.targetConexionId ? state.conexiones.find(c=>c.id===inst.targetConexionId) : null;
+          nombreMostrado += target
+            ? ` <span style="color:var(--muted);font-weight:400;">→ ${escapeHtml(nombreEntidad(otroExtremo(target, entity.id)))}</span>`
+            : ` <span style="color:var(--muted);font-weight:400;">(sin canal aplicado)</span>`;
+        }
         const row = document.createElement('div');
         row.className='inst-row';
         row.innerHTML = `<span class="inst-dot" style="background:${colorHex(getSubproductoColor(sub))};"></span>
-          <span class="inst-name">${inst.nombreSubproducto}</span>
+          <span class="inst-name">${nombreMostrado}</span>
           <span class="inst-vertical">${vertical.nombre}</span>
           <span class="inst-delete" title="Eliminar">−</span>`;
         row.addEventListener('click', ()=>openPopupForEdit(entity.id, inst.instanciaId));
@@ -2984,6 +3179,18 @@ function abrirConexion(c){
    clic, abre su popup de edición. Las conexiones se crean arrastrando un producto de
    Conectividad sobre una Sede/Matriz (con o sin dropdown de destino, según el producto) o
    arrastrando el cable a mano desde el puerto (●) de la entidad. */
+/* Busca, en cualquier Sede/Matriz, la instancia de Sdwan que balancea esta conexión (si hay
+   alguna) — a diferencia de conexionTieneSdwan (que solo mira una entidad puntual), esta recorre
+   todas, porque el Sdwan puede vivir en cualquiera de los 2 extremos de la conexión. Usada para
+   mostrar el indicador "⚡ Sdwan" en la lista de Conexiones. */
+function buscarSdwanQueApuntaA(conexionId){
+  for(const entity of [...state.sedes, ...state.matrices]){
+    const inst = entity.instancias.find(i=>i.subproductoId==='sdwan' && i.targetConexionId===conexionId);
+    if(inst) return inst;
+  }
+  return null;
+}
+
 function renderConnectionsBox(entityId){
   if(!entityId){
     connectionsBoxEl.style.display = 'none';
@@ -3010,6 +3217,8 @@ function renderConnectionsBox(entityId){
     const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
     const dotColor = tipoSub ? colorHex(getSubproductoColor(tipoSub)) : 'var(--cian)';
     const tipoLabel = tipoSub ? tipoSub.nombre + (c.esBackup ? ' (Backup)' : '') : (c.esBackup ? 'Backup' : '');
+    const sdwanAplicado = buscarSdwanQueApuntaA(c.id);
+    const sdwanTag = sdwanAplicado ? ` <span class="connDetalle" title="Sdwan balanceando este canal">⚡ Sdwan</span>` : '';
     const inst = getInstanciaLigada(c);
     // El detalle mostrado sale de las propiedades reales de la instancia (Ancho de banda,
     // Ubicaciones, Nube, etc. — lo que sea que tenga ese subproducto), no de un campo aparte.
@@ -3025,7 +3234,7 @@ function renderConnectionsBox(entityId){
     row.className = 'connRow';
     row.innerHTML = `
       <span class="connDot" style="background:${dotColor};"></span>
-      <span class="connName">${nombreEntidad(otro)}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}</span>
+      <span class="connName">${nombreEntidad(otro)}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}${sdwanTag}</span>
       <span class="connArrow" title="Editar">✎</span>
       <span class="connDelete" title="${c.esBackup ? 'Quitar este enlace de backup' : 'Eliminar conexión (y el servicio asignado que representa)'}">−</span>`;
     row.addEventListener('click', (e)=>{
@@ -3197,6 +3406,9 @@ const popupConexionSelect = document.getElementById('popupConexionSelect');
 const popupConexionHint = document.getElementById('popupConexionHint');
 const popupBackupField = document.getElementById('popupBackupField');
 const popupBackupCheckbox = document.getElementById('popupBackupCheckbox');
+const popupSdwanField = document.getElementById('popupSdwanField');
+const popupSdwanSelect = document.getElementById('popupSdwanSelect');
+const popupSdwanHint = document.getElementById('popupSdwanHint');
 
 /* Marca (Nivel 4) deja de ser relevante para Conectividad (v9 §1): ahí la marca del enlace no es
    un dato que el vendedor cotice (a diferencia de Ciberseguridad/Colaboración, donde sí importa
@@ -3215,6 +3427,71 @@ function renderPopupBackupField(sub, inst){
   }
   popupBackupField.style.display = 'block';
   popupBackupCheckbox.checked = !!(inst && inst.backup);
+}
+
+/* --- Sdwan como balanceador sobre un canal existente (ajuste post-v9 §3) ---
+   Sdwan ya no genera su propio cable ni se aplica "a la sede en general": se aplica sobre UNA
+   conexión ya existente de esa sede (Canal de Conexión, Cloud Interconnect, Internet, Túnel
+   IPsec), elegida en este dropdown — el ícono se dibuja sobre esa conexión (ver
+   rebuildSdwanBadges), no flotando sobre la sede. No se listan los enlaces de Backup por
+   separado (son la misma contratación que su enlace principal). */
+function conexionesAplicablesParaSdwan(entityId){
+  return conexionesDe(entityId).filter(c=>!c.esBackup);
+}
+/* ¿Esta conexión ya tiene un Sdwan aplicado (de OTRA instancia, no la que se está editando)? Se
+   usa para deshabilitar esa opción en el dropdown — cada conexión admite un solo Sdwan. */
+function conexionTieneSdwan(entityId, conexionId, excludeInstanciaId){
+  const entity = getSedeById(entityId);
+  return entity.instancias.some(inst=>
+    inst.subproductoId==='sdwan' && inst.targetConexionId===conexionId && inst.instanciaId!==excludeInstanciaId);
+}
+function renderPopupSdwanField(sub, ids, inst){
+  if(!sub.requiereConexionExistente || ids.length!==1){
+    popupSdwanField.style.display = 'none';
+    popupSdwanSelect.innerHTML = '';
+    popupSdwanSelect.style.display = '';
+    popupSdwanHint.style.display = 'none';
+    return;
+  }
+  const entityId = ids[0];
+  const excludeInstanciaId = inst ? inst.instanciaId : null;
+  const candidatos = conexionesAplicablesParaSdwan(entityId);
+  popupSdwanField.style.display = 'block';
+  if(candidatos.length===0){
+    popupSdwanSelect.style.display = 'none';
+    popupSdwanSelect.innerHTML = '';
+    popupSdwanHint.style.display = 'block';
+    popupSdwanHint.textContent = 'Esta sede todavía no tiene canales (Canal de Conexión, Cloud Interconnect, Internet, Túnel IPsec) — agrega uno primero y luego vuelve a aplicar Sdwan.';
+    return;
+  }
+  popupSdwanSelect.style.display = '';
+  popupSdwanHint.style.display = 'none';
+  const actual = inst ? inst.targetConexionId : null;
+  const opciones = ['<option value="">Sin aplicar por ahora</option>']
+    .concat(candidatos.map(c=>{
+      const otro = otroExtremo(c, entityId);
+      const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
+      const ocupada = conexionTieneSdwan(entityId, c.id, excludeInstanciaId);
+      const label = `${tipoSub ? tipoSub.nombre : 'Conexión'} → ${escapeHtml(nombreEntidad(otro))}${ocupada ? ' (ya tiene Sdwan)' : ''}`;
+      const selected = c.id===actual ? ' selected' : '';
+      const disabled = ocupada ? ' disabled' : '';
+      return `<option value="${c.id}"${selected}${disabled}>${label}</option>`;
+    }));
+  popupSdwanSelect.innerHTML = opciones.join('');
+  if(!actual) popupSdwanSelect.value = '';
+}
+
+/* Elimina cualquier instancia de Sdwan (en cualquier Sede/Matriz) que apunte a una conexión que
+   está a punto de desaparecer — un Sdwan sin canal que balancear no tiene sentido. Se llama desde
+   todos los puntos donde una `conexion` se borra directamente (eliminarConexion y los borrados en
+   cascada de deleteSede/deleteInstanceDirect que no pasan por eliminarConexion). */
+function limpiarSdwanQueApuntanA(conexionId){
+  [...state.sedes, ...state.matrices].forEach(entity=>{
+    const antes = entity.instancias.length;
+    entity.instancias = entity.instancias.filter(inst=>
+      !(inst.subproductoId==='sdwan' && inst.targetConexionId===conexionId));
+    if(entity.instancias.length!==antes) refreshSedeAssets(entity);
+  });
 }
 
 let popupContext = null; // { mode:'new', subproductoId, sedeIds } | { mode:'edit', sedeId, instanciaId }
@@ -3238,6 +3515,7 @@ function openPopupForNew(subproductoId, targetIds){
   btnDeleteInstance.style.display='none';
   updatePopupMarcaVisibility(vertical.id);
   renderPopupBackupField(sub, null);
+  renderPopupSdwanField(sub, ids, null);
 
   popupMultiTags.innerHTML='';
   if(popupContext.sedeIds.length>1){
@@ -3405,6 +3683,7 @@ function openPopupForEdit(sedeId, instanciaId){
   btnDeleteInstance.style.display='inline-block';
   updatePopupMarcaVisibility(vertical.id);
   renderPopupBackupField(sub, inst);
+  renderPopupSdwanField(sub, [sedeId], inst);
   renderPopupConexionField(sub, [sedeId], instanciaTieneConexionLigada(instanciaId));
 
   renderPopupProps(sub.parametros.slice(0,3), inst.propiedades || {});
@@ -3453,6 +3732,8 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
   const marca = popupMarca.value.trim();
   const notas = popupNotas.value.trim();
   const backup = popupBackupField.style.display!=='none' && popupBackupCheckbox.checked;
+  const targetConexionId = (popupSdwanField.style.display!=='none' && popupSdwanSelect.style.display!=='none')
+    ? (popupSdwanSelect.value || null) : null;
 
   if(popupContext.mode==='new'){
     const sub = getSubproducto(popupContext.subproductoId);
@@ -3465,7 +3746,7 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
         subproductoId: sub.id,
         verticalId: producto.verticalId,
         nombreSubproducto: sub.nombre,
-        propiedades, notas, marca, backup,
+        propiedades, notas, marca, backup, targetConexionId,
         creadoEn: new Date().toISOString(),
       };
       sede.instancias.push(instancia);
@@ -3493,6 +3774,7 @@ document.getElementById('btnSavePopup').addEventListener('click', ()=>{
     inst.notas = notas;
     inst.marca = marca;
     inst.backup = backup;
+    inst.targetConexionId = targetConexionId;
     refreshSedeAssets(sede);
     // Si el producto es Canal de Conexión/Cloud Interconnect y todavía no tenía cable (por eso
     // se mostró el dropdown), y el vendedor eligió un destino ahora, se crea recién en este momento.
@@ -3517,6 +3799,7 @@ function deleteInstanceDirect(entity, instanciaId){
   if(conexionesLigadas.length){
     const idsLigados = new Set(conexionesLigadas.map(c=>c.id));
     state.conexiones = state.conexiones.filter(c=>!idsLigados.has(c.id));
+    conexionesLigadas.forEach(c=> limpiarSdwanQueApuntanA(c.id));
     if(state.selectedConexionId && idsLigados.has(state.selectedConexionId)) state.selectedConexionId = null;
   }
   if(entity.tipo==='matriz'){
@@ -3562,17 +3845,20 @@ function eliminarConexion(conexionId){
     const owner = c.ownerId ? getSedeById(c.ownerId) : null;
     const inst = owner ? owner.instancias.find(i=>i.instanciaId===c.instanciaId) : null;
     if(inst) inst.backup = false;
+    limpiarSdwanQueApuntanA(conexionId);
     if(state.selectedConexionId === conexionId) state.selectedConexionId = null;
     rebuildConnections();
     renderRightPanel();
     return;
   }
   state.conexiones = state.conexiones.filter(x=>x.id!==conexionId);
+  limpiarSdwanQueApuntanA(conexionId);
   // Si esta conexión tenía un backup propio (mismo instanciaId), se elimina junto con ella — no
   // tiene sentido dejar un enlace de respaldo sin el enlace principal que respalda.
   const backupHermano = state.conexiones.find(x=>x.instanciaId===c.instanciaId && x.esBackup);
   if(backupHermano){
     state.conexiones = state.conexiones.filter(x=>x.id!==backupHermano.id);
+    limpiarSdwanQueApuntanA(backupHermano.id);
     if(state.selectedConexionId===backupHermano.id) state.selectedConexionId = null;
   }
   if(c.instanciaId && c.ownerId){
@@ -3651,9 +3937,11 @@ renderLogoButton();
 
 function buildConfiguracionCliente(){
   return {
-    version: 12, // v12: Backup/doble enlace por instancia (esBackup en conexiones, backup en
-                 // instancias) + nueva entidad Nube (destino de Cloud Interconnect) + Sdwan ya
-                 // no genera conexión (overlay visual únicamente)
+    version: 13, // v13: Sdwan se aplica sobre un canal EXISTENTE elegido por el vendedor
+                 // (inst.targetConexionId), en vez de ser un estado genérico de la sede — su
+                 // ícono se dibuja sobre esa conexión específica (ver rebuildSdwanBadges).
+                 // v12: Backup/doble enlace por instancia (esBackup en conexiones, backup en
+                 // instancias) + nueva entidad Nube (destino de Cloud Interconnect)
     nombreCliente: state.clienteNombre || 'Sin nombre',
     clienteLogo: state.clienteLogo || null,
     generadoEn: new Date().toISOString(),
@@ -3667,15 +3955,15 @@ function buildConfiguracionCliente(){
       instancias: m.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
-        marca: i.marca, backup: !!i.backup, creadoEn: i.creadoEn,
+        marca: i.marca, backup: !!i.backup, targetConexionId: i.targetConexionId || null, creadoEn: i.creadoEn,
       })),
     })),
     nubes: state.nubes.map(n=>({
-      id: n.id, nombre: n.nombre, gx: n.gx, gz: n.gz,
+      id: n.id, nombre: n.nombre, gx: n.gx, gz: n.gz, esAutoInternet: !!n.esAutoInternet,
       instancias: n.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
-        marca: i.marca, backup: !!i.backup, creadoEn: i.creadoEn,
+        marca: i.marca, backup: !!i.backup, targetConexionId: i.targetConexionId || null, creadoEn: i.creadoEn,
       })),
     })),
     datacenter: {
@@ -3683,7 +3971,7 @@ function buildConfiguracionCliente(){
       instancias: state.datacenter.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
-        marca: i.marca, backup: !!i.backup, creadoEn: i.creadoEn,
+        marca: i.marca, backup: !!i.backup, targetConexionId: i.targetConexionId || null, creadoEn: i.creadoEn,
       })),
     },
     conexiones: state.conexiones.map(c=>({
@@ -3699,7 +3987,7 @@ function buildConfiguracionCliente(){
       instancias: s.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
-        marca: i.marca, backup: !!i.backup, creadoEn: i.creadoEn,
+        marca: i.marca, backup: !!i.backup, targetConexionId: i.targetConexionId || null, creadoEn: i.creadoEn,
       })),
     })),
   };
@@ -3788,7 +4076,14 @@ function openReport(){
     const conexionLigada = sub.ocultaEnServiciosAsignados
       ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId && !c.esBackup) : null;
     const destinoTxt = conexionLigada
-      ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}</span>` : '';
+      ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}</span>`
+      // Sdwan (v9 §3, ajustado): no tiene conexión propia, pero sí un canal balanceado
+      // (inst.targetConexionId) — se muestra igual que un destino, mostrando los 2 extremos del
+      // canal ya que Sdwan no es "dueño" de ninguno de los 2.
+      : (sub.id==='sdwan' && inst.targetConexionId)
+        ? (()=>{ const t = state.conexiones.find(c=>c.id===inst.targetConexionId);
+            return t ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(t.aId)} ↔ ${nombreEntidad(t.bId)}</span>` : ''; })()
+        : '';
     row.innerHTML = `
       <div class="rline1"><span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span style="color:var(--muted);font-weight:400;">(heredado de '+heredadoDe+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
       <div class="rmeta">${inst.marca ? 'Marca: '+inst.marca : 'Marca: —'}</div>
@@ -3838,15 +4133,23 @@ function openReport(){
   }
 
   // Sección de cada Nube (v9 §4/§5) — solo se muestra si el vendedor ya creó alguna (al vuelo,
-  // desde el dropdown "Conectar a" de Cloud Interconnect). Sin catálogo de productos propios
-  // todavía (llega en una fase siguiente), así que solo se lista su destino/conexiones.
+  // desde el dropdown "Conectar a" de Cloud Interconnect, o arrastrando "Nube" — ver catálogo).
+  // Lista sus productos propios (IaaS/BaaS/DRaaS) igual que una Matriz o el Datacenter.
   if(config.nubes.length>0){
     config.nubes.forEach(nube=>{
       const nubeBox = document.createElement('div');
       nubeBox.className='report-sede';
       const nh3 = document.createElement('h3');
-      nh3.innerHTML = `<span>${nube.nombre} <span style="color:var(--muted);font-weight:400;font-size:11px;">(Nube)</span></span><span style="color:var(--muted);font-weight:400;font-size:11px;">${conexionesTexto(nube.id)}</span>`;
+      nh3.innerHTML = `<span>${nube.nombre} <span style="color:var(--muted);font-weight:400;font-size:11px;">(${nube.esAutoInternet ? 'Nube automática de Internet' : 'Nube'})</span></span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${nube.instancias.length} producto(s) propio(s) · ${conexionesTexto(nube.id)})</span>`;
       nubeBox.appendChild(nh3);
+      if(nube.instancias.length===0){
+        const empty = document.createElement('div');
+        empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+        empty.textContent='Sin productos propios asignados.';
+        nubeBox.appendChild(empty);
+      } else {
+        nube.instancias.forEach(inst=>renderInstRow(inst, nubeBox, null));
+      }
       reportBody.appendChild(nubeBox);
     });
   }
@@ -4100,7 +4403,11 @@ function downloadPDF(){
     // serían indistinguibles entre sí.
     const conexionLigada = sub.ocultaEnServiciosAsignados
       ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId && !c.esBackup) : null;
-    const destinoTxt = conexionLigada ? `  →  ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}` : '';
+    let destinoTxt = conexionLigada ? `  →  ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}` : '';
+    if(!destinoTxt && sub.id==='sdwan' && inst.targetConexionId){
+      const t = state.conexiones.find(c=>c.id===inst.targetConexionId);
+      if(t) destinoTxt = `  →  ${nombreEntidad(t.aId)} ↔ ${nombreEntidad(t.bId)}`;
+    }
     addLine(`${inst.nombreSubproducto}${destinoTxt}${heredadoDe ? ' (heredado de '+heredadoDe+')' : ''}  —  ${vertical.nombre} · ${producto.nombre}`,
       { bold:true, size:10.5, color:[20,24,30] });
     addLine(inst.marca ? `Marca: ${inst.marca}` : 'Marca: —', { size:9, color:[130,138,150] });
@@ -4190,7 +4497,9 @@ function downloadPDF(){
 
   if(config.nubes.length>0){
     config.nubes.forEach(nube=>{
-      addSectionHeading(`${nube.nombre}  ·  Nube  ·  ${conexionesTexto(nube.id)}`);
+      addSectionHeading(`${nube.nombre}  ·  ${nube.esAutoInternet ? 'Nube automática de Internet' : 'Nube'}  ·  ${nube.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto(nube.id)}`);
+      if(nube.instancias.length===0) addEmpty('Sin productos propios asignados.');
+      else nube.instancias.forEach(inst=>addProduct(inst, null));
     });
   }
 
