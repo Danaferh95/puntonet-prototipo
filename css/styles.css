@@ -1,0 +1,351 @@
+  :root{
+    --bg: #0a0e14;
+    --panel: #10151d;
+    --panel-2: #141b26;
+    --border: #1f2733;
+    --text: #e6edf3;
+    --muted: #7d8899;
+    --cian: #22d3ee;      /* conectividad */
+    --indigo: #818cf8;    /* cloud */
+    --rosa: #f472b6;      /* ciberseguridad */
+    --verde: #4ade80;     /* colaboracion */
+    --danger: #f87171;
+    --radius: 6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;overflow:hidden;}
+
+  /* ---------- Forzar horizontal en móvil ----------
+     La app siempre se muestra en horizontal. Si el dispositivo está en vertical, se rota todo
+     el documento 90° por CSS (sin necesidad de la Screen Orientation API, que en iOS Safari no
+     se puede bloquear vía JS) para que el contenido siga viéndose como landscape. Solo aplica
+     a pantallas angostas (teléfonos/tablets chicos); una ventana de escritorio angosta y alta
+     no se ve afectada más allá de ese mismo ancho. */
+  @media screen and (max-width: 992px) and (orientation: portrait){
+    html{
+      transform: rotate(-90deg);
+      transform-origin: left top;
+      width: 100vh;
+      height: 100vw;
+      overflow-x: hidden;
+      position: absolute;
+      top: 100%;
+      left: 0;
+    }
+  }
+
+  /* ---------- Scrollbar acorde al UI (Chrome/Edge/Safari + Firefox) ---------- */
+  *{ scrollbar-width:thin; scrollbar-color: var(--border) transparent; }
+  *::-webkit-scrollbar{ width:9px; height:9px; }
+  *::-webkit-scrollbar-track{ background:transparent; }
+  *::-webkit-scrollbar-thumb{ background:var(--border); border-radius:5px; border:2px solid var(--panel); background-clip:padding-box; }
+  *::-webkit-scrollbar-thumb:hover{ background:var(--cian); border-color:var(--panel); }
+  *::-webkit-scrollbar-corner{ background:transparent; }
+
+  #app{display:grid;grid-template-columns:220px 1fr 300px;grid-template-rows:52px 1fr 60px;height:100vh;}
+
+  /* ---------- Header ---------- */
+  #header{grid-column:1/4;grid-row:1;display:flex;align-items:center;gap:14px;
+    padding:0 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+  #header h1{font-size:14px;font-weight:600;letter-spacing:.02em;color:var(--text);margin:0;white-space:nowrap;}
+  #header .tag{font-size:10px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);
+    padding:2px 6px;border-radius:4px;}
+  #clienteInput{flex:1;max-width:280px;background:var(--panel-2);border:1px solid var(--border);
+    color:var(--text);padding:7px 10px;border-radius:var(--radius);font-size:12px;}
+  #clienteInput:focus{outline:none;border-color:var(--cian);}
+  #logoUploadBtn{width:32px;height:32px;flex-shrink:0;border-radius:var(--radius);border:1px dashed var(--border);
+    background:var(--panel-2);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:14px;padding:0;overflow:hidden;transition:.15s;}
+  #logoUploadBtn:hover{border-color:var(--cian);color:var(--cian);}
+  #logoUploadBtn.has-logo{border-style:solid;padding:0;}
+  #logoUploadBtn img{width:100%;height:100%;object-fit:contain;background:#fff;}
+  #logoUploadBtn .logoRemove{position:absolute;}
+  .spacer{flex:1;}
+  .btn{background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:7px 12px;border-radius:var(--radius);font-size:12px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  .btn:hover{border-color:var(--cian);color:var(--cian);}
+  .btn.primary{background:var(--cian);border-color:var(--cian);color:#04202a;font-weight:600;}
+  .btn.primary:hover{background:#67e3fa;color:#04202a;}
+  .btn.ghost{background:transparent;}
+  .btn:disabled{opacity:.35;cursor:not-allowed;}
+  .btn:disabled:hover{border-color:var(--border);color:var(--text);}
+
+  /* ---------- Left panel ---------- */
+  #left{grid-column:1;grid-row:2;background:var(--panel);border-right:1px solid var(--border);
+    padding:14px 12px;overflow-y:auto;}
+  #left h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;}
+  .site-card{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:8px;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);
+    cursor:grab;transition:.15s;}
+  .site-card:hover{border-color:var(--cian);}
+  .site-card:active{cursor:grabbing;}
+  .site-icon{width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--cian);border-radius:4px;color:var(--cian);font-size:13px;}
+  .site-icon.size-s{width:18px;height:18px;font-size:10px;}
+  .site-icon.size-m{width:26px;height:26px;font-size:13px;}
+  .site-icon.size-l{width:34px;height:34px;font-size:16px;}
+  .site-card .lbl{font-size:12px;}
+  .site-card .sub{font-size:10px;color:var(--muted);}
+  #left .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
+  #left .legend{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
+  #zoomControls{position:absolute;bottom:12px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:15;}
+  .zoom-btn{width:34px;height:34px;padding:0;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;transition:.15s;}
+  .zoom-btn:hover{border-color:var(--cian);color:var(--cian);}
+  .zoom-btn.reset{font-size:14px;}
+  .legend-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .catalog-vertical{margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  .catalog-vertical-header{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:9px 10px;font-size:11px;color:var(--text);text-transform:uppercase;letter-spacing:.05em;
+    cursor:pointer;background:var(--panel-2);transition:.15s;}
+  .catalog-vertical-header:hover{color:var(--cian);}
+  .catalog-vertical-arrow{color:var(--muted);font-size:11px;transition:transform .15s;flex-shrink:0;}
+  .catalog-vertical.open .catalog-vertical-arrow{transform:rotate(90deg);}
+  .catalog-vertical-body{display:none;padding:10px;}
+  .catalog-vertical.open .catalog-vertical-body{display:block;}
+  .catalog-producto{margin-bottom:12px;}
+  .catalog-producto:last-child{margin-bottom:0;}
+  .catalog-producto-label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text);margin-bottom:6px;}
+  .catalog-producto-icon{width:15px;height:15px;flex-shrink:0;}
+  .catalog-producto-icon svg{width:100%;height:100%;display:block;}
+  .catalog-chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .catalog-chip-item{display:flex;flex-direction:column;align-items:center;width:54px;gap:4px;}
+  .catalog-chip{width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:700;color:#04121a;cursor:grab;user-select:none;transition:.15s;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
+  .catalog-chip:hover{transform:translateY(-2px);box-shadow:0 3px 9px rgba(0,0,0,.4);}
+  .catalog-chip:active{cursor:grabbing;}
+  .catalog-chip-label{font-size:9px;color:var(--muted);text-align:center;line-height:1.25;word-break:break-word;}
+  .catalog-chip-item{position:relative;}
+  .chip-dc-badge{position:absolute;top:-5px;right:2px;background:var(--indigo);color:#0c1020;font-size:7px;
+    font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;letter-spacing:.02em;pointer-events:none;}
+
+  /* ---------- Salud de infraestructura ----------
+     Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
+     así queda visible sin importar qué sede/Matriz esté seleccionada ni qué tan largo sea el
+     catálogo, y las 4 verticales se leen en una sola fila horizontal. */
+  #saludFooter{grid-column:1/4;grid-row:3;background:var(--panel);border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:22px;padding:0 20px;overflow-x:auto;}
+  #saludGlobalWrap{display:flex;align-items:center;gap:9px;flex-shrink:0;padding-right:20px;
+    border-right:1px solid var(--border);white-space:nowrap;}
+  #saludGlobalLabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+  #saludGlobalBadge{font-size:16px;font-weight:700;color:var(--cian);}
+  #saludBars{display:flex;align-items:center;gap:22px;flex:1;min-width:0;}
+  .salud-row{display:flex;align-items:center;gap:8px;flex:1;min-width:130px;}
+  .salud-label{flex-shrink:0;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+  .salud-bar-track{flex:1;height:8px;border-radius:5px;background:var(--panel-2);border:1px solid var(--border);
+    overflow:hidden;min-width:50px;}
+  .salud-bar-fill{display:block;height:100%;border-radius:5px;transition:width .25s ease;}
+  .salud-count{width:34px;flex-shrink:0;text-align:right;font-size:9.5px;color:var(--muted);}
+
+  /* ---------- Canvas ---------- */
+  #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);touch-action:none;}
+  #canvasWrap canvas{display:block;width:100%;height:100%;}
+  /* Etiquetas de nombre (Sede/Matriz/Datacenter) como overlay HTML sobre el canvas 3D en vez de
+     texturas dentro de la escena: así el tamaño de letra es el mismo font-size en px que el
+     resto de la interfaz y no depende de la distancia de cámara ni del nivel de zoom — al
+     acercar o alejar la vista 3D, el texto se mantiene perfectamente legible, ni gigante ni
+     minúsculo, igual que cualquier otro texto de la UI. */
+  #labelLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+  .name-label{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;
+    font-size:12.5px;font-weight:700;color:var(--text);letter-spacing:.01em;
+    text-shadow:0 1px 3px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.55);will-change:transform;}
+  #sceneHint{position:absolute;bottom:10px;left:12px;font-size:10.5px;color:var(--muted);
+    background:rgba(16,21,29,.7);padding:6px 10px;border-radius:4px;border:1px solid var(--border);}
+  #tooltip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--cian);
+    border-radius:4px;padding:6px 9px;font-size:11px;color:var(--text);display:none;z-index:20;max-width:220px;}
+  #tooltip .t-title{font-weight:600;margin-bottom:2px;}
+  #tooltip .t-sub{color:var(--muted);font-size:10px;}
+  #toastStack{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:30;
+    display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+  .toast{background:#2a1418;border:1px solid var(--danger);color:var(--text);padding:9px 14px;
+    border-radius:8px;font-size:12px;box-shadow:0 8px 20px rgba(0,0,0,.45);opacity:0;
+    transform:translateY(-8px);transition:opacity .18s ease, transform .18s ease;max-width:360px;text-align:center;}
+  .toast.show{opacity:1;transform:translateY(0);}
+  #placingHint{position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    background:var(--panel);border:1px solid var(--cian);color:var(--text);padding:8px 10px 8px 14px;
+    border-radius:8px;font-size:12px;z-index:20;box-shadow:0 6px 18px rgba(0,0,0,.4);
+    display:none;align-items:center;gap:10px;max-width:88%;}
+  #placingHint button{background:transparent;border:none;color:var(--muted);font-size:17px;
+    line-height:1;cursor:pointer;padding:2px 4px;flex-shrink:0;}
+  #placingHint button:hover{color:var(--danger);}
+  .touch-drag-ghost{position:fixed;z-index:200;pointer-events:none;transform:translate(-50%,-135%);
+    color:#04121a;font-weight:700;font-size:11.5px;padding:8px 13px;border-radius:8px;
+    box-shadow:0 10px 26px rgba(0,0,0,.55);white-space:nowrap;opacity:.96;}
+
+  /* ---------- Right panel (navegador de niveles) ---------- */
+  #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
+    padding:14px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
+  #right h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;}
+  #navEmpty{font-size:12px;color:var(--muted);line-height:1.6;padding-top:6px;}
+  #navSedeLabel{font-size:12px;font-weight:600;color:var(--text);}
+  #sedeEditBox{display:flex;flex-direction:column;gap:2px;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #matrizEditBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #nubeEditBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #sedeEditBox .field{margin-bottom:10px;}
+  #sedeEditBox .field:last-child{margin-bottom:0;}
+  #sedeEditBox input[type="range"]{flex:1;accent-color:var(--cian);}
+  #sedeEditBox .empRow{display:flex;gap:8px;align-items:center;}
+  #sedeEditBox .empRow input[type="number"]{width:76px;flex:none;}
+  #sedeEditBox .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
+  #sedeEditBox .toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);
+    cursor:pointer;margin-bottom:7px;}
+  #sedeEditBox .toggleRow:last-child{margin-bottom:0;}
+  #sedeEditBox .toggleRow input[type="checkbox"]{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;}
+  #sedeEditBox .toggleHint{font-size:10px;color:var(--muted);margin-left:21px;margin-top:-4px;margin-bottom:8px;line-height:1.4;}
+  #herenciaBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #herenciaBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
+  #herenciaBox .herenciaEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
+  #herenciaBox .herenciaList{display:flex;flex-direction:column;gap:5px;}
+  #herenciaBox .herenciaRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;}
+  #herenciaBox .herenciaRow:hover{border-color:var(--cian);}
+  #herenciaBox .herenciaCheck{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;flex-shrink:0;}
+  #herenciaBox .herenciaName{flex:1;}
+  #herenciaBox .herenciaRemove{color:var(--danger);font-weight:700;cursor:pointer;padding:0 3px;flex-shrink:0;}
+  #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
+  #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
+  #popupBackupField{display:none;}
+  #popupBackupField label.toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;}
+  #popupBackupField input[type="checkbox"]{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;}
+  #popupBackupField .toggleHint{font-size:10.5px;color:var(--muted);margin-left:21px;margin-top:3px;line-height:1.4;}
+  .btn.danger-outline{color:var(--danger);border-color:var(--danger);}
+  #connectionsBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);}
+  #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
+  #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
+  #connectionsBox .connList{display:flex;flex-direction:column;gap:6px;}
+  /* --- Conexión: fila única, clic abre el popup de la instancia que representa (mismo
+     formulario que "Servicios asignados"; ya no hay un editor propio con acordeón). --- */
+  .connItem{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--panel-2);}
+  .connItem:hover{border-color:var(--cian);}
+  .connItem.open{border-color:var(--cian);}
+  .connRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
+    padding:8px 9px;}
+  .connDot{width:8px;height:8px;border-radius:50%;background:var(--cian);flex-shrink:0;}
+  .connName{flex:1;}
+  .connDetalle{color:var(--muted);font-weight:400;font-size:10.5px;}
+  .connArrow{color:var(--muted);font-size:11px;flex-shrink:0;}
+  .connItem.open .connArrow{color:var(--cian);}
+  .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
+  .connDelete:hover{color:#fca5a5;}
+  #instanceList{display:flex;flex-direction:column;gap:6px;}
+  .inst-row{display:flex;align-items:center;gap:8px;background:var(--panel-2);
+    border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:pointer;}
+  .inst-row:hover{border-color:var(--cian);}
+  .inst-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .inst-name{font-size:11.5px;flex:1;}
+  .inst-vertical{font-size:9.5px;color:var(--muted);}
+  .inst-delete{color:var(--danger);font-weight:700;font-size:14px;line-height:1;padding:3px 7px;
+    border-radius:4px;flex-shrink:0;}
+  .inst-delete:hover{background:rgba(248,113,113,.15);}
+
+  /* ---------- Modal genérico ---------- */
+  .modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.72);display:none;
+    align-items:center;justify-content:center;z-index:100;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    width:420px;max-width:92vw;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .modal.wide{width:640px;}
+  .modal-head{padding:16px 18px 10px;border-bottom:1px solid var(--border);}
+  .modal-head .path{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+  .modal-head .title{font-size:16px;font-weight:600;}
+  .modal-head .eslogan{font-size:15px;font-weight:800;color:var(--cian);margin-top:6px;line-height:1.35;
+    letter-spacing:.01em;}
+  .modal-head .desc{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5;}
+  .modal-body{padding:14px 18px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .field input, .field textarea, .field select{width:100%;background:var(--panel-2);
+    border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:var(--radius);
+    font-size:12.5px;font-family:inherit;}
+  .field input:focus, .field textarea:focus{outline:none;border-color:var(--cian);}
+  .field textarea{resize:vertical;min-height:64px;}
+  .field-row{display:flex;gap:10px;}
+  .field-row .field{flex:1;}
+  .modal-foot{padding:12px 18px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);}
+  .multi-tag{display:inline-block;background:var(--panel-2);border:1px solid var(--cian);color:var(--cian);
+    font-size:10.5px;padding:2px 7px;border-radius:10px;margin:0 4px 4px 0;}
+
+  /* ---------- Reporte ---------- */
+  .report-sede{margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  .report-sede h3{margin:0;padding:10px 14px;background:var(--panel-2);font-size:13px;
+    display:flex;align-items:center;gap:8px;}
+  .report-inst{padding:10px 14px;border-top:1px solid var(--border);}
+  .report-inst .rline1{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;}
+  .report-inst .rmeta{font-size:11px;color:var(--muted);margin-top:3px;}
+  .report-inst .rprops{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .report-inst .rprop{font-size:10.5px;background:var(--panel-2);border:1px solid var(--border);
+    padding:2px 7px;border-radius:4px;}
+  .report-inst .rnotes{font-size:11px;color:var(--muted);margin-top:6px;font-style:italic;}
+  .report-empty{font-size:12px;color:var(--muted);padding:14px;text-align:center;}
+
+  /* ---------- Responsive: se adapta el TAMAÑO, la orientación siempre queda horizontal ----------
+     Los breakpoints están pensados en ancho de pantalla en landscape: de una tablet grande
+     (~1024px) hasta el celular más angosto típico en horizontal (~568px, ej. iPhone SE), más
+     un breakpoint de ALTURA para cuando el landscape es muy bajo (~ celulares chicos, <420px
+     de alto). Los paneles laterales se angostan primero; el canvas 3D siempre se queda con el
+     espacio central disponible. */
+  @media (max-width: 1024px){
+    #app{ grid-template-columns: 196px 1fr 264px; }
+  }
+  @media (max-width: 900px){
+    #app{ grid-template-columns: 170px 1fr 236px; grid-template-rows: 46px 1fr 54px; }
+    #header{ gap:8px; padding:0 10px; }
+    #header h1{ font-size:12px; }
+    #clienteInput{ max-width:150px; font-size:11px; padding:6px 8px; }
+    .btn{ padding:6px 9px; font-size:11px; }
+    #left, #right{ padding:10px 8px; }
+    #left h2, #right h2{ font-size:10px; margin-bottom:8px; }
+    .catalog-chip-item{ width:46px; }
+    .catalog-chip{ width:27px; height:27px; font-size:8.5px; }
+    .site-card{ padding:8px; gap:8px; }
+    .modal{ width:380px; }
+    .modal.wide{ width:560px; }
+    #saludFooter{ gap:14px; padding:0 12px; }
+    #saludGlobalWrap{ padding-right:14px; gap:6px; }
+    #saludBars{ gap:14px; }
+    .salud-row{ min-width:96px; }
+  }
+  @media (max-width: 720px){
+    #app{ grid-template-columns: 140px 1fr 208px; }
+    #header .tag{ display:none; } /* ahorrar espacio: la etiqueta de versión no es crítica */
+    #clienteInput{ max-width:100px; }
+    #left .hint{ display:none; } /* el texto largo de ayuda no cabe cómodo en pantallas chicas */
+    .catalog-vertical-header{ padding:7px 8px; font-size:10px; }
+    .catalog-chip-item{ width:42px; }
+    #sedeEditBox .empRow input[type="number"]{ width:62px; }
+  }
+  @media (max-width: 580px){
+    #app{ grid-template-columns: 116px 1fr 178px; }
+    #header h1{ display:none; }
+    .btn{ padding:5px 7px; font-size:10px; }
+    .catalog-producto-label{ font-size:10px; }
+    .catalog-chip-item{ width:38px; }
+    .catalog-chip{ width:24px; height:24px; }
+    .inst-name{ font-size:10.5px; }
+    .inst-vertical{ display:none; } /* poco espacio: se prioriza el nombre del producto */
+  }
+  @media (max-height: 440px){
+    #app{ grid-template-rows: 42px 1fr 40px; }
+    #header{ padding:0 8px; }
+    .btn{ padding:5px 8px; }
+    #left, #right{ padding:8px 8px; gap:8px; }
+    #sceneHint{ font-size:9px; padding:4px 7px; bottom:6px; left:8px; }
+    .name-label{ font-size:11px; }
+    #zoomControls{ bottom:8px; right:8px; gap:5px; }
+    .zoom-btn{ width:28px; height:28px; font-size:13px; }
+    .modal{ max-height:94vh; }
+    #saludFooter{ gap:10px; padding:0 10px; }
+    #saludGlobalWrap{ padding-right:10px; gap:4px; }
+    #saludGlobalLabel{ display:none; }
+    #saludBars{ gap:10px; }
+    .salud-row{ min-width:70px; gap:5px; }
+    .salud-label{ display:none; }
+  }
