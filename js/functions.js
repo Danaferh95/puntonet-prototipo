@@ -314,6 +314,23 @@ function formatAnchoBandaMbps(mbps){
   return mbps+' Mbps';
 }
 
+/* --- Slider (input type=range): fija el % de relleno cian como variable CSS (--fill) leída por
+   css/styles.css. Es necesario calcularlo acá porque el accent-color nativo del navegador no basta:
+   Chrome/Edge calculan dónde termina el relleno usando la métrica del thumb POR DEFECTO del
+   sistema, no la del thumb de 15px definido en el CSS, así que siempre queda un margen sin cubrir
+   al llegar al máximo (el "espacio" reportado). Con --fill, el track pasa a ser un gradiente propio
+   (ver input[type="range"]::-webkit-slider-runnable-track) que sí llega exacto al valor real. Se
+   llama al crear cada slider y en cada evento 'input' — tanto del propio slider como del campo
+   numérico que lo acompaña, que puede mover el slider de forma programática sin disparar su propio
+   evento 'input'. */
+function updateRangeFill(rangeEl){
+  const min = parseFloat(rangeEl.min) || 0;
+  const max = parseFloat(rangeEl.max) || 100;
+  const val = parseFloat(rangeEl.value) || 0;
+  const pct = max>min ? ((val-min)/(max-min))*100 : 0;
+  rangeEl.style.setProperty('--fill', pct+'%');
+}
+
 /* =========================================================================
    2. ESTADO GLOBAL
    ========================================================================= */
@@ -2440,14 +2457,17 @@ function renderMatrizEditBox(matriz){
 
   const usuariosRangeEl = document.getElementById('matrizUsuariosRange');
   const usuariosNumEl = document.getElementById('matrizUsuariosNumber');
+  updateRangeFill(usuariosRangeEl);
   usuariosRangeEl.addEventListener('input', ()=>{
     usuariosNumEl.value = usuariosRangeEl.value;
     matriz.usuarios = parseInt(usuariosRangeEl.value,10) || 0;
+    updateRangeFill(usuariosRangeEl);
   });
   usuariosNumEl.addEventListener('input', ()=>{
     const v = Math.max(0, parseInt(usuariosNumEl.value,10) || 0);
     if(v<=EMPLEADOS_SLIDER_MAX) usuariosRangeEl.value = v; // el slider refleja el valor mientras esté en su rango
     matriz.usuarios = v;
+    updateRangeFill(usuariosRangeEl);
   });
 
   document.getElementById('btnDeleteMatriz').addEventListener('click', ()=>{
@@ -2892,6 +2912,7 @@ function renderSedeEditBox(sede){
   const rangeEl = document.getElementById('sedeEmpleadosRange');
   const numEl = document.getElementById('sedeEmpleadosNumber');
   const infoEl = document.getElementById('sedeTamanoInfo');
+  updateRangeFill(rangeEl);
   function applyEmpleados(v){
     setSedeEmpleados(sede, v);
     const t = getTamanoLocal(sede.tamano);
@@ -2900,11 +2921,13 @@ function renderSedeEditBox(sede){
   rangeEl.addEventListener('input', ()=>{
     numEl.value = rangeEl.value;
     applyEmpleados(parseInt(rangeEl.value,10));
+    updateRangeFill(rangeEl);
   });
   numEl.addEventListener('input', ()=>{
     const v = Math.max(1, parseInt(numEl.value,10) || 1);
     if(v<=EMPLEADOS_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
     applyEmpleados(v);
+    updateRangeFill(rangeEl);
   });
 
   document.getElementById('btnDeleteSede').addEventListener('click', ()=>{
@@ -3353,14 +3376,17 @@ function renderPopupProps(parametros, valores, tipos){
 
       const rangeEl = row.querySelector('.popupAnchoBandaRange');
       const numEl = row.querySelector('.popupAnchoBandaNumber');
+      updateRangeFill(rangeEl);
       rangeEl.addEventListener('input', ()=>{
         numEl.value = rangeEl.value;
         info.textContent = formatAnchoBandaMbps(parseInt(rangeEl.value,10)||0);
+        updateRangeFill(rangeEl);
       });
       numEl.addEventListener('input', ()=>{
         const v = Math.max(0, parseInt(numEl.value,10) || 0);
         if(v<=ANCHO_BANDA_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
         info.textContent = formatAnchoBandaMbps(v);
+        updateRangeFill(rangeEl);
       });
       return;
     }

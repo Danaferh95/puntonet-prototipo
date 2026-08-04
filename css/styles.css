@@ -294,19 +294,41 @@
   #popupProps .empRow input[type="number"]{width:76px;flex:none;}
   #popupProps .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
 
-  /* ---------- Miniatura (thumb) de TODOS los sliders — fix "parte blanca" al llegar al máximo ----------
-     accent-color colorea bien el tramo relleno del track (Chrome/Edge lo separan del tramo vacío
-     automáticamente, sin JS), pero el thumb en sí lo sigue dibujando el navegador con su propio
-     relieve/brillo blanco por defecto, aunque se le ponga accent-color. Al llegar al 100% el thumb
-     queda pegado al borde derecho y es lo único visible ahí — por eso se ve como si el slider no
-     llegara a llenarse del todo. Se reemplaza SOLO el thumb (el track/relleno se deja nativo, sin
-     tocar) por un círculo sólido del mismo cian, en los 3 sliders de la app (Empleados, Usuarios
-     de Matriz, Ancho de banda). */
+  /* ---------- Track + thumb de TODOS los sliders — fix "espacio" al llegar al máximo ----------
+     Antes solo se reemplazaba el thumb y se dejaba el track/relleno nativo (accent-color). Eso
+     dejaba un hueco visible en el extremo derecho aun con el valor en el máximo: Chrome/Edge
+     calculan dónde termina el relleno usando la métrica del thumb POR DEFECTO del sistema (no la
+     de 15px definida acá), así que el relleno nativo siempre se queda corto respecto al thumb real
+     — por eso el círculo parecía no llegar del todo al final. Ahora el track también se dibuja a
+     mano: el relleno cian es un gradiente controlado por la variable --fill (0%-100%, actualizada
+     desde functions.js en cada cambio de valor — ver updateRangeFill), así que llega exacto a
+     donde está el thumb, en cualquier valor. Se aplica igual a los 3 sliders de la app (Empleados,
+     Usuarios de Matriz, Ancho de banda). */
+  input[type="range"]{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:15px;background:transparent;cursor:pointer;
+    --fill:0%;
+  }
+  input[type="range"]::-webkit-slider-runnable-track{
+    height:6px;border-radius:3px;border:1px solid var(--border);
+    background:linear-gradient(to right,
+      var(--cian) 0%, var(--cian) var(--fill),
+      var(--panel-2) var(--fill), var(--panel-2) 100%);
+  }
+  input[type="range"]::-moz-range-track{
+    height:6px;border-radius:3px;border:1px solid var(--border);
+    background:var(--panel-2);
+  }
+  input[type="range"]::-moz-range-progress{
+    height:6px;border-radius:3px 0 0 3px;
+    background:var(--cian);
+  }
   input[type="range"]::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;
     width:15px;height:15px;border-radius:50%;
     background:var(--cian);cursor:pointer;
     box-shadow:0 1px 4px rgba(0,0,0,.4);
+    margin-top:-4.5px; /* centra el thumb de 15px sobre el track de 6px: webkit no lo hace solo al estilar el runnable-track */
   }
   input[type="range"]::-moz-range-thumb{
     width:15px;height:15px;border-radius:50%;
