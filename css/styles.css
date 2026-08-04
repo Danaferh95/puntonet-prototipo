@@ -1,4 +1,4 @@
-  :root{
+:root{
     --bg: #0a0e14;
     --panel: #10151d;
     --panel-2: #141b26;
@@ -198,6 +198,15 @@
   #sedeEditBox .toggleRow:last-child{margin-bottom:0;}
   #sedeEditBox .toggleRow input[type="checkbox"]{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;}
   #sedeEditBox .toggleHint{font-size:10px;color:var(--muted);margin-left:21px;margin-top:-4px;margin-bottom:8px;line-height:1.4;}
+  /* Usuarios de Matriz (renderMatrizEditBox) — mismo patrón slider+número que Empleados de Sede,
+     pero faltaba este bloque por completo: sin él, .empRow no tenía flex (el range y el número
+     quedaban apilados en vez de en una fila) y el slider ni siquiera tomaba el cian, se veía con
+     el azul por defecto del navegador. */
+  #matrizEditBox .field{margin-bottom:10px;}
+  #matrizEditBox .field:last-child{margin-bottom:0;}
+  #matrizEditBox input[type="range"]{flex:1;accent-color:var(--cian);}
+  #matrizEditBox .empRow{display:flex;gap:8px;align-items:center;}
+  #matrizEditBox .empRow input[type="number"]{width:76px;flex:none;}
   #herenciaBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
     border-bottom:1px solid var(--border);}
   #herenciaBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
@@ -269,6 +278,41 @@
   .field textarea{resize:vertical;min-height:64px;}
   .field-row{display:flex;gap:10px;}
   .field-row .field{flex:1;}
+  /* Checkboxes de propiedad dinámica dentro del popup (Controladora de Zona Wireless, Con/sin
+     firewall de Puntonet Space) — renderPopupProps los inyecta en #popupProps. Mismo patrón que
+     #sedeEditBox .toggleRow / #popupBackupField: sin este bloque, ".field input{width:100%}"
+     (arriba) estira el checkbox a todo el ancho de la fila y el navegador termina dibujándolo
+     centrado dentro de ese hitbox agrandado, en vez de alineado con su texto. */
+  #popupProps .toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:7px;}
+  #popupProps .toggleRow:last-child{margin-bottom:0;}
+  #popupProps input[type="checkbox"]{width:14px;height:14px;accent-color:var(--cian);cursor:pointer;}
+  /* Slider de Ancho de banda (renderPopupProps, tipo 'anchoBanda') — mismo faltante que tenía
+     Usuarios de Matriz: sin este bloque el range y el número quedaban apilados en vez de en fila,
+     y sin cian propio. */
+  #popupProps input[type="range"]{flex:1;accent-color:var(--cian);}
+  #popupProps .empRow{display:flex;gap:8px;align-items:center;}
+  #popupProps .empRow input[type="number"]{width:76px;flex:none;}
+  #popupProps .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
+
+  /* ---------- Miniatura (thumb) de TODOS los sliders — fix "parte blanca" al llegar al máximo ----------
+     accent-color colorea bien el tramo relleno del track (Chrome/Edge lo separan del tramo vacío
+     automáticamente, sin JS), pero el thumb en sí lo sigue dibujando el navegador con su propio
+     relieve/brillo blanco por defecto, aunque se le ponga accent-color. Al llegar al 100% el thumb
+     queda pegado al borde derecho y es lo único visible ahí — por eso se ve como si el slider no
+     llegara a llenarse del todo. Se reemplaza SOLO el thumb (el track/relleno se deja nativo, sin
+     tocar) por un círculo sólido del mismo cian, en los 3 sliders de la app (Empleados, Usuarios
+     de Matriz, Ancho de banda). */
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:15px;height:15px;border-radius:50%;
+    background:var(--cian);cursor:pointer;
+    box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+  input[type="range"]::-moz-range-thumb{
+    width:15px;height:15px;border-radius:50%;
+    background:var(--cian);border:none;cursor:pointer;
+    box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
   .modal-foot{padding:12px 18px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);}
   .multi-tag{display:inline-block;background:var(--panel-2);border:1px solid var(--cian);color:var(--cian);
     font-size:10.5px;padding:2px 7px;border-radius:10px;margin:0 4px 4px 0;}
