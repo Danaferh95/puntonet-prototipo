@@ -9,6 +9,7 @@
     --indigo: #818cf8;    /* cloud */
     --rosa: #f472b6;      /* ciberseguridad */
     --verde: #4ade80;     /* colaboracion */
+    --violeta: #a78bfa;   /* nube (hosting externo) */
     --danger: #f87171;
     --radius: 6px;
   }
@@ -60,8 +61,8 @@
   #logoUploadBtn:hover{border-color:var(--cian);color:var(--cian);}
   #logoUploadBtn.has-logo{border-style:solid;padding:0;}
   #logoUploadBtn img{width:100%;height:100%;object-fit:contain;background:#fff;}
-  #logoUploadBtn .logoRemove{position:absolute;}
   .spacer{flex:1;}
+  #logoFileInput{display:none;}
   .btn{background:var(--panel-2);border:1px solid var(--border);color:var(--text);
     padding:7px 12px;border-radius:var(--radius);font-size:12px;cursor:pointer;transition:.15s;white-space:nowrap;}
   .btn:hover{border-color:var(--cian);color:var(--cian);}
@@ -82,20 +83,21 @@
   .site-card:active{cursor:grabbing;}
   .site-icon{width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
     border:1px solid var(--cian);border-radius:4px;color:var(--cian);font-size:13px;}
-  .site-icon.size-s{width:18px;height:18px;font-size:10px;}
   .site-icon.size-m{width:26px;height:26px;font-size:13px;}
-  .site-icon.size-l{width:34px;height:34px;font-size:16px;}
+  /* Variantes de color de la tarjeta: antes iban como style="" en index.html */
+  .site-icon.indigo{color:var(--indigo);border-color:var(--indigo);}
+  .site-icon.violeta{color:var(--violeta);border-color:var(--violeta);}
   .site-card .lbl{font-size:12px;}
   .site-card .sub{font-size:10px;color:var(--muted);}
   #left .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
   #left .legend{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
+  #left .legend h2{margin-bottom:8px;}
+  #datacenterRestoreWrap{display:none;} /* solo visible si se eliminó el Datacenter (ver syncDatacenterRestoreUI) */
   #zoomControls{position:absolute;bottom:12px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:15;}
   .zoom-btn{width:34px;height:34px;padding:0;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
     background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;transition:.15s;}
   .zoom-btn:hover{border-color:var(--cian);color:var(--cian);}
   .zoom-btn.reset{font-size:14px;}
-  .legend-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-bottom:6px;}
-  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
   .catalog-vertical{margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
   .catalog-vertical-header{display:flex;align-items:center;justify-content:space-between;gap:8px;
     padding:9px 10px;font-size:11px;color:var(--text);text-transform:uppercase;letter-spacing:.05em;
@@ -121,6 +123,9 @@
   .catalog-chip-item{position:relative;}
   .chip-dc-badge{position:absolute;top:-5px;right:2px;background:var(--indigo);color:#0c1020;font-size:7px;
     font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;letter-spacing:.02em;pointer-events:none;}
+  /* Un mismo producto puede tener ahora las 2 badges a la vez (ej. WAF, Hosting: Datacenter + Nube,
+     ago/2026) — .badge-nube se corre a la izquierda de la badge "DC" para que no se superpongan. */
+  .chip-dc-badge.badge-nube{right:24px;}
 
   /* ---------- Salud de infraestructura ----------
      Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
@@ -158,6 +163,7 @@
     border-radius:4px;padding:6px 9px;font-size:11px;color:var(--text);display:none;z-index:20;max-width:220px;}
   #tooltip .t-title{font-weight:600;margin-bottom:2px;}
   #tooltip .t-sub{color:var(--muted);font-size:10px;}
+  #tooltip .t-heredado{color:var(--cian);font-weight:400;}
   #toastStack{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:30;
     display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
   .toast{background:#2a1418;border:1px solid var(--danger);color:var(--text);padding:9px 14px;
@@ -179,37 +185,24 @@
   #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
     padding:14px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
   #right h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;}
+  #navContent{display:none;}
+  #instanceSection{display:none;}
   #navEmpty{font-size:12px;color:var(--muted);line-height:1.6;padding-top:6px;}
   #navSedeLabel{font-size:12px;font-weight:600;color:var(--text);}
-  #sedeEditBox{display:flex;flex-direction:column;gap:2px;padding:10px 0 12px;margin-bottom:6px;
+  /* --- Bloques del panel derecho ---
+     Sede, Matriz, Nube, Datacenter, Conexiones y Herencia son la misma pieza: una columna con
+     separador inferior que functions.js muestra (display:flex) u oculta (display:none) según lo
+     que esté seleccionado. Antes cada uno repetía las mismas 5 declaraciones con su propio #id;
+     ahora comparten .editBox y solo declaran lo que de verdad los diferencia (el gap). */
+  .editBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
     border-bottom:1px solid var(--border);}
-  #matrizEditBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
-  #nubeEditBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
-  #sedeEditBox .field{margin-bottom:10px;}
-  #sedeEditBox .field:last-child{margin-bottom:0;}
-  #sedeEditBox input[type="range"]{flex:1;accent-color:var(--cian);}
-  #sedeEditBox .empRow{display:flex;gap:8px;align-items:center;}
-  #sedeEditBox .empRow input[type="number"]{width:76px;flex:none;}
-  #sedeEditBox .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
-  #sedeEditBox .toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);
-    cursor:pointer;margin-bottom:7px;}
-  #sedeEditBox .toggleRow:last-child{margin-bottom:0;}
-  #sedeEditBox .toggleRow input[type="checkbox"]{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;}
-  #sedeEditBox .toggleHint{font-size:10px;color:var(--muted);margin-left:21px;margin-top:-4px;margin-bottom:8px;line-height:1.4;}
-  /* Usuarios de Matriz (renderMatrizEditBox) — mismo patrón slider+número que Empleados de Sede,
-     pero faltaba este bloque por completo: sin él, .empRow no tenía flex (el range y el número
-     quedaban apilados en vez de en una fila) y el slider ni siquiera tomaba el cian, se veía con
-     el azul por defecto del navegador. */
-  #matrizEditBox .field{margin-bottom:10px;}
-  #matrizEditBox .field:last-child{margin-bottom:0;}
-  #matrizEditBox input[type="range"]{flex:1;accent-color:var(--cian);}
-  #matrizEditBox .empRow{display:flex;gap:8px;align-items:center;}
-  #matrizEditBox .empRow input[type="number"]{width:76px;flex:none;}
-  #herenciaBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
+  #sedeEditBox{gap:2px;}
+  #datacenterEditBox, #herenciaBox, #connectionsBox{gap:8px;}
+  #datacenterEditBox .hint{font-size:10.5px;color:var(--muted);line-height:1.5;}
+  #sedeEditBox .field, #matrizEditBox .field{margin-bottom:10px;}
+  #sedeEditBox .field:last-child, #matrizEditBox .field:last-child{margin-bottom:0;}
   #herenciaBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
+  #herenciaBox .herenciaGroup{font-size:10.5px;color:var(--muted);margin:8px 0 4px;}
   #herenciaBox .herenciaEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
   #herenciaBox .herenciaList{display:flex;flex-direction:column;gap:5px;}
   #herenciaBox .herenciaRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
@@ -221,12 +214,10 @@
   #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
   #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
   #popupBackupField{display:none;}
-  #popupBackupField label.toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;}
-  #popupBackupField input[type="checkbox"]{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;}
-  #popupBackupField .toggleHint{font-size:10.5px;color:var(--muted);margin-left:21px;margin-top:3px;line-height:1.4;}
+  #popupBackupField .toggleRow{margin-bottom:0;} /* el hint va debajo, no hace falta separación extra */
+  #popupBackupField .toggleHint{margin-top:3px;}
   .btn.danger-outline{color:var(--danger);border-color:var(--danger);}
-  #connectionsBox{display:none;flex-direction:column;gap:8px;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
+  .btn.block{width:100%;} /* botones "Eliminar ..." de los bloques del panel derecho */
   #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
   #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
   #connectionsBox .connList{display:flex;flex-direction:column;gap:6px;}
@@ -276,23 +267,37 @@
     font-size:12.5px;font-family:inherit;}
   .field input:focus, .field textarea:focus{outline:none;border-color:var(--cian);}
   .field textarea{resize:vertical;min-height:64px;}
-  .field-row{display:flex;gap:10px;}
-  .field-row .field{flex:1;}
-  /* Checkboxes de propiedad dinámica dentro del popup (Controladora de Zona Wireless, Con/sin
-     firewall de Puntonet Space) — renderPopupProps los inyecta en #popupProps. Mismo patrón que
-     #sedeEditBox .toggleRow / #popupBackupField: sin este bloque, ".field input{width:100%}"
-     (arriba) estira el checkbox a todo el ancho de la fila y el navegador termina dibujándolo
-     centrado dentro de ese hitbox agrandado, en vez de alineado con su texto. */
-  #popupProps .toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:7px;}
-  #popupProps .toggleRow:last-child{margin-bottom:0;}
-  #popupProps input[type="checkbox"]{width:14px;height:14px;accent-color:var(--cian);cursor:pointer;}
-  /* Slider de Ancho de banda (renderPopupProps, tipo 'anchoBanda') — mismo faltante que tenía
-     Usuarios de Matriz: sin este bloque el range y el número quedaban apilados en vez de en fila,
-     y sin cian propio. */
-  #popupProps input[type="range"]{flex:1;accent-color:var(--cian);}
-  #popupProps .empRow{display:flex;gap:8px;align-items:center;}
-  #popupProps .empRow input[type="number"]{width:76px;flex:none;}
-  #popupProps .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
+  .field .locked{opacity:.6;cursor:not-allowed;} /* input de solo lectura (Nube automática de Internet) */
+  .field-narrow{max-width:260px;margin-top:10px;}
+  /* Hint bajo un campo del popup (destino de Cloud Interconnect, canal al que se aplica Sdwan).
+     Arranca oculto; functions.js lo muestra cuando hay algo que aclarar. */
+  .fieldHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;}
+
+  /* --- Fila slider + campo numérico (Empleados, Usuarios de Matriz, Ancho de banda) ---
+     Las 3 instancias vivían en 3 bloques separados (#sedeEditBox / #matrizEditBox / #popupProps)
+     que había que acordarse de duplicar cada vez que aparecía un slider nuevo — de hecho el de
+     Matriz y el de Ancho de banda llegaron sin él y se veían apilados. Al colgar de .empRow
+     valen en cualquier contenedor. `accent-color` se quitó: desde el fix de v12 el track y el
+     thumb se dibujan a mano (appearance:none), así que ya no tenía efecto. */
+  .empRow{display:flex;gap:8px;align-items:center;}
+  .empRow input[type="range"]{flex:1;}
+  .empRow input[type="number"]{width:76px;flex:none;}
+  .tamanoInfo{font-size:10.5px;color:var(--muted);margin-top:4px;}
+
+  /* --- Fila de checkbox + etiqueta ---
+     Sin una regla propia, ".field input{width:100%}" (arriba) estira el checkbox a todo el ancho
+     y el navegador lo dibuja centrado en ese hitbox agrandado en vez de junto a su texto.
+     Estaba resuelto por separado en #sedeEditBox, #popupProps y #popupBackupField. */
+  .toggleRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);
+    cursor:pointer;margin-bottom:7px;}
+  .toggleRow:last-child{margin-bottom:0;}
+  .toggleRow input[type="checkbox"]{width:14px;height:14px;flex:none;accent-color:var(--cian);cursor:pointer;}
+  /* Texto de ayuda debajo de un toggle. Antes solo estaba definido para #sedeEditBox y
+     #popupBackupField, así que el mismo class="toggleHint" del bloque de Nube y del de Herencia
+     se renderizaba sin estilo (tamaño heredado, sin color muted). */
+  .toggleHint{font-size:10.5px;color:var(--muted);line-height:1.4;margin-left:21px;}
+  #sedeEditBox .toggleHint{font-size:10px;margin-top:-4px;margin-bottom:8px;}
+  #nubeEditBox .toggleHint, #herenciaBox .toggleHint{margin-left:0;margin-top:5px;}
 
   /* ---------- Track + thumb de TODOS los sliders — fix "espacio" al llegar al máximo ----------
      Antes solo se reemplazaba el thumb y se dejaba el track/relleno nativo (accent-color). Eso
@@ -336,8 +341,19 @@
     box-shadow:0 1px 4px rgba(0,0,0,.4);
   }
   .modal-foot{padding:12px 18px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);}
+  /* Eliminar: sólo aparece al editar una instancia existente, y empujado al extremo opuesto de
+     Cancelar/Guardar para que no se confunda con ellos. */
+  #btnDeleteInstance{display:none;margin-right:auto;}
+  #popupConexionField, #popupSdwanField{display:none;}
   .multi-tag{display:inline-block;background:var(--panel-2);border:1px solid var(--cian);color:var(--cian);
     font-size:10.5px;padding:2px 7px;border-radius:10px;margin:0 4px 4px 0;}
+
+  /* --- Fragmentos de texto secundario dentro de una línea ---
+     Reemplazan los style="color:var(--muted);font-weight:400;..." que functions.js escribía
+     inline al armar el panel derecho, el tooltip y el reporte. */
+  .muted-inline{color:var(--muted);font-weight:400;}
+  .muted-meta{color:var(--muted);font-weight:400;font-size:11px;}
+  .muted-small{font-size:11px;color:var(--muted);} /* hereda el peso de la línea (p.ej. .rline1) */
 
   /* ---------- Reporte ---------- */
   .report-sede{margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
@@ -386,7 +402,7 @@
     #left .hint{ display:none; } /* el texto largo de ayuda no cabe cómodo en pantallas chicas */
     .catalog-vertical-header{ padding:7px 8px; font-size:10px; }
     .catalog-chip-item{ width:42px; }
-    #sedeEditBox .empRow input[type="number"]{ width:62px; }
+    .empRow input[type="number"]{ width:62px; }
   }
   @media (max-width: 580px){
     #app{ grid-template-columns: 116px 1fr 178px; }

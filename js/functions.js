@@ -138,45 +138,62 @@ const SUBPRODUCTOS = [
     // "Con/sin firewall" pasa de campo de texto a checkbox (pedido cliente 31/07/2026).
     parametrosTipos:{ 'Con/sin firewall':'checkbox' } },
   // Cloud — Housing (Collocation/Energía, Crossconexión): equipamiento que se renta/instala
-  // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo
-  // (soloDatacenter:true). Hosting (IaaS/BaaS/DRaaS) representa cómputo/backup en la nube — desde
-  // v9 §5 se monta sobre una Nube (soloNube:true), no sobre el Datacenter: mismo patrón de "solo
-  // se puede soltar sobre este tipo de nodo específico", pero el nodo cambió.
+  // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo.
+  // Hosting (IaaS/BaaS/DRaaS) representa cómputo/backup en la nube — desde v9 §5 se monta sobre
+  // una Nube; desde esta fase (pedido cliente ago/2026) también se puede montar directamente
+  // sobre el Datacenter Epicentro, sin exclusividad entre ambos destinos (un mismo cliente puede
+  // tener IaaS en su Nube pública Y en el Datacenter a la vez).
+  // Campo `destinos` (reemplaza los antiguos `soloDatacenter`/`soloNube`, ago/2026): lista de
+  // tipos de entidad sobre los que se puede soltar este subproducto — cualquier combinación de
+  // 'sede', 'matriz', 'nube', 'datacenter'. Sin este campo, el valor por defecto es
+  // ['sede','matriz'] (comportamiento histórico de la mayoría del catálogo). Ver
+  // destinosPermitidos()/destinoValido() más abajo — es el único lugar que hay que tocar para
+  // habilitar/restringir un producto a un nuevo tipo de nodo, sin tocar lógica de asignación.
   { id:'collocation', productoNivel2Id:'housing', nombre:'Collocation/Energía',
     eslogan:'¡Tu infraestructura, protegida en un Datacenter de clase mundial!',
     descripcion:'Renta de espacio y energía en el Datacenter de Puntonet.',
-    parametros:['Unidades de rack','KVAs'], soloDatacenter:true },
+    parametros:['Unidades de rack','KVAs'], destinos:['datacenter'] },
   { id:'crossconexion', productoNivel2Id:'housing', nombre:'Crossconexión',
     eslogan:'¡La ruta más rápida hacia tu Datacenter!',
     descripcion:'Interconexión hacia el Datacenter.',
-    parametros:['Ancho de banda'], soloDatacenter:true,
+    parametros:['Ancho de banda'], destinos:['datacenter'],
     parametrosTipos:{ 'Ancho de banda':'anchoBanda' } },
   { id:'iaas', productoNivel2Id:'hosting', nombre:'IaaS',
     eslogan:'¡Servidores virtuales listos en minutos, sin comprar hardware!',
     descripcion:'Renta de máquinas virtuales.',
-    parametros:['RAM','ROM','Procesador'], soloNube:true },
+    parametros:['RAM','ROM','Procesador'], destinos:['nube','datacenter'] },
   { id:'baas', productoNivel2Id:'hosting', nombre:'BaaS',
     eslogan:'¡Duerme tranquilo: tu información siempre respaldada!',
     descripcion:'Respaldos de información en la nube.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloNube:true },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], destinos:['nube','datacenter'] },
   { id:'draas', productoNivel2Id:'hosting', nombre:'DRaaS',
     eslogan:'¡Recupera tu negocio en minutos, pase lo que pase!',
     descripcion:'Copias de seguridad y recuperación ante desastres.',
-    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], soloNube:true },
+    parametros:['Número de VMs','Volumen (GB)','Frecuencia'], destinos:['nube','datacenter'] },
   // Ciberseguridad
+  // Firewall On Premise: ícono propio ('firewall_onpremise', ago/2026) para diferenciarlo del
+  // Firewall Virtual — antes ambos usaban el escudo genérico de "Perimetral" y no se distinguían
+  // en la escena 3D (pedido cliente ago/2026).
   { id:'firewall_on_premise', productoNivel2Id:'perimetral', nombre:'Firewall On Premise',
     eslogan:'¡Tu primera línea de defensa, instalada en casa!',
     descripcion:'Hardware físico para protección perimetral.',
-    parametros:['Marca','Modelo de equipo'] },
+    parametros:['Marca','Modelo de equipo'], assetKey:'firewall_onpremise' },
   { id:'firewall_iaas', productoNivel2Id:'perimetral', nombre:'Firewall IaaS',
     eslogan:'¡La misma protección, sin cables ni hardware!',
     descripcion:'Hardware virtual para protección perimetral.',
     parametros:['Marca','Modelo de equipo'] },
+  // Internet Seguro (ago/2026): a partir de esta fase se comporta como el resto de la familia
+  // Internet — `conexion:'internetAuto'` lo conecta solo a la Nube de Internet compartida del
+  // proyecto (getOrCreateNubeInternetAuto), igual que Internet Corporativo/Startup/Teleworking —
+  // en vez de quedar suelto en la sede sin cable, como antes. Se le da un ícono propio
+  // ('firewall_virtual') para que se vea el Firewall Virtual en la sede de origen, distinto del
+  // ícono de Firewall On Premise.
   { id:'internet_seguro', productoNivel2Id:'perimetral', nombre:'Internet Seguro',
     eslogan:'¡Navega rápido y blindado, todo en uno!',
     descripcion:'Internet más un firewall virtualizado.',
     parametros:['Ancho de banda','Plan (básico/avanzado)'],
-    parametrosTipos:{ 'Ancho de banda':'anchoBanda' } },
+    parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
+    conexion:'internetAuto', assetKey:'firewall_virtual' },
   { id:'edr', productoNivel2Id:'endpoint', nombre:'EDR',
     eslogan:'¡Detecta y detiene amenazas antes de que hagan daño!',
     descripcion:'Monitoreo, detección y respuesta a amenazas en dispositivos finales.',
@@ -197,11 +214,14 @@ const SUBPRODUCTOS = [
     eslogan:'¡Una contraseña ya no basta: doble candado a tus accesos!',
     descripcion:'Autenticación de múltiple factor para ingreso a información crítica.',
     parametros:['Marca','Número de licencias'] },
+  // WAF (ago/2026): se habilita también sobre el Datacenter Epicentro y sobre una Nube pública,
+  // además de sede/Matriz (comportamiento previo) — igual alcance que DNS/DDoS.
   { id:'waf', productoNivel2Id:'aplicacion', nombre:'WAF',
     eslogan:'¡Tu sitio web, a prueba de ataques 24/7!',
     descripcion:'Protege aplicaciones web, sitios de comercio electrónico y portales al filtrar y bloquear ataques.',
     parametros:['Ancho de banda','Tipo de licencia'],
-    parametrosTipos:{ 'Ancho de banda':'anchoBanda' } },
+    parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
+    destinos:['sede','matriz','datacenter','nube'] },
   { id:'dns_ddos', productoNivel2Id:'aplicacion', nombre:'DNS/DDoS',
     eslogan:'¡Que ningún ataque tumbe tu operación en línea!',
     descripcion:'Solución en la nube que protege el acceso a internet y los servicios DNS, filtrando tráfico malicioso.',
@@ -323,6 +343,29 @@ function formatAnchoBandaMbps(mbps){
    llama al crear cada slider y en cada evento 'input' — tanto del propio slider como del campo
    numérico que lo acompaña, que puede mover el slider de forma programática sin disparar su propio
    evento 'input'. */
+/* Enlaza un `input[type=range]` con el campo numerico que lo acompaña. Los 3 pares de la app
+   (Empleados de sede, Usuarios de Matriz, Ancho de banda del popup) seguian exactamente el mismo
+   contrato, escrito 3 veces:
+     - mover el slider actualiza el numero y avisa del valor nuevo;
+     - escribir en el numero manda siempre (permite superar el maximo del slider), y el slider lo
+       refleja mientras el valor siga dentro de su rango;
+     - cualquiera de los dos repinta el relleno cian del track (updateRangeFill, ver v12).
+   `onChange(valor)` es lo unico que cambia entre los 3 usos. */
+function bindSliderNumber(rangeEl, numEl, min, max, onChange){
+  updateRangeFill(rangeEl);
+  rangeEl.addEventListener('input', ()=>{
+    numEl.value = rangeEl.value;
+    updateRangeFill(rangeEl);
+    onChange(parseInt(rangeEl.value,10) || min);
+  });
+  numEl.addEventListener('input', ()=>{
+    const v = Math.max(min, parseInt(numEl.value,10) || min);
+    if(v<=max) rangeEl.value = v;
+    updateRangeFill(rangeEl);
+    onChange(v);
+  });
+}
+
 function updateRangeFill(rangeEl){
   const min = parseFloat(rangeEl.min) || 0;
   const max = parseFloat(rangeEl.max) || 100;
@@ -335,6 +378,10 @@ function updateRangeFill(rangeEl){
    2. ESTADO GLOBAL
    ========================================================================= */
 
+/* Atajo unico para resolver nodos del DOM por id (se usa ~75 veces, entre las referencias fijas
+   de arranque y las que cada render vuelve a buscar tras reescribir su innerHTML). */
+function byId(id){ return document.getElementById(id); }
+
 const state = {
   clienteNombre: '',
   clienteLogo: null,     // dataURL (base64) del logo del cliente, opcional — se incluye en el PDF
@@ -345,7 +392,7 @@ const state = {
   nubes: [],              // { id, nombre, tipo:'nube', gx, gz, group(THREE.Group), instancias:[] } — destino de
                           // Cloud Interconnect (v9 §4/§5); por ahora solo se crean al vuelo desde el dropdown
                           // "Conectar a" de Cloud Interconnect (no tienen catálogo de productos propios todavía).
-  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[] }, // edificio fijo de Puntonet
+  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[], activo:true }, // edificio fijo de Puntonet — aparece por defecto, pero se puede eliminar (ago/2026, ver deleteDatacenter) si el proyecto no lo necesita
   conexiones: [],        // { id, aId, bId, subproductoId, instanciaId, ownerId, esBackup } — cable entre 2
                           // entidades; instanciaId+ownerId lo ligan al "servicio asignado" que
                           // representa (misma cosa, no dos registros — ver ensureConexionAutomatica).
@@ -358,7 +405,6 @@ const state = {
   nextNubeSeq: 1,
   nextInstanceSeq: 1,
   nextConexionSeq: 1,
-  editingInstance: null, // { sedeId, instanciaId } | null
   placing: null,         // { tipo:'sede' } | { tipo:'matriz' } | { tipo:'subproducto', id } — flujo táctil "armar y colocar"
 };
 
@@ -374,6 +420,14 @@ function getSedeById(id){
   if(nube) return nube;
   return state.sedes.find(s=>s.id===id);
 }
+/* Las 2 vistas del "conjunto de entidades" que usa el resto del archivo. Estaban escritas como
+   spreads sueltos (`[...state.sedes, ...state.matrices]`) en 6 puntos distintos, de modo que
+   sumar un tipo de nodo nuevo obligaba a acordarse de cada uno.
+   - portadoras: las que pueden tener productos propios CON cable (sedes y Matrices).
+   - todas: ademas Nubes y el Datacenter, para conteos globales (Salud, reporte). */
+function entidadesPortadoras(){ return [...state.sedes, ...state.matrices]; }
+function todasLasEntidades(){ return [...state.sedes, ...state.matrices, ...state.nubes, state.datacenter]; }
+
 function getMatrizById(id){ return state.matrices.find(m=>m.id===id); }
 function getNubeById(id){ return state.nubes.find(n=>n.id===id); }
 function tipoEntidad(id){
@@ -476,6 +530,39 @@ function ensureConexionAutomatica(entityId, subproductoId, instanciaId){
   state.conexiones.push(conexion);
 }
 
+/* --- Destinos permitidos por subproducto (ago/2026) ---
+   Generaliza los antiguos flags `soloDatacenter`/`soloNube` en un solo campo `destinos`, para que
+   habilitar/restringir un producto a un nuevo tipo de nodo (Sede, Matriz, Nube, Datacenter) sea
+   un cambio de UNA línea en el catálogo (SUBPRODUCTOS) en vez de tocar la lógica de asignación.
+   Sin `destinos` en el catálogo, el valor por defecto es ['sede','matriz'] (comportamiento
+   histórico: la mayoría de productos solo se asignan a una sede o a una Matriz). */
+function destinosPermitidos(sub){
+  return sub.destinos || ['sede','matriz'];
+}
+/* ¿Este subproducto se puede soltar sobre una entidad del tipo `tipo` ('sede'|'matriz'|'nube'|
+   'datacenter', ver tipoEntidad)? Además de la lista del catálogo, el Datacenter cuenta como
+   destino inválido mientras esté eliminado (state.datacenter.activo===false, ver
+   deleteDatacenter/restoreDatacenter) — así no hace falta repetir ese chequeo en cada punto de
+   asignación. */
+function destinoValido(sub, tipo){
+  if(tipo==='datacenter' && !state.datacenter.activo) return false;
+  return destinosPermitidos(sub).includes(tipo);
+}
+function destinoValidoParaEntidad(sub, entityId){
+  return destinoValido(sub, tipoEntidad(entityId));
+}
+/* Texto legible de a dónde se puede asignar un subproducto, para tooltips/toasts/hints — se
+   arma dinámicamente a partir de `destinos` en vez de tener un mensaje fijo por combinación. */
+function nombreDestinos(sub){
+  const destinos = destinosPermitidos(sub);
+  const partes = [];
+  if(destinos.includes('datacenter')) partes.push('el Datacenter Epicentro');
+  if(destinos.includes('nube')) partes.push('una Nube');
+  if(destinos.includes('sede') || destinos.includes('matriz')) partes.push('una sede o una Matriz');
+  if(partes.length<=1) return partes.join('');
+  return partes.slice(0,-1).join(', ') + ' o ' + partes[partes.length-1];
+}
+
 function uid(prefix, seqField){
   const n = state[seqField]++;
   return prefix + '_' + n;
@@ -485,7 +572,46 @@ function uid(prefix, seqField){
    3. ESCENA THREE.JS — cámara isométrica, grid, hub, sedes, assets
    ========================================================================= */
 
-const wrap = document.getElementById('canvasWrap');
+/* --- Fabricas de malla reutilizables ---
+   Todo el 3D de la app se dibuja con el mismo par de recursos: aristas (wireframe) sobre una
+   geometria y, a veces, un relleno translucido de la MISMA geometria. Ese patron estaba escrito
+   a mano en cada asset (31 veces `new THREE.LineSegments(new THREE.EdgesGeometry(...),
+   new THREE.LineBasicMaterial({...}))`), lo que hacia que agregar un icono nuevo fuera copiar y
+   pegar 3 lineas de ruido por pieza. Concentrarlo aca deja cada asset como lo que realmente es:
+   una lista de geometrias y posiciones.
+     wire(geo, color, opts)  -> aristas de `geo`
+     solid(geo, opts)        -> malla rellena de `geo` con MeshBasicMaterial
+     fillMesh(geo, opacity)  -> el relleno oscuro estandar de los volumenes "edificio"
+     hitboxMesh(geo)         -> volumen invisible que solo existe para el raycaster (§5)
+     haloRing(rIn, rOut, color, name, y, seg) -> anillo de seleccion, tumbado sobre el piso */
+function wire(geometry, color, matOpts){
+  return new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial(Object.assign({ color }, matOpts))
+  );
+}
+function solid(geometry, matOpts){
+  return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial(matOpts));
+}
+const FILL_COLOR = 0x141b26; // mismo tono que --panel-2 en css/styles.css
+function fillMesh(geometry, opacity){
+  return solid(geometry, { color:FILL_COLOR, transparent:true, opacity: opacity===undefined ? .55 : opacity });
+}
+function hitboxMesh(geometry, name){
+  const mesh = solid(geometry, { visible:false });
+  if(name) mesh.name = name;
+  return mesh;
+}
+function haloRing(innerR, outerR, color, name, y, segments){
+  const halo = solid(new THREE.RingGeometry(innerR, outerR, segments || 40),
+    { color, side:THREE.DoubleSide, transparent:true, opacity:0 });
+  halo.rotation.x = -Math.PI/2;
+  halo.position.y = y;
+  halo.name = name;
+  return halo;
+}
+
+const wrap = byId('canvasWrap');
 const scene = new THREE.Scene();
 
 const GRID_SPACING = 4;
@@ -527,7 +653,7 @@ scene.add(dirLight);
    group.localToWorld), localY es el offset vertical local (mismo criterio que antes: altura de
    la sede/Matriz + margen), el es el div renderizado. */
 let zoomLevel = 1;
-const labelLayer = document.getElementById('labelLayer');
+const labelLayer = byId('labelLayer');
 const nameLabels = new Map();
 const tmpLabelVec = new THREE.Vector3();
 function upsertNameLabel(id, group, localY, text){
@@ -585,8 +711,8 @@ function buildMatrizMesh(){
   let coreY = 0;
   coreSizes.forEach((dims)=>{
     const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
-    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
+    const edges = wire(geo, 0xe6edf3);
+    const fill = fillMesh(geo);
     const y = coreY + dims[1]/2;
     edges.position.y = y; fill.position.y = y;
     group.add(edges); group.add(fill);
@@ -595,36 +721,29 @@ function buildMatrizMesh(){
 
   // cascarón exterior giratorio: icosaedro wireframe, simboliza la red corporativa
   const hubShellGeo = new THREE.IcosahedronGeometry(1.7, 0);
-  const hubShell = new THREE.LineSegments(new THREE.EdgesGeometry(hubShellGeo), new THREE.LineBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.45 }));
+  const hubShell = wire(hubShellGeo, 0x22d3ee, { transparent:true, opacity:.45 });
   hubShell.position.y = coreY * 0.62;
   hubShell.name = 'hubShell';
   group.add(hubShell);
 
   // segundo cascarón, más pequeño, gira en sentido contrario para dar profundidad
   const hubShell2Geo = new THREE.IcosahedronGeometry(1.25, 0);
-  const hubShell2 = new THREE.LineSegments(new THREE.EdgesGeometry(hubShell2Geo), new THREE.LineBasicMaterial({ color:0x67e3fa, transparent:true, opacity:.3 }));
+  const hubShell2 = wire(hubShell2Geo, 0x67e3fa, { transparent:true, opacity:.3 });
   hubShell2.position.y = coreY * 0.62;
   hubShell2.name = 'hubShell2';
   group.add(hubShell2);
 
   // haz vertical sutil sobre el hub
   const beamGeo = new THREE.CylinderGeometry(0.04,0.04, 2.4, 8, 1, true);
-  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, transparent:true, opacity:.18, side:THREE.DoubleSide }));
+  const beam = solid(beamGeo, { color:0x22d3ee, transparent:true, opacity:.18, side:THREE.DoubleSide });
   beam.position.y = coreY + 1.2;
   group.add(beam);
 
-  const matrizHitboxGeo = new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16);
-  const matrizHitbox = new THREE.Mesh(matrizHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
+  const matrizHitbox = hitboxMesh(new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16), 'matrizHitbox');
   matrizHitbox.position.y = (coreY + 2.6) / 2;
-  matrizHitbox.name = 'matrizHitbox';
   group.add(matrizHitbox);
 
-  const matrizHaloGeo = new THREE.RingGeometry(2.5, 2.68, 40);
-  const matrizHalo = new THREE.Mesh(matrizHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
-  matrizHalo.rotation.x = -Math.PI/2;
-  matrizHalo.position.y = 0.03;
-  matrizHalo.name = 'matrizHalo';
-  group.add(matrizHalo);
+  group.add(haloRing(2.5, 2.68, 0x22d3ee, 'matrizHalo', 0.03));
 
   // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
   const matrizPort = makePortSprite();
@@ -655,33 +774,28 @@ function buildNubeMesh(){
   ];
   puffs.forEach(p=>{
     const geo = new THREE.IcosahedronGeometry(p.r, 0);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color, transparent:true, opacity:.7 }));
-    const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.5 }));
+    const edges = wire(geo, color, { transparent:true, opacity:.7 });
+    const fill = fillMesh(geo, .5);
     edges.position.set(...p.pos); fill.position.set(...p.pos);
     group.add(edges); group.add(fill);
   });
 
   // base: plataforma delgada, para anclar visualmente la nube al piso de la grilla
   const baseGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.12, 20);
-  const baseEdges = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeo), new THREE.LineBasicMaterial({ color, transparent:true, opacity:.4 }));
-  const baseFill = new THREE.Mesh(baseGeo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
+  const baseEdges = wire(baseGeo, color, { transparent:true, opacity:.4 });
+  const baseFill = fillMesh(baseGeo);
   baseEdges.position.y = 0.06; baseFill.position.y = 0.06;
   group.add(baseEdges, baseFill);
 
   const coreY = 1.9; // altura de referencia para nombre flotante y efecto "recubrimiento"
 
-  const nubeHitboxGeo = new THREE.CylinderGeometry(1.4, 1.4, coreY + 0.6, 16);
-  const nubeHitbox = new THREE.Mesh(nubeHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
+  // mismo name que Matriz/Datacenter: hitTest/selección son genéricos por userData
+  const nubeHitbox = hitboxMesh(new THREE.CylinderGeometry(1.4, 1.4, coreY + 0.6, 16), 'matrizHitbox');
   nubeHitbox.position.y = (coreY + 0.6) / 2;
-  nubeHitbox.name = 'matrizHitbox'; // mismo nombre que Matriz/Datacenter: hitTest/selección son genéricos por userData
   group.add(nubeHitbox);
 
-  const nubeHaloGeo = new THREE.RingGeometry(1.55, 1.7, 40);
-  const nubeHalo = new THREE.Mesh(nubeHaloGeo, new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide, transparent:true, opacity:0 }));
-  nubeHalo.rotation.x = -Math.PI/2;
-  nubeHalo.position.y = 0.03;
-  nubeHalo.name = 'matrizHalo'; // mismo patrón que Matriz: updateSelectionVisuals los trata igual
-  group.add(nubeHalo);
+  // mismo name que la Matriz: updateSelectionVisuals los trata igual
+  group.add(haloRing(1.55, 1.7, color, 'matrizHalo', 0.03));
 
   const nubePort = makePortSprite();
   nubePort.position.set(1.3, coreY*0.5, 0);
@@ -699,12 +813,12 @@ function buildNubeMesh(){
    (ver hitTestAtEvent). */
 const centerMarkerGroup = new THREE.Group();
 const centerDotGeo = new THREE.CircleGeometry(0.18, 24);
-const centerDot = new THREE.Mesh(centerDotGeo, new THREE.MeshBasicMaterial({ color:0x4b5563, transparent:true, opacity:.7, side:THREE.DoubleSide }));
+const centerDot = solid(centerDotGeo, { color:0x4b5563, transparent:true, opacity:.7, side:THREE.DoubleSide });
 centerDot.rotation.x = -Math.PI/2;
 centerDot.position.y = 0.015;
 centerMarkerGroup.add(centerDot);
 const centerRingGeo = new THREE.RingGeometry(0.34, 0.4, 32);
-const centerRing = new THREE.Mesh(centerRingGeo, new THREE.MeshBasicMaterial({ color:0x4b5563, transparent:true, opacity:.4, side:THREE.DoubleSide }));
+const centerRing = solid(centerRingGeo, { color:0x4b5563, transparent:true, opacity:.4, side:THREE.DoubleSide });
 centerRing.rotation.x = -Math.PI/2;
 centerRing.position.y = 0.015;
 centerMarkerGroup.add(centerRing);
@@ -725,8 +839,8 @@ const DC_TIERS = [ [3.0,0.55,2.2], [2.0,1.0,1.5], [1.1,0.7,0.85] ];
 let dcY = 0;
 DC_TIERS.forEach(dims=>{
   const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
-  const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x141b26, transparent:true, opacity:.55 }));
+  const edges = wire(geo, 0xe6edf3);
+  const fill = fillMesh(geo);
   const y = dcY + dims[1]/2;
   edges.position.y = y; fill.position.y = y;
   datacenterGroup.add(edges, fill);
@@ -734,24 +848,19 @@ DC_TIERS.forEach(dims=>{
 });
 // hilera de "luces de servidor" en la fachada, para dar sensación de datacenter activo
 for(let i=0;i<7;i++){
-  const light = new THREE.Mesh(new THREE.SphereGeometry(0.05,8,8),
-    new THREE.MeshBasicMaterial({ color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 }));
+  const light = solid(new THREE.SphereGeometry(0.05,8,8),
+    { color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 });
   light.position.set(-1.2 + i*0.4, 0.3, 1.11);
   datacenterGroup.add(light);
 }
 upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');
 
-const dcHaloGeo = new THREE.RingGeometry(2.2, 2.38, 40);
-const dcHalo = new THREE.Mesh(dcHaloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
-dcHalo.rotation.x = -Math.PI/2;
-dcHalo.position.y = 0.03;
-dcHalo.name = 'matrizHalo'; // mismo nombre que el halo de la Matriz: updateSelectionVisuals los trata igual
-datacenterGroup.add(dcHalo);
+// mismo name que el halo de la Matriz: updateSelectionVisuals los trata igual
+datacenterGroup.add(haloRing(2.2, 2.38, 0x22d3ee, 'matrizHalo', 0.03));
 
-const dcHitboxGeo = new THREE.BoxGeometry(3.4, dcY+0.6, 2.6);
-const dcHitbox = new THREE.Mesh(dcHitboxGeo, new THREE.MeshBasicMaterial({ visible:false }));
+// mismo name que la Matriz: sedeId + isSedeRoot
+const dcHitbox = hitboxMesh(new THREE.BoxGeometry(3.4, dcY+0.6, 2.6), 'matrizHitbox');
 dcHitbox.position.y = (dcY+0.6)/2;
-dcHitbox.name = 'matrizHitbox'; // mismo patrón que la Matriz: sedeId + isSedeRoot
 dcHitbox.userData = { sedeId:'datacenter', isSedeRoot:true, isMatrizRoot:true };
 datacenterGroup.add(dcHitbox);
 
@@ -944,7 +1053,7 @@ const SATELLITE_CYCLE_SECONDS =
 
 function rebuildSatelliteLinks(){
   satelliteAnims = [];
-  [...state.sedes, ...state.matrices].forEach(entity=>{
+  entidadesPortadoras().forEach(entity=>{
     const satInstancias = entity.instancias.filter(inst=>{
       const sub = getSubproducto(inst.subproductoId);
       return sub && sub.conexion==='satelital';
@@ -1033,7 +1142,7 @@ function rebuildSdwanBadges(curveByConexionId){
   sdwanAnims = [];
   const sub = getSubproducto('sdwan');
   const color = getSubproductoColor(sub);
-  [...state.sedes, ...state.matrices].forEach(entity=>{
+  entidadesPortadoras().forEach(entity=>{
     entity.instancias.forEach(inst=>{
       if(inst.subproductoId!=='sdwan' || !inst.targetConexionId) return;
       const curve = curveByConexionId[inst.targetConexionId];
@@ -1136,13 +1245,13 @@ renderer.domElement.addEventListener('wheel', (e)=>{
 
 /* --- Botones de zoom (además del scroll) --- */
 const ZOOM_STEP_FACTOR = 1.25;
-document.getElementById('zoomIn').addEventListener('click', ()=>{
+byId('zoomIn').addEventListener('click', ()=>{
   applyZoom(zoomLevel * ZOOM_STEP_FACTOR);
 });
-document.getElementById('zoomOut').addEventListener('click', ()=>{
+byId('zoomOut').addEventListener('click', ()=>{
   applyZoom(zoomLevel / ZOOM_STEP_FACTOR);
 });
-document.getElementById('zoomReset').addEventListener('click', ()=>{
+byId('zoomReset').addEventListener('click', ()=>{
   camAngleY = DEFAULT_CAM_ANGLE_Y;
   camAngleX = DEFAULT_CAM_ANGLE_X;
   camTarget.set(0,0,0);
@@ -1154,7 +1263,7 @@ document.getElementById('zoomReset').addEventListener('click', ()=>{
    desplazar — pensado sobre todo para táctil (no requiere Ctrl/Cmd, que en desktop también
    activa pan mientras se mantiene apretado). El estado se lee desde onPointerDown más abajo. */
 let panModeActive = false;
-const panToggleBtn = document.getElementById('panToggle');
+const panToggleBtn = byId('panToggle');
 function setPanModeActive(active){
   panModeActive = active;
   panToggleBtn.style.background = active ? 'var(--cian)' : '';
@@ -1179,9 +1288,42 @@ window.addEventListener('orientationchange', ()=>{ setTimeout(handleViewportResi
 const AssetRegistry = {
   escudo: (color)=>{
     const g = new THREE.ConeGeometry(0.34, 0.55, 4);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.rotation.y = Math.PI/4;
     return mesh;
+  },
+  // Firewall On Premise (ago/2026): caja compacta de hardware de rack, con "puertos" en el
+  // frente — se lee como equipo físico, a diferencia del escudo con anillo de firewall_virtual.
+  firewall_onpremise: (color)=>{
+    const group = new THREE.Group();
+    const bodyGeo = new THREE.BoxGeometry(0.42, 0.16, 0.22);
+    const body = wire(bodyGeo, color);
+    body.position.y = 0.16;
+    group.add(body);
+    for(let i=0;i<4;i++){
+      const portGeo = new THREE.BoxGeometry(0.045, 0.045, 0.02);
+      const port = wire(portGeo, color);
+      port.position.set(-0.15 + i*0.1, 0.16, 0.115);
+      group.add(port);
+    }
+    return group;
+  },
+  // Firewall Virtual (ago/2026, Internet Seguro): el mismo escudo de "Perimetral" con un anillo
+  // orbitando alrededor — el mismo lenguaje visual que "software/virtualizado" usado en otros
+  // assets (ver `globo`/Internet), para distinguirlo del hardware físico de firewall_onpremise.
+  firewall_virtual: (color)=>{
+    const group = new THREE.Group();
+    const shieldGeo = new THREE.ConeGeometry(0.26, 0.42, 4);
+    const shield = wire(shieldGeo, color);
+    shield.rotation.y = Math.PI/4;
+    shield.position.y = 0.28;
+    group.add(shield);
+    const ringGeo = new THREE.TorusGeometry(0.26, 0.014, 6, 20);
+    const ring = wire(ringGeo, color);
+    ring.rotation.x = Math.PI/2.3;
+    ring.position.y = 0.28;
+    group.add(ring);
+    return group;
   },
   nube: (color)=>{
     const group = new THREE.Group();
@@ -1189,7 +1331,7 @@ const AssetRegistry = {
     const offsets = [[-0.22,0],[0.05,0.08],[0.24,-0.02]];
     sizes.forEach((s,i)=>{
       const geo = new THREE.SphereGeometry(s, 8, 6);
-      const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color }));
+      const mesh = wire(geo, color);
       mesh.position.set(offsets[i][0], 0.28+offsets[i][1], 0);
       group.add(mesh);
     });
@@ -1197,7 +1339,7 @@ const AssetRegistry = {
   },
   enlace: (color)=>{
     const g = new THREE.CylinderGeometry(0.05,0.05,0.6,8);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.rotation.z = Math.PI/2.4;
     mesh.position.y = 0.3;
     return mesh;
@@ -1205,11 +1347,11 @@ const AssetRegistry = {
   candado: (color)=>{
     const group = new THREE.Group();
     const body = new THREE.BoxGeometry(0.34,0.28,0.16);
-    const bodyMesh = new THREE.LineSegments(new THREE.EdgesGeometry(body), new THREE.LineBasicMaterial({ color }));
+    const bodyMesh = wire(body, color);
     bodyMesh.position.y = 0.18;
     group.add(bodyMesh);
     const shackle = new THREE.TorusGeometry(0.14,0.03,6,12,Math.PI);
-    const shackleMesh = new THREE.LineSegments(new THREE.EdgesGeometry(shackle), new THREE.LineBasicMaterial({ color }));
+    const shackleMesh = wire(shackle, color);
     shackleMesh.position.y = 0.36;
     shackleMesh.rotation.x = Math.PI;
     group.add(shackleMesh);
@@ -1217,14 +1359,14 @@ const AssetRegistry = {
   },
   pantalla: (color)=>{
     const g = new THREE.BoxGeometry(0.5,0.34,0.04);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.position.y = 0.3;
     return mesh;
   },
   nodo: (color)=>{
     // Sdwan: nodo de red inteligente (octaedro)
     const g = new THREE.OctahedronGeometry(0.26, 0);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.position.y = 0.3;
     return mesh;
   },
@@ -1232,11 +1374,11 @@ const AssetRegistry = {
     // Internet: globo con anillos, como una red/wifi global
     const group = new THREE.Group();
     const sphereGeo = new THREE.SphereGeometry(0.22, 10, 8);
-    const sphere = new THREE.LineSegments(new THREE.EdgesGeometry(sphereGeo), new THREE.LineBasicMaterial({ color }));
+    const sphere = wire(sphereGeo, color);
     sphere.position.y = 0.3;
     group.add(sphere);
     const ringGeo = new THREE.TorusGeometry(0.3, 0.015, 6, 20);
-    const ring1 = new THREE.LineSegments(new THREE.EdgesGeometry(ringGeo), new THREE.LineBasicMaterial({ color }));
+    const ring1 = wire(ringGeo, color);
     ring1.rotation.x = Math.PI/2.3;
     ring1.position.y = 0.3;
     group.add(ring1);
@@ -1251,7 +1393,7 @@ const AssetRegistry = {
     const group = new THREE.Group();
     for(let i=0;i<3;i++){
       const g = new THREE.BoxGeometry(0.38,0.12,0.24);
-      const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+      const mesh = wire(g, color);
       mesh.position.y = 0.1 + i*0.16;
       group.add(mesh);
     }
@@ -1261,17 +1403,17 @@ const AssetRegistry = {
     // Acceso: llave (aro + eje + diente)
     const group = new THREE.Group();
     const ringGeo = new THREE.TorusGeometry(0.13, 0.035, 6, 14);
-    const ring = new THREE.LineSegments(new THREE.EdgesGeometry(ringGeo), new THREE.LineBasicMaterial({ color }));
+    const ring = wire(ringGeo, color);
     ring.position.set(-0.14, 0.3, 0);
     ring.rotation.y = Math.PI/2;
     group.add(ring);
     const shaftGeo = new THREE.CylinderGeometry(0.035,0.035,0.32,8);
-    const shaft = new THREE.LineSegments(new THREE.EdgesGeometry(shaftGeo), new THREE.LineBasicMaterial({ color }));
+    const shaft = wire(shaftGeo, color);
     shaft.rotation.z = Math.PI/2;
     shaft.position.set(0.08, 0.3, 0);
     group.add(shaft);
     const toothGeo = new THREE.BoxGeometry(0.06,0.09,0.06);
-    const tooth = new THREE.LineSegments(new THREE.EdgesGeometry(toothGeo), new THREE.LineBasicMaterial({ color }));
+    const tooth = wire(toothGeo, color);
     tooth.position.set(0.22, 0.25, 0);
     group.add(tooth);
     return group;
@@ -1280,7 +1422,7 @@ const AssetRegistry = {
     // Aplicación: muro/barrera con marca en X (WAF, DNS/DDoS)
     const group = new THREE.Group();
     const g = new THREE.BoxGeometry(0.42,0.42,0.05);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.position.y = 0.3;
     group.add(mesh);
     const crossGeo = new THREE.BufferGeometry().setFromPoints([
@@ -1295,7 +1437,7 @@ const AssetRegistry = {
     // Ofimática: documento/página con líneas de texto
     const group = new THREE.Group();
     const g = new THREE.BoxGeometry(0.3,0.4,0.03);
-    const mesh = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color }));
+    const mesh = wire(g, color);
     mesh.position.y = 0.3;
     group.add(mesh);
     const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -1311,14 +1453,14 @@ const AssetRegistry = {
     // Portal Cautivo: puerta/portal de acceso
     const group = new THREE.Group();
     const postGeo = new THREE.CylinderGeometry(0.035,0.035,0.5,8);
-    const post1 = new THREE.LineSegments(new THREE.EdgesGeometry(postGeo), new THREE.LineBasicMaterial({ color }));
+    const post1 = wire(postGeo, color);
     post1.position.set(-0.2, 0.25, 0);
     group.add(post1);
     const post2 = post1.clone();
     post2.position.x = 0.2;
     group.add(post2);
     const lintelGeo = new THREE.BoxGeometry(0.46,0.05,0.05);
-    const lintel = new THREE.LineSegments(new THREE.EdgesGeometry(lintelGeo), new THREE.LineBasicMaterial({ color }));
+    const lintel = wire(lintelGeo, color);
     lintel.position.set(0, 0.5, 0);
     group.add(lintel);
     return group;
@@ -1328,11 +1470,11 @@ const AssetRegistry = {
     // ver §1 catálogo (reubicado desde Conectividad → Internet a Colaboración, 31/07/2026).
     const group = new THREE.Group();
     const bodyGeo = new THREE.BoxGeometry(0.38,0.08,0.2);
-    const body = new THREE.LineSegments(new THREE.EdgesGeometry(bodyGeo), new THREE.LineBasicMaterial({ color }));
+    const body = wire(bodyGeo, color);
     body.position.y = 0.28;
     group.add(body);
     const antGeo = new THREE.CylinderGeometry(0.018,0.018,0.22,6);
-    const ant1 = new THREE.LineSegments(new THREE.EdgesGeometry(antGeo), new THREE.LineBasicMaterial({ color }));
+    const ant1 = wire(antGeo, color);
     ant1.position.set(-0.1, 0.42, 0);
     ant1.rotation.z = -0.35;
     group.add(ant1);
@@ -1350,22 +1492,17 @@ function buildSedeMesh(tamanoId){
   const group = new THREE.Group();
   const [w,h,d] = tamano.box;
   const geo = new THREE.BoxGeometry(w,h,d);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0xe6edf3 }));
+  const edges = wire(geo, 0xe6edf3);
   edges.position.y = h/2;
   edges.name = 'sedeHitbox';
   group.add(edges);
-  const fill = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:0x1a2230, transparent:true, opacity:.55 }));
+  const fill = solid(geo, { color:0x1a2230, transparent:true, opacity:.55 });
   fill.position.y = h/2;
   group.add(fill);
 
   // marcador de selección (halo), escalado según el tamaño de la sede
   const haloR = Math.max(w,d)/2 + 0.35;
-  const haloGeo = new THREE.RingGeometry(haloR, haloR+0.15, 32);
-  const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color:0x22d3ee, side:THREE.DoubleSide, transparent:true, opacity:0 }));
-  halo.rotation.x = -Math.PI/2;
-  halo.position.y = 0.02;
-  halo.name = 'halo';
-  group.add(halo);
+  group.add(haloRing(haloR, haloR+0.15, 0x22d3ee, 'halo', 0.02, 32));
 
   // Puerto de conexión: desde aquí el usuario arrastra un cable hacia otra Sede, la Matriz o el Datacenter.
   const port = makePortSprite();
@@ -1452,7 +1589,10 @@ function refreshSedeAssets(sede){
   function placeAsset(inst, isHeredado){
     const sub = getSubproducto(inst.subproductoId);
     const producto = getProducto(sub.productoNivel2Id);
-    const build = AssetRegistry[producto.assetKey] || AssetRegistry.pantalla;
+    // Un subproducto puede tener su propio `assetKey` (ago/2026: Firewall Virtual/On Premise,
+    // ver AssetRegistry) para distinguirse de sus hermanos, que por defecto comparten el ícono
+    // del Producto (N2) — ver comentario del §1 del catálogo.
+    const build = AssetRegistry[sub.assetKey || producto.assetKey] || AssetRegistry.pantalla;
     const color = getSubproductoColor(sub);
     const asset = build(color);
     const angle = (idx / Math.max(total,1)) * Math.PI*2;
@@ -1487,7 +1627,7 @@ function refreshSedeAssets(sede){
 function gridToWorld(gx,gz){ return { x: gx*GRID_SPACING, z: gz*GRID_SPACING }; }
 
 function occupied(gx,gz,excludeId){
-  if(gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro
+  if(state.datacenter.activo && gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro (libre si fue eliminado)
   if(state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId)) return true;
   if(state.matrices.some(m=>m.gx===gx && m.gz===gz && m.id!==excludeId)) return true;
   if(state.nubes.some(n=>n.gx===gx && n.gz===gz && n.id!==excludeId)) return true;
@@ -1627,16 +1767,11 @@ function updateSelectionVisuals(){
    En desktop funciona con arrastre nativo (HTML5 DnD). En touch (celular/tablet) el DnD nativo
    no dispara con el dedo, así que se ofrece una alternativa: tocar la tarjeta/producto lo "arma"
    (aparece un aviso arriba del canvas) y el siguiente toque sobre el canvas lo coloca. */
-let draggingFromPanel = null; // null | 'sede' | 'matriz' — respaldo para navegadores que no preservan dataTransfer en 'drop'
+let draggingFromPanel = null; // null | 'sede' | 'matriz' | 'nube' — respaldo para navegadores que no preservan dataTransfer en 'drop'
 let draggingSubproductoId = null;
-const sedeDragCard = document.getElementById('sedeDragCard');
-sedeDragCard.addEventListener('dragstart', (e)=>{
-  draggingFromPanel = 'sede';
-  e.dataTransfer.setData('text/plain', 'sede');
-});
 
-const placingHintEl = document.getElementById('placingHint');
-const placingHintText = document.getElementById('placingHintText');
+const placingHintEl = byId('placingHint');
+const placingHintText = byId('placingHintText');
 function armPlacing(placing, hintText){
   state.placing = placing;
   placingHintText.textContent = hintText;
@@ -1646,11 +1781,11 @@ function disarmPlacing(){
   state.placing = null;
   placingHintEl.style.display = 'none';
 }
-document.getElementById('placingHintCancel').addEventListener('click', disarmPlacing);
+byId('placingHintCancel').addEventListener('click', disarmPlacing);
 
 /* --- Toast: aviso corto y no bloqueante sobre el canvas (p.ej. "este producto solo va en el
    Datacenter"). Varios se apilan si se disparan seguidos; cada uno se retira solo. --- */
-const toastStackEl = document.getElementById('toastStack');
+const toastStackEl = byId('toastStack');
 function showToast(text, duration=2600){
   const el = document.createElement('div');
   el.className = 'toast';
@@ -1663,22 +1798,24 @@ function showToast(text, duration=2600){
   }, duration);
 }
 
-sedeDragCard.addEventListener('click', ()=>{
-  if(state.placing && state.placing.tipo==='sede'){ disarmPlacing(); return; }
-  armPlacing({ tipo:'sede' }, 'Toca el canvas para colocar la sede');
-});
-
 function placeSedeAtClientPoint(clientX, clientY){
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
-  const dropRaycaster = new THREE.Raycaster();
-  dropRaycaster.setFromCamera(mouse, camera);
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-  const point = new THREE.Vector3();
-  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
   const {gx,gz} = nearestFreeCell(point.x, point.z);
   createSede(EMPLEADOS_DEFAULT, gx, gz);
+}
+
+/* Marca un grupo 3D recién construido como "esta entidad", para que el raycaster (§5) sepa qué
+   se está clickeando y desde qué puerto sale un cable. Lo comparten Matriz y Nube, que usan la
+   misma convención de names internos (`matrizHitbox` / `connPort`).
+   Importante: se asignan propiedades sobre userData en vez de reemplazar el objeto, porque
+   buildMatrizMesh()/buildNubeMesh() ya guardaron ahí `coreY` y hay que conservarlo. */
+function tagEntityGroup(group, id){
+  Object.assign(group.userData, { sedeId:id, isSedeRoot:true, isMatrizRoot:true });
+  group.traverse(o=>{
+    if(o.name==='matrizHitbox') Object.assign(o.userData, { sedeId:id, isSedeRoot:true, isMatrizRoot:true });
+    if(o.name==='connPort') Object.assign(o.userData, { sedeId:id, isPort:true, entityId:id });
+  });
 }
 
 /* --- Creación de la Matriz (§4B) ---
@@ -1688,8 +1825,6 @@ function placeSedeAtClientPoint(clientX, clientY){
    cercana). A diferencia de la versión anterior, puede haber varias Matrices, y cada una se
    coloca donde el usuario la suelte — el centro de la grilla ya no tiene ningún significado
    especial para ellas, solo lleva el punto decorativo (centerMarkerGroup, más arriba). */
-const matrizDragCard = document.getElementById('matrizDragCard');
-
 function createMatriz(gx, gz){
   const id = uid('matriz','nextMatrizSeq');
   const nombre = 'Matriz ' + id.split('_')[1];
@@ -1701,13 +1836,7 @@ function createMatriz(gx, gz){
   // puede legítimamente no tener usuarios propios asignados todavía, así que arranca en 0 (no en
   // EMPLEADOS_DEFAULT) — se edita con el mismo patrón de slider+número en renderMatrizEditBox.
   const matriz = { id, nombre, tipo:'matriz', gx, gz, group, instancias:[], usuarios:0 };
-  // Asignar propiedades sin reemplazar el objeto userData completo: buildMatrizMesh() ya guardó
-  // coreY ahí, y necesitamos conservarlo.
-  Object.assign(group.userData, { sedeId:id, isSedeRoot:true, isMatrizRoot:true });
-  group.traverse(o=>{
-    if(o.name==='matrizHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; o.userData.isMatrizRoot=true; }
-    if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
-  });
+  tagEntityGroup(group, id);
   state.matrices.push(matriz);
   refreshSedeAssets(matriz);
   updateSedeNameSprite(matriz);
@@ -1727,11 +1856,7 @@ function createNube(nombreProveedor, gx, gz){
   group.position.set(pos.x, 0, pos.z);
   scene.add(group);
   const nube = { id, nombre, tipo:'nube', gx, gz, group, instancias:[] };
-  Object.assign(group.userData, { sedeId:id, isSedeRoot:true, isMatrizRoot:true });
-  group.traverse(o=>{
-    if(o.name==='matrizHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; o.userData.isMatrizRoot=true; }
-    if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
-  });
+  tagEntityGroup(group, id);
   state.nubes.push(nube);
   refreshSedeAssets(nube);
   updateSedeNameSprite(nube);
@@ -1753,54 +1878,59 @@ function deleteNube(nube){
   renderRightPanel();
 }
 
+/* --- Eliminar/restaurar el Datacenter Epicentro (ago/2026, pedido cliente) ---
+   A diferencia de Sede/Matriz/Nube, el Datacenter no vive en un array (state.sedes/matrices/
+   nubes): es un único edificio fijo, siempre en la misma celda de grilla, creado una sola vez al
+   iniciar la escena (ver §3, datacenterGroup). "Eliminarlo" no borra ese objeto — lo desactiva:
+   limpia sus productos propios y las conexiones que apunten a él (con eliminarConexion, igual que
+   deleteMatriz/deleteNube, así también se limpian productos de sedes/Matriz que apuntaban ahí —
+   p.ej. Zona Wireless), y oculta su grupo 3D (visible=false excluye el raycaster de hitTestAtEvent
+   §4, así deja de poder seleccionarse/soltarle productos encima). "Restaurarlo" solo vuelve a
+   mostrar el mismo grupo — no hay que reconstruir su geometría. */
+function deleteDatacenter(){
+  conexionesDe('datacenter').forEach(c=> eliminarConexion(c.id));
+  state.datacenter.instancias = [];
+  refreshSedeAssets(state.datacenter);
+  state.datacenter.activo = false;
+  datacenterGroup.visible = false;
+  removeNameLabel('datacenter');
+  state.selectedSedeIds = state.selectedSedeIds.filter(id=>id!=='datacenter');
+  if(state.selectedConexionId){
+    const stillExists = state.conexiones.some(c=>c.id===state.selectedConexionId);
+    if(!stillExists) state.selectedConexionId = null;
+  }
+  rebuildConnections();
+  updateSelectionVisuals();
+  syncDatacenterRestoreUI();
+  renderRightPanel();
+}
+
+function restoreDatacenter(){
+  if(state.datacenter.activo) return;
+  state.datacenter.activo = true;
+  datacenterGroup.visible = true;
+  upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');
+  syncDatacenterRestoreUI();
+  renderRightPanel();
+}
+
 function placeMatrizAtClientPoint(clientX, clientY){
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
-  const dropRaycaster = new THREE.Raycaster();
-  dropRaycaster.setFromCamera(mouse, camera);
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-  const point = new THREE.Vector3();
-  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
   const {gx,gz} = nearestFreeCell(point.x, point.z);
   createMatriz(gx, gz);
 }
 
-matrizDragCard.addEventListener('dragstart', (e)=>{
-  draggingFromPanel = 'matriz';
-  e.dataTransfer.setData('text/plain', 'matriz');
-});
-matrizDragCard.addEventListener('click', ()=>{
-  if(state.placing && state.placing.tipo==='matriz'){ disarmPlacing(); return; }
-  armPlacing({ tipo:'matriz' }, 'Toca el canvas para colocar la Matriz');
-});
-
 /* Crear una Nube directamente desde el catálogo (v9 §5), sin pasar por el dropdown de Cloud
    Interconnect — mismo patrón de arrastre que Sede/Matriz. Pide el proveedor con un prompt de
    texto libre, igual que "+ Agregar nueva Nube" en el dropdown (misma función createNube). */
-const nubeDragCard = document.getElementById('nubeDragCard');
 function placeNubeAtClientPoint(clientX, clientY){
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
-  const dropRaycaster = new THREE.Raycaster();
-  dropRaycaster.setFromCamera(mouse, camera);
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-  const point = new THREE.Vector3();
-  dropRaycaster.ray.intersectPlane(groundPlane, point);
+  const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
   const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
   const {gx,gz} = nearestFreeCell(point.x, point.z);
   createNube(nombre, gx, gz);
 }
-nubeDragCard.addEventListener('dragstart', (e)=>{
-  draggingFromPanel = 'nube';
-  e.dataTransfer.setData('text/plain', 'nube');
-});
-nubeDragCard.addEventListener('click', ()=>{
-  if(state.placing && state.placing.tipo==='nube'){ disarmPlacing(); return; }
-  armPlacing({ tipo:'nube' }, 'Toca el canvas para colocar la Nube');
-});
-
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
    el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
    estuviera "vistiendo"), y solo entonces se abre el formulario para completar sus atributos. */
@@ -1841,46 +1971,35 @@ function playWrapEffect(entityId, subproductoId, onDone){
 
 function assignSubproductoAtClientPoint(subproductoId, clientX, clientY){
   const hit = hitTestAtEvent({ clientX, clientY }); // ¿sobre qué sede, Matriz, Nube o Datacenter se soltó?
-  if(!hit.sedeId) return; // se soltó fuera de cualquier entidad válida: sin efecto.
+  if(!hit.sedeId) return; // se soltó fuera de cualquier entidad válida (o sobre un Datacenter eliminado, que deja de ser "hit-testeable"): sin efecto.
   const sub = getSubproducto(subproductoId);
+  // Zona Wireless (`conexion:'datacenter'`) no se suelta SOBRE el Datacenter: se suelta en una
+  // sede/Matriz y genera un cable automático hacia él (ver ensureConexionAutomatica). Ese caso no
+  // pasa por el chequeo de destino de abajo (el destino ahí es la sede, no el Datacenter), así
+  // que se valida aparte si el Datacenter fue eliminado (v.ago/2026, ver deleteDatacenter).
+  if(sub.conexion==='datacenter' && !state.datacenter.activo){
+    showToast(`"${sub.nombre}" requiere el Datacenter Epicentro, que fue eliminado de este proyecto. Restáuralo desde el panel izquierdo para poder asignar este producto.`);
+    return;
+  }
   const tipoHit = tipoEntidad(hit.sedeId);
-  // Housing (Collocation, Crossconexión): equipamiento que se renta físicamente en el Datacenter
-  // de Puntonet, así que solo se puede soltar sobre ese nodo.
-  if(sub.soloDatacenter){
-    if(hit.sedeId!=='datacenter'){
-      showToast(`"${sub.nombre}" solo se puede agregar al Datacenter Epicentro.`);
-      return;
-    }
-    playWrapEffect(hit.sedeId, subproductoId, ()=>{
-      openPopupForNew(subproductoId, [hit.sedeId]);
-    });
+  if(!destinoValido(sub, tipoHit)){
+    const sugerenciaNube = destinosPermitidos(sub).includes('nube')
+      ? ' Si necesitas una Nube, créala arrastrando "Nube" desde el panel izquierdo, o desde el popup de Cloud Interconnect.'
+      : '';
+    showToast(`"${sub.nombre}" solo se puede asignar a ${nombreDestinos(sub)}.${sugerenciaNube}`);
     return;
   }
-  // Hosting (IaaS, BaaS, DRaaS) — v9 §5: se monta sobre una Nube, no sobre el Datacenter ni una
-  // Sede/Matriz. Si todavía no existe ninguna Nube, se lo indica (se crea desde el dropdown
-  // "Conectar a" de Cloud Interconnect, o soltando este mismo producto sobre una Nube existente).
-  if(sub.soloNube){
-    if(tipoHit!=='nube'){
-      showToast(`"${sub.nombre}" solo se puede agregar a una Nube. Crea una arrastrando "Nube" desde el panel izquierdo, o desde el popup de Cloud Interconnect, y suelta el producto ahí.`);
-      return;
-    }
-    playWrapEffect(hit.sedeId, subproductoId, ()=>{
-      openPopupForNew(subproductoId, [hit.sedeId]);
-    });
-    return;
-  }
-  // Resto del catálogo: se asigna a una sede o a una Matriz (ni el Datacenter ni la Nube tienen
-  // catálogo propio abierto — cada uno solo acepta sus productos designados arriba).
-  if(hit.sedeId!=='datacenter' && tipoHit!=='nube'){
-    playWrapEffect(hit.sedeId, subproductoId, ()=>{
-      openPopupForNew(subproductoId, [hit.sedeId]);
-    });
-  } else if(tipoHit==='nube'){
-    showToast(`"${sub.nombre}" se asigna a una sede o a una Matriz, no a una Nube.`);
-  } else {
-    showToast(`"${sub.nombre}" se asigna a una sede o a una Matriz, no al Datacenter.`);
-  }
+  playWrapEffect(hit.sedeId, subproductoId, ()=>{
+    openPopupForNew(subproductoId, [hit.sedeId]);
+  });
 }
+
+/* Payload de arrastre -> como colocar ese nodo (ver setupPanelDragCard, mas abajo) */
+const PLACE_BY_TIPO = {
+  sede: placeSedeAtClientPoint,
+  matriz: placeMatrizAtClientPoint,
+  nube: placeNubeAtClientPoint,
+};
 
 wrap.addEventListener('dragover', (e)=>{ e.preventDefault(); });
 wrap.addEventListener('drop', (e)=>{
@@ -1892,16 +2011,9 @@ wrap.addEventListener('drop', (e)=>{
   draggingSubproductoId = null;
   if(!payload) return;
 
-  if(payload==='sede'){
-    placeSedeAtClientPoint(e.clientX, e.clientY);
-    return;
-  }
-  if(payload==='matriz'){
-    placeMatrizAtClientPoint(e.clientX, e.clientY);
-    return;
-  }
-  if(payload==='nube'){
-    placeNubeAtClientPoint(e.clientX, e.clientY);
+  const place = PLACE_BY_TIPO[payload];
+  if(place){
+    place(e.clientX, e.clientY);
     return;
   }
   if(payload.startsWith('subproducto:')){
@@ -1927,6 +2039,12 @@ function setDragHoverHighlight(entityId){
     const halo = getEntityHaloObject(entityId);
     if(halo) halo.material.opacity = 0.7;
   }
+}
+
+/* ¿El dedo/cursor esta sobre el canvas 3D? (mismo test para el hover en vivo y para el soltar) */
+function isOverCanvas(point){
+  const r = wrap.getBoundingClientRect();
+  return point.clientX>=r.left && point.clientX<=r.right && point.clientY>=r.top && point.clientY<=r.bottom;
 }
 
 const activeTouchDragCancels = [];
@@ -1964,9 +2082,7 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor, isValidTarget
       e.preventDefault();
       ghost.style.left = t.clientX+'px';
       ghost.style.top = t.clientY+'px';
-      const wrapRect = wrap.getBoundingClientRect();
-      const overCanvas = t.clientX>=wrapRect.left && t.clientX<=wrapRect.right && t.clientY>=wrapRect.top && t.clientY<=wrapRect.bottom;
-      if(overCanvas){
+      if(isOverCanvas(t)){
         const hit = hitTestAtEvent({ clientX:t.clientX, clientY:t.clientY });
         setDragHoverHighlight(hit.sedeId && isValidTarget(hit.sedeId) ? hit.sedeId : null);
       } else {
@@ -1983,17 +2099,39 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor, isValidTarget
     if(ghost){ document.body.removeChild(ghost); ghost = null; }
     setDragHoverHighlight(null);
     const t = e.changedTouches[0];
-    const wrapRect = wrap.getBoundingClientRect();
-    const overCanvas = t.clientX>=wrapRect.left && t.clientX<=wrapRect.right && t.clientY>=wrapRect.top && t.clientY<=wrapRect.bottom;
-    if(overCanvas) payloadFn(t.clientX, t.clientY);
+    if(isOverCanvas(t)) payloadFn(t.clientX, t.clientY);
   }
   el.addEventListener('touchend', finish);
   el.addEventListener('touchcancel', forceCancel);
 }
 
-makeTouchDraggable(sedeDragCard, placeSedeAtClientPoint, 'Sede', 'var(--cian)');
-makeTouchDraggable(matrizDragCard, placeMatrizAtClientPoint, 'Matriz', 'var(--indigo)');
-makeTouchDraggable(nubeDragCard, placeNubeAtClientPoint, 'Nube', '#a78bfa');
+/* --- Registro unico de las tarjetas del panel izquierdo (Sede / Matriz / Nube) ---
+   Las 3 se comportaban igual y tenian 3 copias del mismo trio de handlers (dragstart nativo,
+   clic = "armar y colocar" en tactil, arrastre tactil real). Agregar un tipo de nodo nuevo es
+   ahora una linea en esta tabla; el `tipo` es tambien el payload que lee el handler de 'drop'
+   del canvas, asi que no hay strings sueltos que mantener sincronizados. */
+function setupPanelDragCard({ elementId, tipo, hint, place, ghostLabel, ghostColor }){
+  const card = byId(elementId);
+  if(!card) return;
+  card.addEventListener('dragstart', (e)=>{
+    draggingFromPanel = tipo;
+    e.dataTransfer.setData('text/plain', tipo);
+  });
+  card.addEventListener('click', ()=>{
+    if(state.placing && state.placing.tipo===tipo){ disarmPlacing(); return; }
+    armPlacing({ tipo }, hint);
+  });
+  makeTouchDraggable(card, place, ghostLabel, ghostColor);
+}
+
+[
+  { elementId:'sedeDragCard',   tipo:'sede',   hint:'Toca el canvas para colocar la sede',
+    place:placeSedeAtClientPoint,   ghostLabel:'Sede',   ghostColor:'var(--cian)' },
+  { elementId:'matrizDragCard', tipo:'matriz', hint:'Toca el canvas para colocar la Matriz',
+    place:placeMatrizAtClientPoint, ghostLabel:'Matriz', ghostColor:'var(--indigo)' },
+  { elementId:'nubeDragCard',   tipo:'nube',   hint:'Toca el canvas para colocar la Nube',
+    place:placeNubeAtClientPoint,   ghostLabel:'Nube',   ghostColor:'var(--violeta)' },
+].forEach(setupPanelDragCard);
 
 
 
@@ -2002,6 +2140,30 @@ makeTouchDraggable(nubeDragCard, placeNubeAtClientPoint, 'Nube', '#a78bfa');
    ========================================================================= */
 
 const raycaster = new THREE.Raycaster();
+const GROUND_NORMAL = new THREE.Vector3(0,1,0);
+
+/* --- De coordenadas de pantalla a la escena ---
+   Estas 3 lineas (rect -> NDC -> raycaster) estaban repetidas en 7 puntos del archivo, y el
+   raycast contra el piso otras 4 veces, cada una con su propio `new THREE.Raycaster()`.
+   pointerNDC() y pickGroundPoint() son el unico lugar donde vive esa conversion.
+   Nota: `ray.intersectPlane` devuelve null si el rayo es paralelo al plano; las copias anteriores
+   comprobaban `if(!point)` sobre el Vector3 que ellas mismas habian creado — que nunca es null —
+   asi que ese caso limite quedaba sin cubrir. Aca se comprueba el valor de retorno real. */
+function pointerNDC(e){
+  const rect = wrap.getBoundingClientRect();
+  return new THREE.Vector2(
+    ((e.clientX-rect.left)/rect.width)*2-1,
+    -((e.clientY-rect.top)/rect.height)*2+1
+  );
+}
+/* Punto del mundo donde el puntero corta un plano horizontal a la altura `height` (0 = piso de
+   la grilla). Devuelve null si no hay corte. */
+function pickGroundPoint(e, height){
+  raycaster.setFromCamera(pointerNDC(e), camera);
+  const plane = new THREE.Plane(GROUND_NORMAL, -(height || 0));
+  const point = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(plane, point) ? point : null;
+}
 
 /* --- Utilidad de raycast: qué hay bajo el cursor ---
    'asset' solo se llena con un producto propio editable (para abrir su popup al hacer click).
@@ -2010,12 +2172,7 @@ const raycaster = new THREE.Raycaster();
    'port' se llena al tocar el puerto de conexión de una entidad (inicia el arrastre de cable).
    'conexion' se llena al tocar un cable ya existente (abre su popup de edición). */
 function hitTestAtEvent(e){
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(
-    ((e.clientX-rect.left)/rect.width)*2-1,
-    -((e.clientY-rect.top)/rect.height)*2+1
-  );
-  raycaster.setFromCamera(mouse, camera);
+  raycaster.setFromCamera(pointerNDC(e), camera);
   const intersects = raycaster.intersectObjects(scene.children, true);
   let asset = null, sedeId = null, port = null, conexion = null;
   for(const it of intersects){
@@ -2137,13 +2294,7 @@ window.addEventListener('blur', cancelActiveGesture);
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) cancelActiveGesture(); });
 
 function projectToPlaneAtHeight(e, height){
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
-  raycaster.setFromCamera(mouse, camera);
-  const plane = new THREE.Plane(new THREE.Vector3(0,1,0), -height);
-  const point = new THREE.Vector3();
-  raycaster.ray.intersectPlane(plane, point);
-  return point || new THREE.Vector3(0,height,0);
+  return pickGroundPoint(e, height) || new THREE.Vector3(0,height,0);
 }
 
 function onPointerDown(e){
@@ -2203,15 +2354,7 @@ function onPointerMove(e){
       updateTempCable(originPos, projectToPlaneAtHeight(e, originPos.y), false);
     }
   } else if(pointerMode==='moveSede' && movingSede){
-    const rect = wrap.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX-rect.left)/rect.width)*2-1,
-      -((e.clientY-rect.top)/rect.height)*2+1
-    );
-    raycaster.setFromCamera(mouse, camera);
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-    const point = new THREE.Vector3();
-    raycaster.ray.intersectPlane(groundPlane, point);
+    const point = pickGroundPoint(e);
     if(point){
       movingSede.group.position.x = point.x;
       movingSede.group.position.z = point.z;
@@ -2325,14 +2468,9 @@ window.addEventListener('touchend', (e)=>{
 window.addEventListener('touchcancel', cancelActiveGesture);
 
 /* --- Tooltip on hover sobre assets --- */
-const tooltipEl = document.getElementById('tooltip');
+const tooltipEl = byId('tooltip');
 renderer.domElement.addEventListener('mousemove', (e)=>{
-  const rect = wrap.getBoundingClientRect();
-  const mouse = new THREE.Vector2(
-    ((e.clientX-rect.left)/rect.width)*2-1,
-    -((e.clientY-rect.top)/rect.height)*2+1
-  );
-  raycaster.setFromCamera(mouse, camera);
+  raycaster.setFromCamera(pointerNDC(e), camera);
   const intersects = raycaster.intersectObjects(scene.children, true);
   let found = null;
   for(const it of intersects){
@@ -2348,11 +2486,12 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
     }
     if(inst){
       const vertical = getVertical(inst.verticalId);
+      const rect = wrap.getBoundingClientRect(); // el tooltip se posiciona relativo al canvas
       tooltipEl.style.display='block';
       tooltipEl.style.left = (e.clientX-rect.left+14)+'px';
       tooltipEl.style.top = (e.clientY-rect.top+10)+'px';
-      tooltipEl.innerHTML = `<div class="t-title">${inst.nombreSubproducto}${found.isHeredadoAsset?' <span style="color:var(--cian);font-weight:400;">(heredado)</span>':''}</div>
-        <div class="t-sub">${vertical.nombre}${inst.marca?' · '+inst.marca:''}</div>`;
+      tooltipEl.innerHTML = `<div class="t-title">${inst.nombreSubproducto}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
+        <div class="t-sub">${vertical.nombre}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
     }
   } else {
     tooltipEl.style.display='none';
@@ -2412,14 +2551,14 @@ const ICONS_SVG = {
   antena:    '<svg viewBox="0 0 24 24"><path d="M4 9a13 13 0 0116 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 13a8 8 0 0110 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 17a3 3 0 014 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="20" r="1.2" fill="currentColor"/></svg>',
 };
 
-const navEmpty = document.getElementById('navEmpty');
-const navContent = document.getElementById('navContent');
-const navSedeLabel = document.getElementById('navSedeLabel');
-const matrizHintEl = document.getElementById('matrizHint');
-const matrizEditBoxEl = document.getElementById('matrizEditBox');
-const instanceSection = document.getElementById('instanceSection');
-const instanceSectionTitle = document.getElementById('instanceSectionTitle');
-const instanceListEl = document.getElementById('instanceList');
+const navEmpty = byId('navEmpty');
+const navContent = byId('navContent');
+const navSedeLabel = byId('navSedeLabel');
+const matrizHintEl = byId('matrizHint');
+const matrizEditBoxEl = byId('matrizEditBox');
+const instanceSection = byId('instanceSection');
+const instanceSectionTitle = byId('instanceSectionTitle');
+const instanceListEl = byId('instanceList');
 
 /* Bloque de edición de la Matriz seleccionada: nombre editable (igual que una sede), Usuarios
    (pedido cliente 31/07/2026 — mismo patrón slider+número que Empleados de Sede, salvo que acá
@@ -2428,14 +2567,12 @@ const instanceListEl = document.getElementById('instanceList');
    una sede. */
 function renderMatrizEditBox(matriz){
   if(!matriz){
-    matrizEditBoxEl.style.display = 'none';
-    matrizEditBoxEl.innerHTML = '';
+    hideBox(matrizEditBoxEl);
     return;
   }
-  matrizEditBoxEl.style.display = 'flex';
   const usuarios = matriz.usuarios||0;
   const usuariosSliderVal = Math.min(usuarios, EMPLEADOS_SLIDER_MAX);
-  matrizEditBoxEl.innerHTML = `
+  showBox(matrizEditBoxEl, `
     <div class="field">
       <label>Nombre de la Matriz</label>
       <input type="text" id="matrizNombreInput" value="${escapeHtml(matriz.nombre)}" placeholder="Nombre de la Matriz...">
@@ -2447,80 +2584,100 @@ function renderMatrizEditBox(matriz){
         <input type="number" id="matrizUsuariosNumber" min="0" step="1" value="${usuarios}">
       </div>
     </div>
-    <button class="btn danger-outline" id="btnDeleteMatriz" style="width:100%;">Eliminar Matriz</button>
-  `;
-  document.getElementById('matrizNombreInput').addEventListener('input', (e)=>{
+    <button class="btn danger-outline block" id="btnDeleteMatriz">Eliminar Matriz</button>
+  `);
+  byId('matrizNombreInput').addEventListener('input', (e)=>{
     matriz.nombre = e.target.value;
     updateSedeNameSprite(matriz);
     navSedeLabel.textContent = `Matriz: ${matriz.nombre || '(sin nombre)'}`;
   });
 
-  const usuariosRangeEl = document.getElementById('matrizUsuariosRange');
-  const usuariosNumEl = document.getElementById('matrizUsuariosNumber');
-  updateRangeFill(usuariosRangeEl);
-  usuariosRangeEl.addEventListener('input', ()=>{
-    usuariosNumEl.value = usuariosRangeEl.value;
-    matriz.usuarios = parseInt(usuariosRangeEl.value,10) || 0;
-    updateRangeFill(usuariosRangeEl);
-  });
-  usuariosNumEl.addEventListener('input', ()=>{
-    const v = Math.max(0, parseInt(usuariosNumEl.value,10) || 0);
-    if(v<=EMPLEADOS_SLIDER_MAX) usuariosRangeEl.value = v; // el slider refleja el valor mientras esté en su rango
-    matriz.usuarios = v;
-    updateRangeFill(usuariosRangeEl);
-  });
+  bindSliderNumber(
+    byId('matrizUsuariosRange'),
+    byId('matrizUsuariosNumber'),
+    0, EMPLEADOS_SLIDER_MAX,
+    (v)=>{ matriz.usuarios = v; }
+  );
 
-  document.getElementById('btnDeleteMatriz').addEventListener('click', ()=>{
+  byId('btnDeleteMatriz').addEventListener('click', ()=>{
     const ok = confirm(`¿Eliminar "${matriz.nombre}" y todo lo que tiene asignado (productos propios y conexiones)? Esta acción no se puede deshacer.`);
     if(ok) deleteMatriz(matriz);
   });
 }
 
-const nubeEditBoxEl = document.getElementById('nubeEditBox');
+const nubeEditBoxEl = byId('nubeEditBox');
 
 /* Bloque de edición de la Nube seleccionada (v9 §4/§5): nombre/proveedor editable y botón de
    eliminar — mismo patrón que renderMatrizEditBox. Sus productos propios (IaaS/BaaS/DRaaS) se
    editan desde "Productos propios de la Nube" (ver renderRightPanel), igual que en una Matriz. */
 function renderNubeEditBox(nube){
   if(!nube){
-    nubeEditBoxEl.style.display = 'none';
-    nubeEditBoxEl.innerHTML = '';
+    hideBox(nubeEditBoxEl);
     return;
   }
-  nubeEditBoxEl.style.display = 'flex';
   if(nube.esAutoInternet){
     // v9 §6: la Nube automática de Internet no tiene nombre editable por el vendedor — es única
     // por proyecto y su identidad ("es la salida de Internet") no debe poder confundirse
     // renombrándola. El branding definitivo (ícono/nombre visual) queda para otra fase.
-    nubeEditBoxEl.innerHTML = `
+    showBox(nubeEditBoxEl, `
       <div class="field">
         <label>Nube automática de Internet</label>
-        <input type="text" value="${escapeHtml(nube.nombre)}" disabled style="opacity:.6;cursor:not-allowed;">
-        <div class="toggleHint" style="margin-top:5px;">Es la salida de Internet compartida por todos los productos de Internet del proyecto — su nombre no es editable.</div>
+        <input type="text" value="${escapeHtml(nube.nombre)}" disabled class="locked">
+        <div class="toggleHint">Es la salida de Internet compartida por todos los productos de Internet del proyecto — su nombre no es editable.</div>
       </div>
-      <button class="btn danger-outline" id="btnDeleteNube" style="width:100%;">Eliminar Nube</button>
-    `;
+      <button class="btn danger-outline block" id="btnDeleteNube">Eliminar Nube</button>
+    `);
   } else {
-    nubeEditBoxEl.innerHTML = `
+    showBox(nubeEditBoxEl, `
       <div class="field">
         <label>Nombre / proveedor de la Nube</label>
         <input type="text" id="nubeNombreInput" value="${escapeHtml(nube.nombre)}" placeholder="Ej. AWS, Azure, GCP...">
       </div>
-      <button class="btn danger-outline" id="btnDeleteNube" style="width:100%;">Eliminar Nube</button>
-    `;
-    document.getElementById('nubeNombreInput').addEventListener('input', (e)=>{
+      <button class="btn danger-outline block" id="btnDeleteNube">Eliminar Nube</button>
+    `);
+    byId('nubeNombreInput').addEventListener('input', (e)=>{
       nube.nombre = e.target.value;
       updateSedeNameSprite(nube);
       navSedeLabel.textContent = `Nube: ${nube.nombre || '(sin nombre)'}`;
     });
   }
-  document.getElementById('btnDeleteNube').addEventListener('click', ()=>{
+  byId('btnDeleteNube').addEventListener('click', ()=>{
     const ok = nube.esAutoInternet
       ? confirm(`"${nube.nombre}" es la Nube automática de Internet: TODOS los productos de Internet (Corporativo/Startup/Teleworking) de cualquier sede que apunten a ella se eliminarán también. Si luego se agrega otro producto de Internet, se creará una Nube nueva. ¿Eliminar de todos modos?`)
       : confirm(`¿Eliminar "${nube.nombre}" y las conexiones (Cloud Interconnect) que apuntan a ella? Esta acción no se puede deshacer.`);
     if(ok) deleteNube(nube);
   });
 }
+
+/* Bloque de edición del Datacenter Epicentro seleccionado (ago/2026) — mismo patrón que
+   renderMatrizEditBox/renderNubeEditBox, pero sin campos editables (nombre/ubicación fijos): solo
+   informa que se puede eliminar y ofrece el botón para hacerlo. */
+const datacenterEditBoxEl = byId('datacenterEditBox');
+function renderDatacenterEditBox(datacenter){
+  if(!datacenter){
+    hideBox(datacenterEditBoxEl);
+    return;
+  }
+  showBox(datacenterEditBoxEl, `
+    <div class="hint">Edificio fijo de Puntonet: aparece por defecto en todo proyecto nuevo, pero se puede eliminar si esta solución no lo necesita.</div>
+    <button class="btn danger-outline block" id="btnDeleteDatacenter">Eliminar Datacenter</button>
+  `);
+  byId('btnDeleteDatacenter').addEventListener('click', ()=>{
+    const ok = confirm(`¿Eliminar el Datacenter Epicentro? Se eliminarán sus productos propios (Collocation, Crossconexión, Hosting, etc.) y cualquier conexión que apunte a él (Cloud Interconnect, Zona Wireless). Podrás restaurarlo luego desde el panel izquierdo.`);
+    if(ok) deleteDatacenter();
+  });
+}
+
+/* Tarjeta del panel izquierdo para restaurar el Datacenter cuando fue eliminado — visible solo
+   mientras state.datacenter.activo es false (ver deleteDatacenter/restoreDatacenter). A
+   diferencia de Sede/Matriz/Nube no se arrastra: su posición es fija, así que un clic alcanza. */
+const datacenterRestoreWrap = byId('datacenterRestoreWrap');
+const datacenterRestoreCard = byId('datacenterRestoreCard');
+if(datacenterRestoreCard) datacenterRestoreCard.addEventListener('click', restoreDatacenter);
+function syncDatacenterRestoreUI(){
+  if(datacenterRestoreWrap) datacenterRestoreWrap.style.display = state.datacenter.activo ? 'none' : 'block';
+}
+syncDatacenterRestoreUI();
 
 function initials(nombre){
   const words = nombre.replace(/[\/()]/g,' ').split(/\s+/).filter(Boolean);
@@ -2542,7 +2699,7 @@ function totalSubproductosVertical(verticalId){
 function subproductosAsignadosVertical(verticalId){
   const productoIds = new Set(getProductosByVertical(verticalId).map(p=>p.id));
   const ids = new Set();
-  [...state.sedes, ...state.matrices, ...state.nubes, state.datacenter].forEach(entity=>{
+  todasLasEntidades().forEach(entity=>{
     (entity.instancias||[]).forEach(inst=>{
       const sub = getSubproducto(inst.subproductoId);
       if(sub && productoIds.has(sub.productoNivel2Id)) ids.add(sub.id);
@@ -2565,8 +2722,8 @@ function saludGlobal(){
 }
 const VERTICAL_BAR_COLOR = { conectividad:'var(--cian)', cloud:'var(--indigo)', ciberseguridad:'var(--rosa)', colaboracion:'var(--verde)' };
 
-const saludBarsEl = document.getElementById('saludBars');
-const saludGlobalBadgeEl = document.getElementById('saludGlobalBadge');
+const saludBarsEl = byId('saludBars');
+const saludGlobalBadgeEl = byId('saludGlobalBadge');
 function renderSaludPanel(){
   const porVertical = saludPorVertical();
   saludGlobalBadgeEl.textContent = saludGlobal() + '%';
@@ -2589,7 +2746,7 @@ function renderSaludPanel(){
 let catalogOpenVerticalId = VERTICALES[0].id;
 
 function renderCatalogPanel(){
-  const container = document.getElementById('productLegend');
+  const container = byId('productLegend');
   container.innerHTML = '';
   VERTICALES.forEach(v=>{
     const isOpen = catalogOpenVerticalId === v.id;
@@ -2622,11 +2779,7 @@ function renderCatalogPanel(){
         const chip = document.createElement('div');
         chip.className = 'catalog-chip';
         chip.draggable = true;
-        chip.title = s.soloDatacenter
-          ? s.nombre + ' — solo se asigna al Datacenter Epicentro (equipamiento propio de Puntonet)'
-          : s.soloNube
-            ? s.nombre + ' — solo se asigna a una Nube (Hosting)'
-            : s.nombre + ' — arrastra a una sede o a una Matriz';
+        chip.title = `${s.nombre} — arrastra a ${nombreDestinos(s)}`;
         chip.dataset.subproductoId = s.id;
         chip.style.background = colorHex(getSubproductoColor(s));
         chip.textContent = initials(s.nombre);
@@ -2638,30 +2791,24 @@ function renderCatalogPanel(){
         chip.addEventListener('dragend', ()=>{ draggingSubproductoId = null; });
         chip.addEventListener('click', ()=>{
           if(state.placing && state.placing.tipo==='subproducto' && state.placing.id===s.id){ disarmPlacing(); return; }
-          const hint = s.soloDatacenter
-            ? `Toca el Datacenter Epicentro para asignar "${s.nombre}"`
-            : s.soloNube
-              ? `Toca una Nube para asignar "${s.nombre}" (créala primero desde un Cloud Interconnect si aún no tienes una)`
-              : `Toca una sede o la Matriz para asignar "${s.nombre}"`;
-          armPlacing({ tipo:'subproducto', id:s.id }, hint);
+          armPlacing({ tipo:'subproducto', id:s.id }, `Toca ${nombreDestinos(s)} para asignar "${s.nombre}"`);
         });
         makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)),
-          s.soloDatacenter ? (id=>id==='datacenter')
-            : s.soloNube ? (id=>tipoEntidad(id)==='nube')
-            : (id=>id!=='datacenter' && tipoEntidad(id)!=='nube'));
+          id=>destinoValidoParaEntidad(s, id));
         const chipLabel = document.createElement('div');
         chipLabel.className = 'catalog-chip-label';
         chipLabel.textContent = s.nombre;
         chipItem.appendChild(chip);
-        if(s.soloDatacenter){
+        const destinos = destinosPermitidos(s);
+        if(destinos.includes('datacenter')){
           const badge = document.createElement('span');
           badge.className = 'chip-dc-badge';
           badge.textContent = 'DC';
           chipItem.appendChild(badge);
         }
-        if(s.soloNube){
+        if(destinos.includes('nube')){
           const badge = document.createElement('span');
-          badge.className = 'chip-dc-badge';
+          badge.className = 'chip-dc-badge badge-nube';
           badge.textContent = 'NUBE';
           chipItem.appendChild(badge);
         }
@@ -2714,6 +2861,7 @@ function renderRightPanel(){
   renderSedeEditBox(isSedeSingle ? getSedeById(singleId) : null);
   renderMatrizEditBox(isMatriz ? getMatrizById(singleId) : null);
   renderNubeEditBox(isNube ? getNubeById(singleId) : null);
+  renderDatacenterEditBox(isDatacenter ? state.datacenter : null);
   renderConnectionsBox(singleId);
   renderHerenciaBox(isSedeSingle ? getSedeById(singleId) : null);
 
@@ -2740,8 +2888,8 @@ function renderRightPanel(){
         if(sub.id==='sdwan'){
           const target = inst.targetConexionId ? state.conexiones.find(c=>c.id===inst.targetConexionId) : null;
           nombreMostrado += target
-            ? ` <span style="color:var(--muted);font-weight:400;">→ ${escapeHtml(nombreEntidad(otroExtremo(target, entity.id)))}</span>`
-            : ` <span style="color:var(--muted);font-weight:400;">(sin canal aplicado)</span>`;
+            ? ` <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(target, entity.id)))}</span>`
+            : ` <span class="muted-inline">(sin canal aplicado)</span>`;
         }
         const row = document.createElement('div');
         row.className='inst-row';
@@ -2764,7 +2912,7 @@ function renderRightPanel(){
   }
 }
 
-const connectionsBoxEl = document.getElementById('connectionsBox');
+const connectionsBoxEl = byId('connectionsBox');
 
 /* Devuelve la instancia (el "servicio asignado") que originó una conexión, si la tiene ligada.
    Desde esta fase, TODA conexión nueva (auto al Datacenter, por dropdown "Conectar a", o
@@ -2802,7 +2950,7 @@ function abrirConexion(c){
    todas, porque el Sdwan puede vivir en cualquiera de los 2 extremos de la conexión. Usada para
    mostrar el indicador "⚡ Sdwan" en la lista de Conexiones. */
 function buscarSdwanQueApuntaA(conexionId){
-  for(const entity of [...state.sedes, ...state.matrices]){
+  for(const entity of entidadesPortadoras()){
     const inst = entity.instancias.find(i=>i.subproductoId==='sdwan' && i.targetConexionId===conexionId);
     if(inst) return inst;
   }
@@ -2811,11 +2959,9 @@ function buscarSdwanQueApuntaA(conexionId){
 
 function renderConnectionsBox(entityId){
   if(!entityId){
-    connectionsBoxEl.style.display = 'none';
-    connectionsBoxEl.innerHTML = '';
+    hideBox(connectionsBoxEl);
     return;
   }
-  connectionsBoxEl.style.display = 'flex';
   const conexiones = conexionesDe(entityId);
   if(conexiones.length===0){
     // Una Nube no se conecta arrastrando un cable a mano (v9 §4) — solo la elige como destino el
@@ -2823,11 +2969,11 @@ function renderConnectionsBox(entityId){
     const hint = tipoEntidad(entityId)==='nube'
       ? 'Sin conexiones activas. Una Nube se conecta desde el popup de Cloud Interconnect (dropdown "Conectar a"), no arrastrando un cable a mano.'
       : 'Sin conexiones activas. Arrastra desde el puerto (●) hacia otra sede, la Matriz o el Datacenter para conectar.';
-    connectionsBoxEl.innerHTML = `<label>Conexiones</label>
-      <div class="connEmpty">${hint}</div>`;
+    showBox(connectionsBoxEl, `<label>Conexiones</label>
+      <div class="connEmpty">${hint}</div>`);
     return;
   }
-  connectionsBoxEl.innerHTML = `<label>Conexiones</label><div class="connList" id="connListWrap"></div>`;
+  showBox(connectionsBoxEl, `<label>Conexiones</label><div class="connList" id="connListWrap"></div>`);
   const listEl = connectionsBoxEl.querySelector('#connListWrap');
 
   conexiones.forEach(c=>{
@@ -2841,8 +2987,8 @@ function renderConnectionsBox(entityId){
     // El detalle mostrado sale de las propiedades reales de la instancia (Ancho de banda,
     // Ubicaciones, Nube, etc. — lo que sea que tenga ese subproducto), no de un campo aparte.
     const detalle = inst
-      ? Object.values(inst.propiedades||{}).filter(Boolean).join(' · ')
-      : [c.anchoBanda, c.comparticion].filter(Boolean).join(' · '); // compatibilidad con conexiones legado sin instancia ligada
+      ? Object.values(inst.propiedades||{}).filter(Boolean).map(escapeHtml).join(' · ')
+      : [c.anchoBanda, c.comparticion].filter(Boolean).map(escapeHtml).join(' · '); // compatibilidad con conexiones legado sin instancia ligada
     const isSelected = state.selectedConexionId === c.id;
 
     const item = document.createElement('div');
@@ -2852,7 +2998,7 @@ function renderConnectionsBox(entityId){
     row.className = 'connRow';
     row.innerHTML = `
       <span class="connDot" style="background:${dotColor};"></span>
-      <span class="connName">${nombreEntidad(otro)}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}${sdwanTag}</span>
+      <span class="connName">${escapeHtml(nombreEntidad(otro))}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}${sdwanTag}</span>
       <span class="connArrow" title="Editar">✎</span>
       <span class="connDelete" title="${c.esBackup ? 'Quitar este enlace de backup' : 'Eliminar conexión (y el servicio asignado que representa)'}">−</span>`;
     row.addEventListener('click', (e)=>{
@@ -2868,26 +3014,39 @@ function renderConnectionsBox(entityId){
   });
 }
 
+/* Neutraliza HTML en cualquier texto que venga del usuario (nombres de sede/Matriz/Nube, valores
+   de propiedades, nombre del cliente) antes de interpolarlo en un innerHTML. Sin esto, un nombre
+   con `<` o `&` rompe el marcado del panel o del reporte. */
 function escapeHtml(str){
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = str === null || str === undefined ? '' : str;
   return div.innerHTML;
 }
 
-const sedeEditBoxEl = document.getElementById('sedeEditBox');
+/* Los 6 bloques del panel derecho (sede, Matriz, Nube, Datacenter, conexiones, herencia) comparten
+   el mismo ciclo: si no hay nada que mostrar se vacian y se ocultan; si lo hay, se pintan y se
+   muestran como columna flex. */
+function hideBox(el){
+  el.style.display = 'none';
+  el.innerHTML = '';
+}
+function showBox(el, html){
+  el.innerHTML = html;
+  el.style.display = 'flex';
+}
+
+const sedeEditBoxEl = byId('sedeEditBox');
 
 /* Bloque de edición de la sede seleccionada: nombre, empleados (slider 1-100 + override
    numérico libre) y sus conexiones (Matriz / Puntonet). */
 function renderSedeEditBox(sede){
   if(!sede){
-    sedeEditBoxEl.style.display = 'none';
-    sedeEditBoxEl.innerHTML = '';
+    hideBox(sedeEditBoxEl);
     return;
   }
-  sedeEditBoxEl.style.display = 'flex';
   const tamano = getTamanoLocal(sede.tamano);
   const sliderVal = Math.min(sede.empleados, EMPLEADOS_SLIDER_MAX);
-  sedeEditBoxEl.innerHTML = `
+  showBox(sedeEditBoxEl, `
     <div class="field">
       <label>Nombre de la sede</label>
       <input type="text" id="sedeNombreInput" value="${escapeHtml(sede.nombre)}" placeholder="Nombre de la sede...">
@@ -2900,66 +3059,54 @@ function renderSedeEditBox(sede){
       </div>
       <div class="tamanoInfo" id="sedeTamanoInfo">${sede.empleados} empleados · ${tamano.nombre}</div>
     </div>
-    <button class="btn danger-outline" id="btnDeleteSede" style="width:100%;">Eliminar sede</button>
-  `;
+    <button class="btn danger-outline block" id="btnDeleteSede">Eliminar sede</button>
+  `);
 
-  document.getElementById('sedeNombreInput').addEventListener('input', (e)=>{
+  byId('sedeNombreInput').addEventListener('input', (e)=>{
     sede.nombre = e.target.value;
     updateSedeNameSprite(sede);
     navSedeLabel.textContent = `Sede: ${sede.nombre || '(sin nombre)'}`;
   });
 
-  const rangeEl = document.getElementById('sedeEmpleadosRange');
-  const numEl = document.getElementById('sedeEmpleadosNumber');
-  const infoEl = document.getElementById('sedeTamanoInfo');
-  updateRangeFill(rangeEl);
-  function applyEmpleados(v){
-    setSedeEmpleados(sede, v);
-    const t = getTamanoLocal(sede.tamano);
-    infoEl.textContent = `${sede.empleados} empleados · ${t.nombre}`;
-  }
-  rangeEl.addEventListener('input', ()=>{
-    numEl.value = rangeEl.value;
-    applyEmpleados(parseInt(rangeEl.value,10));
-    updateRangeFill(rangeEl);
-  });
-  numEl.addEventListener('input', ()=>{
-    const v = Math.max(1, parseInt(numEl.value,10) || 1);
-    if(v<=EMPLEADOS_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
-    applyEmpleados(v);
-    updateRangeFill(rangeEl);
-  });
+  const infoEl = byId('sedeTamanoInfo');
+  bindSliderNumber(
+    byId('sedeEmpleadosRange'),
+    byId('sedeEmpleadosNumber'),
+    1, EMPLEADOS_SLIDER_MAX,
+    (v)=>{
+      setSedeEmpleados(sede, v);
+      infoEl.textContent = `${sede.empleados} empleados · ${getTamanoLocal(sede.tamano).nombre}`;
+    }
+  );
 
-  document.getElementById('btnDeleteSede').addEventListener('click', ()=>{
+  byId('btnDeleteSede').addEventListener('click', ()=>{
     const ok = confirm(`¿Eliminar "${sede.nombre}" y todo lo que tiene asignado (productos y conexiones)? Esta acción no se puede deshacer.`);
     if(ok) deleteSede(sede);
   });
 }
 
-const herenciaBoxEl = document.getElementById('herenciaBox');
+const herenciaBoxEl = byId('herenciaBox');
 
 /* Sección "Herencia de Matrices": para cada Matriz CONECTADA a esta sede, lista sus productos
    propios con un checkbox para marcar si esta sede los hereda, y una "×" para quitar la herencia
    rápido. Con varias Matrices conectadas, se agrupan en bloques con el nombre de cada una. */
 function renderHerenciaBox(sede){
   if(!sede){
-    herenciaBoxEl.style.display = 'none';
-    herenciaBoxEl.innerHTML = '';
+    hideBox(herenciaBoxEl);
     return;
   }
   sede.herenciaIds = sede.herenciaIds || [];
-  herenciaBoxEl.style.display = 'flex';
 
   const conectadas = state.matrices.filter(m=>conexionExiste(sede.id, m.id));
   if(conectadas.length===0){
-    herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
-      <div class="herenciaEmpty">Conecta esta sede con una Matriz (arrastra desde su puerto ●) para poder heredar sus productos.</div>`;
+    showBox(herenciaBoxEl, `<label>Herencia de Matrices</label>
+      <div class="herenciaEmpty">Conecta esta sede con una Matriz (arrastra desde su puerto ●) para poder heredar sus productos.</div>`);
     return;
   }
   const conProductos = conectadas.filter(m=>m.instancias.length>0);
   if(conProductos.length===0){
-    herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
-      <div class="herenciaEmpty">Las Matrices conectadas aún no tienen productos propios que heredar.</div>`;
+    showBox(herenciaBoxEl, `<label>Herencia de Matrices</label>
+      <div class="herenciaEmpty">Las Matrices conectadas aún no tienen productos propios que heredar.</div>`);
     return;
   }
 
@@ -2976,13 +3123,13 @@ function renderHerenciaBox(sede){
       </label>`;
     }).join('');
     const heading = conProductos.length>1
-      ? `<div style="font-size:10.5px;color:var(--muted);margin:8px 0 4px;">${escapeHtml(m.nombre)}</div>` : '';
+      ? `<div class="herenciaGroup">${escapeHtml(m.nombre)}</div>` : '';
     return heading + `<div class="herenciaList">${rows}</div>`;
   }).join('');
 
-  herenciaBoxEl.innerHTML = `<label>Herencia de Matrices</label>
+  showBox(herenciaBoxEl, `<label>Herencia de Matrices</label>
     ${blocks}
-    <div class="toggleHint">Marca los productos de las Matrices conectadas que esta sede debe heredar.</div>`;
+    <div class="toggleHint">Marca los productos de las Matrices conectadas que esta sede debe heredar.</div>`);
 
   herenciaBoxEl.querySelectorAll('.herenciaCheck').forEach(cb=>{
     cb.addEventListener('change', (e)=>{
@@ -3011,25 +3158,25 @@ function toggleHerencia(sede, instId, on){
    7. POPUP DE PERSONALIZACIÓN (crear / editar instancia)
    ========================================================================= */
 
-const popupOverlay = document.getElementById('popupOverlay');
-const popupPath = document.getElementById('popupPath');
-const popupTitle = document.getElementById('popupTitle');
-const popupEslogan = document.getElementById('popupEslogan');
-const popupDesc = document.getElementById('popupDesc');
-const popupMultiTags = document.getElementById('popupMultiTags');
-const popupMarca = document.getElementById('popupMarca');
-const popupMarcaField = document.getElementById('popupMarcaField');
-const popupProps = document.getElementById('popupProps');
-const popupNotas = document.getElementById('popupNotas');
-const btnDeleteInstance = document.getElementById('btnDeleteInstance');
-const popupConexionField = document.getElementById('popupConexionField');
-const popupConexionSelect = document.getElementById('popupConexionSelect');
-const popupConexionHint = document.getElementById('popupConexionHint');
-const popupBackupField = document.getElementById('popupBackupField');
-const popupBackupCheckbox = document.getElementById('popupBackupCheckbox');
-const popupSdwanField = document.getElementById('popupSdwanField');
-const popupSdwanSelect = document.getElementById('popupSdwanSelect');
-const popupSdwanHint = document.getElementById('popupSdwanHint');
+const popupOverlay = byId('popupOverlay');
+const popupPath = byId('popupPath');
+const popupTitle = byId('popupTitle');
+const popupEslogan = byId('popupEslogan');
+const popupDesc = byId('popupDesc');
+const popupMultiTags = byId('popupMultiTags');
+const popupMarca = byId('popupMarca');
+const popupMarcaField = byId('popupMarcaField');
+const popupProps = byId('popupProps');
+const popupNotas = byId('popupNotas');
+const btnDeleteInstance = byId('btnDeleteInstance');
+const popupConexionField = byId('popupConexionField');
+const popupConexionSelect = byId('popupConexionSelect');
+const popupConexionHint = byId('popupConexionHint');
+const popupBackupField = byId('popupBackupField');
+const popupBackupCheckbox = byId('popupBackupCheckbox');
+const popupSdwanField = byId('popupSdwanField');
+const popupSdwanSelect = byId('popupSdwanSelect');
+const popupSdwanHint = byId('popupSdwanHint');
 
 /* Marca (Nivel 4) deja de ser relevante para Conectividad (v9 §1): ahí la marca del enlace no es
    un dato que el vendedor cotice (a diferencia de Ciberseguridad/Colaboración, donde sí importa
@@ -3107,7 +3254,7 @@ function renderPopupSdwanField(sub, ids, inst){
    todos los puntos donde una `conexion` se borra directamente (eliminarConexion y los borrados en
    cascada de deleteSede/deleteInstanceDirect que no pasan por eliminarConexion). */
 function limpiarSdwanQueApuntanA(conexionId){
-  [...state.sedes, ...state.matrices].forEach(entity=>{
+  entidadesPortadoras().forEach(entity=>{
     const antes = entity.instancias.length;
     entity.instancias = entity.instancias.filter(inst=>
       !(inst.subproductoId==='sdwan' && inst.targetConexionId===conexionId));
@@ -3175,7 +3322,7 @@ function candidatosConexionEntreSedes(entityId, sub){
   if(sub && sub.destino==='nube'){
     return state.nubes.filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
   }
-  return [...state.sedes, ...state.matrices].filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
+  return entidadesPortadoras().filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
 }
 function instanciaTieneConexionLigada(instanciaId){
   return state.conexiones.some(c=>c.instanciaId===instanciaId);
@@ -3374,20 +3521,12 @@ function renderPopupProps(parametros, valores, tipos){
       field.appendChild(info);
       popupProps.appendChild(field);
 
-      const rangeEl = row.querySelector('.popupAnchoBandaRange');
-      const numEl = row.querySelector('.popupAnchoBandaNumber');
-      updateRangeFill(rangeEl);
-      rangeEl.addEventListener('input', ()=>{
-        numEl.value = rangeEl.value;
-        info.textContent = formatAnchoBandaMbps(parseInt(rangeEl.value,10)||0);
-        updateRangeFill(rangeEl);
-      });
-      numEl.addEventListener('input', ()=>{
-        const v = Math.max(0, parseInt(numEl.value,10) || 0);
-        if(v<=ANCHO_BANDA_SLIDER_MAX) rangeEl.value = v; // el slider refleja el valor mientras esté en su rango
-        info.textContent = formatAnchoBandaMbps(v);
-        updateRangeFill(rangeEl);
-      });
+      bindSliderNumber(
+        row.querySelector('.popupAnchoBandaRange'),
+        row.querySelector('.popupAnchoBandaNumber'),
+        0, ANCHO_BANDA_SLIDER_MAX,
+        (v)=>{ info.textContent = formatAnchoBandaMbps(v); }
+      );
       return;
     }
 
@@ -3406,13 +3545,13 @@ function renderPopupProps(parametros, valores, tipos){
   });
 }
 
-document.getElementById('btnCancelPopup').addEventListener('click', closePopup);
+byId('btnCancelPopup').addEventListener('click', closePopup);
 function closePopup(){
   popupOverlay.classList.remove('show');
   popupContext = null;
 }
 
-document.getElementById('btnSavePopup').addEventListener('click', ()=>{
+byId('btnSavePopup').addEventListener('click', ()=>{
   if(!popupContext) return;
 
   // Destino obligatorio (pedido cliente 31/07/2026): Canal de Conexión, Cloud Interconnect y
@@ -3602,7 +3741,7 @@ function eliminarConexion(conexionId){
    8. DESELECCIONAR
    ========================================================================= */
 
-document.getElementById('btnDeselect').addEventListener('click', ()=>{
+byId('btnDeselect').addEventListener('click', ()=>{
   state.selectedSedeIds = [];
   const hadConexion = !!state.selectedConexionId;
   state.selectedConexionId = null;
@@ -3615,14 +3754,14 @@ document.getElementById('btnDeselect').addEventListener('click', ()=>{
    9. REPORTE + EXPORTACIÓN JSON
    ========================================================================= */
 
-const clienteInput = document.getElementById('clienteInput');
+const clienteInput = byId('clienteInput');
 clienteInput.addEventListener('input', ()=>{ state.clienteNombre = clienteInput.value; });
 
 /* --- Logo del cliente: opcional, se sube junto al nombre y va en el header del PDF (§9). Se
    guarda como dataURL (base64) directamente en el estado — no hay backend, así que no hace
    falta subir el archivo a ningún lado; jsPDF puede insertar un dataURL tal cual. --- */
-const logoUploadBtn = document.getElementById('logoUploadBtn');
-const logoFileInput = document.getElementById('logoFileInput');
+const logoUploadBtn = byId('logoUploadBtn');
+const logoFileInput = byId('logoFileInput');
 function renderLogoButton(){
   if(state.clienteLogo){
     logoUploadBtn.classList.add('has-logo');
@@ -3706,9 +3845,9 @@ function buildConfiguracionCliente(){
   };
 }
 
-const reportOverlay = document.getElementById('reportOverlay');
-const reportBody = document.getElementById('reportBody');
-const reportSubtitle = document.getElementById('reportSubtitle');
+const reportOverlay = byId('reportOverlay');
+const reportBody = byId('reportBody');
+const reportSubtitle = byId('reportSubtitle');
 
 /* Resuelve los productos heredados de una sede (config ya "congelada", tal como la genera
    buildConfiguracionCliente) buscando en qué Matriz vive cada instanciaId, para poder mostrar
@@ -3743,7 +3882,7 @@ function conexionesTexto(entityId){
   }).join(' + ');
 }
 
-const saludInicialInput = document.getElementById('saludInicialInput');
+const saludInicialInput = byId('saludInicialInput');
 saludInicialInput.addEventListener('input', ()=>{
   const v = saludInicialInput.value;
   state.saludInicial = v==='' ? null : Math.max(0, Math.min(100, parseInt(v,10)||0));
@@ -3762,13 +3901,13 @@ function openReport(){
   saludBox.className = 'report-sede';
   const saludHeader = document.createElement('h3');
   const antesTxt = (state.saludInicial===null || state.saludInicial===undefined) ? '' :
-    `<span style="color:var(--muted);font-weight:400;font-size:11px;"> · Estado inicial: ${state.saludInicial}%</span>`;
+    `<span class="muted-meta"> · Estado inicial: ${state.saludInicial}%</span>`;
   saludHeader.innerHTML = `<span>Salud de infraestructura — ${config.salud.actual}%</span>${antesTxt}`;
   saludBox.appendChild(saludHeader);
   config.salud.porVertical.forEach(v=>{
     const row = document.createElement('div');
     row.className = 'report-inst';
-    row.innerHTML = `<div class="rline1"><span>${v.vertical}</span><span style="font-size:11px;color:var(--muted);">${v.asignados}/${v.total} · ${v.pct}%</span></div>`;
+    row.innerHTML = `<div class="rline1"><span>${v.vertical}</span><span class="muted-small">${v.asignados}/${v.total} · ${v.pct}%</span></div>`;
     saludBox.appendChild(row);
   });
   reportBody.appendChild(saludBox);
@@ -3781,7 +3920,7 @@ function openReport(){
     row.className='report-inst';
     const propsHtml = Object.entries(inst.propiedades||{})
       .filter(([,v])=>v)
-      .map(([k,v])=>`<span class="rprop">${k}: ${v}</span>`).join('');
+      .map(([k,v])=>`<span class="rprop">${escapeHtml(k)}: ${escapeHtml(v)}</span>`).join('');
     // Canal de Conexión / Cloud Interconnect ya no aparecen en "Servicios asignados" en pantalla
     // (viven solo en "Conexiones", que muestra el destino) — pero acá en el reporte SÍ se siguen
     // listando, así que hace falta el destino inline: si no, dos "Canal de Conexión" se ven
@@ -3789,19 +3928,19 @@ function openReport(){
     const conexionLigada = sub.ocultaEnServiciosAsignados
       ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId && !c.esBackup) : null;
     const destinoTxt = conexionLigada
-      ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}</span>`
+      ? ` <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId)))}</span>`
       // Sdwan (v9 §3, ajustado): no tiene conexión propia, pero sí un canal balanceado
       // (inst.targetConexionId) — se muestra igual que un destino, mostrando los 2 extremos del
       // canal ya que Sdwan no es "dueño" de ninguno de los 2.
       : (sub.id==='sdwan' && inst.targetConexionId)
         ? (()=>{ const t = state.conexiones.find(c=>c.id===inst.targetConexionId);
-            return t ? ` <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(t.aId)} ↔ ${nombreEntidad(t.bId)}</span>` : ''; })()
+            return t ? ` <span class="muted-inline">→ ${escapeHtml(nombreEntidad(t.aId))} ↔ ${escapeHtml(nombreEntidad(t.bId))}</span>` : ''; })()
         : '';
     row.innerHTML = `
-      <div class="rline1"><span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span style="color:var(--muted);font-weight:400;">(heredado de '+heredadoDe+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
-      <div class="rmeta">${inst.marca ? 'Marca: '+inst.marca : 'Marca: —'}</div>
+      <div class="rline1"><span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span class="muted-inline">(heredado de '+escapeHtml(heredadoDe)+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
+      <div class="rmeta">${inst.marca ? 'Marca: '+escapeHtml(inst.marca) : 'Marca: —'}</div>
       ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
-      ${inst.notas ? `<div class="rnotes">"${inst.notas}"</div>` : ''}
+      ${inst.notas ? `<div class="rnotes">"${escapeHtml(inst.notas)}"</div>` : ''}
     `;
     container.appendChild(row);
 
@@ -3813,7 +3952,7 @@ function openReport(){
       const backupRow = document.createElement('div');
       backupRow.className = 'report-inst';
       backupRow.innerHTML = `
-        <div class="rline1"><span>${inst.nombreSubproducto} (Backup) <span style="color:var(--muted);font-weight:400;">→ ${nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId))}</span></span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
+        <div class="rline1"><span>${inst.nombreSubproducto} (Backup) <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId)))}</span></span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
         <div class="rmeta">Enlace de respaldo en paralelo — misma contratación que ${inst.nombreSubproducto}.</div>
       `;
       container.appendChild(backupRow);
@@ -3831,7 +3970,7 @@ function openReport(){
       const matrizBox = document.createElement('div');
       matrizBox.className='report-sede';
       const mh3 = document.createElement('h3');
-      mh3.innerHTML = `<span>${matriz.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${matriz.usuarios||0} usuarios · ${matriz.instancias.length} producto(s) propio(s) · ${conexionesTexto(matriz.id)})</span>`;
+      mh3.innerHTML = `<span>${escapeHtml(matriz.nombre)}</span><span class="muted-meta">(${matriz.usuarios||0} usuarios · ${matriz.instancias.length} producto(s) propio(s) · ${escapeHtml(conexionesTexto(matriz.id))})</span>`;
       matrizBox.appendChild(mh3);
       if(matriz.instancias.length===0){
         const empty = document.createElement('div');
@@ -3853,7 +3992,7 @@ function openReport(){
       const nubeBox = document.createElement('div');
       nubeBox.className='report-sede';
       const nh3 = document.createElement('h3');
-      nh3.innerHTML = `<span>${nube.nombre} <span style="color:var(--muted);font-weight:400;font-size:11px;">(${nube.esAutoInternet ? 'Nube automática de Internet' : 'Nube'})</span></span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${nube.instancias.length} producto(s) propio(s) · ${conexionesTexto(nube.id)})</span>`;
+      nh3.innerHTML = `<span>${escapeHtml(nube.nombre)} <span class="muted-meta">(${nube.esAutoInternet ? 'Nube automática de Internet' : 'Nube'})</span></span><span class="muted-meta">(${nube.instancias.length} producto(s) propio(s) · ${escapeHtml(conexionesTexto(nube.id))})</span>`;
       nubeBox.appendChild(nh3);
       if(nube.instancias.length===0){
         const empty = document.createElement('div');
@@ -3868,11 +4007,11 @@ function openReport(){
   }
 
   // Sección del Datacenter Epicentro — infraestructura de Puntonet, pero ahora puede tener
-  // productos propios (Collocation, Crossconexión, IaaS, BaaS, DRaaS — soloDatacenter, punto 1).
+  // productos propios (Collocation, Crossconexión, IaaS, BaaS, DRaaS — ver campo `destinos`).
   const dcBox = document.createElement('div');
   dcBox.className='report-sede';
   const dch3 = document.createElement('h3');
-  dch3.innerHTML = `<span>${config.datacenter.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${config.datacenter.instancias.length} producto(s) propio(s) · ${conexionesTexto('datacenter')})</span>`;
+  dch3.innerHTML = `<span>${escapeHtml(config.datacenter.nombre)}</span><span class="muted-meta">(${config.datacenter.instancias.length} producto(s) propio(s) · ${escapeHtml(conexionesTexto('datacenter'))})</span>`;
   dcBox.appendChild(dch3);
   if(config.datacenter.instancias.length===0){
     const empty = document.createElement('div');
@@ -3895,7 +4034,7 @@ function openReport(){
       box.className='report-sede';
       const h3 = document.createElement('h3');
       const tamanoInfo = getTamanoLocal(sede.tamano);
-      h3.innerHTML = `<span>${sede.nombre}</span><span style="color:var(--muted);font-weight:400;font-size:11px;">(${sede.empleados} empleados · ${tamanoInfo.nombre} · ${conexionesTexto(sede.id)})</span>`;
+      h3.innerHTML = `<span>${escapeHtml(sede.nombre)}</span><span class="muted-meta">(${sede.empleados} empleados · ${tamanoInfo.nombre} · ${escapeHtml(conexionesTexto(sede.id))})</span>`;
       box.appendChild(h3);
       const heredadas = heredadasConNombreMatriz(sede, config.matrices);
       if(sede.instancias.length===0 && heredadas.length===0){
@@ -3913,8 +4052,8 @@ function openReport(){
   reportOverlay.classList.add('show');
 }
 
-document.getElementById('btnReport').addEventListener('click', openReport);
-document.getElementById('btnCloseReport').addEventListener('click', ()=>reportOverlay.classList.remove('show'));
+byId('btnReport').addEventListener('click', openReport);
+byId('btnCloseReport').addEventListener('click', ()=>reportOverlay.classList.remove('show'));
 
 function safeFileName(nombreCliente){
   return (nombreCliente||'cliente').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'cliente';
@@ -3933,7 +4072,7 @@ function downloadJSON(){
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-document.getElementById('btnExportFromReport').addEventListener('click', downloadJSON);
+byId('btnExportFromReport').addEventListener('click', downloadJSON);
 
 /* Calcula la caja envolvente (world space) de todo lo que hay en el canvas: cada Matriz, el
    Datacenter, y cada sede colocada. Se usa para que el snapshot del PDF siempre encuadre TODO,
@@ -4243,7 +4382,7 @@ function downloadPDF(){
   const fecha = new Date().toISOString().slice(0,10);
   doc.save(`configuracion-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
 }
-document.getElementById('btnExportPDF').addEventListener('click', downloadPDF);
+byId('btnExportPDF').addEventListener('click', downloadPDF);
 
 /* =========================================================================
    10. ESTADO INICIAL (arranca casi vacío: el usuario agrega todo lo demás)

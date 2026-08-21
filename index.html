@@ -14,7 +14,7 @@
     <span class="tag">Puntonet · Prototipo v37</span>
     <input id="clienteInput" type="text" placeholder="Nombre del cliente...">
     <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
-    <input id="logoFileInput" type="file" accept="image/*" style="display:none;">
+    <input id="logoFileInput" type="file" accept="image/*">
     <div class="spacer"></div>
     <button class="btn ghost" id="btnDeselect">Deseleccionar</button>
     <button class="btn primary" id="btnReport">Generar Reporte</button>
@@ -33,7 +33,7 @@
     <div id="matrizDragWrap">
       <h2>Agregar Matriz</h2>
       <div class="site-card" draggable="true" id="matrizDragCard">
-        <div class="site-icon size-m" style="color:var(--indigo);border-color:var(--indigo);">◆</div>
+        <div class="site-icon size-m indigo">◆</div>
         <div>
           <div class="lbl">Matriz</div>
           <div class="sub">Puede haber varias · va donde la sueltes</div>
@@ -44,7 +44,7 @@
     <div id="nubeDragWrap">
       <h2>Agregar Nube</h2>
       <div class="site-card" draggable="true" id="nubeDragCard">
-        <div class="site-icon size-m" style="color:#a78bfa;border-color:#a78bfa;">☁</div>
+        <div class="site-icon size-m violeta">☁</div>
         <div>
           <div class="lbl">Nube</div>
           <div class="sub">Hosting (AWS/Azure/GCP) · destino de Cloud Interconnect</div>
@@ -52,8 +52,19 @@
       </div>
     </div>
 
+    <div id="datacenterRestoreWrap">
+      <h2>Datacenter Epicentro</h2>
+      <div class="site-card" id="datacenterRestoreCard">
+        <div class="site-icon size-m">▣</div>
+        <div>
+          <div class="lbl">Restaurar Datacenter</div>
+          <div class="sub">Se eliminó de este proyecto · clic para volver a agregarlo</div>
+        </div>
+      </div>
+    </div>
+
     <div class="legend">
-      <h2 style="margin-bottom:8px;">Productos (arrastra a una sede)</h2>
+      <h2>Productos (arrastra a una sede)</h2>
       <div id="productLegend"></div>
     </div>
 
@@ -86,16 +97,17 @@
   <div id="right">
     <h2 id="rightTitle">Detalle de selección</h2>
     <div id="navEmpty">Selecciona una sede o una Matriz en el canvas para ver su detalle. Arrastra productos desde el panel izquierdo para asignarlos.</div>
-    <div id="navContent" style="display:none;">
+    <div id="navContent">
       <div id="navSedeLabel"></div>
       <div id="matrizHint">Arrastra un producto desde el panel izquierdo sobre el hub central para agregarlo como producto propio de la Matriz.</div>
-      <div id="matrizEditBox" style="display:none;"></div>
-      <div id="nubeEditBox" style="display:none;"></div>
-      <div id="sedeEditBox" style="display:none;"></div>
-      <div id="connectionsBox" style="display:none;"></div>
-      <div id="herenciaBox" style="display:none;"></div>
+      <div id="matrizEditBox" class="editBox"></div>
+      <div id="nubeEditBox" class="editBox"></div>
+      <div id="datacenterEditBox" class="editBox"></div>
+      <div id="sedeEditBox" class="editBox"></div>
+      <div id="connectionsBox" class="editBox"></div>
+      <div id="herenciaBox" class="editBox"></div>
     </div>
-    <div id="instanceSection" style="display:none;">
+    <div id="instanceSection">
       <h2 id="instanceSectionTitle">Servicios asignados</h2>
       <div id="instanceList"></div>
     </div>
@@ -122,15 +134,15 @@
       <div id="popupMultiTags"></div>
     </div>
     <div class="modal-body">
-      <div id="popupConexionField" class="field" style="display:none;">
+      <div id="popupConexionField" class="field">
         <label>Conectar a</label>
         <select id="popupConexionSelect"></select>
-        <div id="popupConexionHint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;"></div>
+        <div id="popupConexionHint" class="fieldHint"></div>
       </div>
-      <div id="popupSdwanField" class="field" style="display:none;">
+      <div id="popupSdwanField" class="field">
         <label>Aplicar Sdwan a</label>
         <select id="popupSdwanSelect"></select>
-        <div id="popupSdwanHint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px;"></div>
+        <div id="popupSdwanHint" class="fieldHint"></div>
       </div>
       <div id="popupProps"></div>
       <div id="popupBackupField" class="field">
@@ -138,7 +150,7 @@
         <div class="toggleHint">Genera un enlace adicional hacia el mismo destino, cuenta como servicio contratado y aparece como línea propia en el reporte/PDF.</div>
       </div>
       <div class="field" id="popupMarcaField">
-        <label>Marca <span style="color:var(--muted);">(Nivel 4 · opcional)</span></label>
+        <label>Marca <span class="muted-inline">(Nivel 4 · opcional)</span></label>
         <input type="text" id="popupMarca" placeholder="Ej. Cisco, Fortinet, Microsoft...">
       </div>
       <div class="field">
@@ -147,7 +159,7 @@
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn danger-outline" id="btnDeleteInstance" style="display:none;margin-right:auto;color:var(--danger);border-color:var(--danger);">Eliminar</button>
+      <button class="btn danger-outline" id="btnDeleteInstance">Eliminar</button>
       <button class="btn ghost" id="btnCancelPopup">Cancelar</button>
       <button class="btn primary" id="btnSavePopup">Guardar</button>
     </div>
@@ -160,7 +172,7 @@
     <div class="modal-head">
       <div class="title">Resumen de configuración</div>
       <div class="desc" id="reportSubtitle"></div>
-      <div class="field" style="max-width:260px;margin-top:10px;">
+      <div class="field field-narrow">
         <label>Estado inicial del cliente (antes de Puntonet) — score 0-100, opcional</label>
         <input type="number" id="saludInicialInput" min="0" max="100" placeholder="Ej. 20">
       </div>
