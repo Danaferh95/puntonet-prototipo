@@ -53,9 +53,12 @@ const SUBPRODUCTOS = [
   //   'satelital'  → no conecta a otra entidad del cliente: es un enlace hacia el proveedor
   //                  satelital (p.ej. Starlink), se dibuja como un cable hacia "el cielo".
   //   (sin campo)  → no genera ningún cable (p.ej. Sdwan desde v9: overlay, no conexión física).
-  // Campo `destino` (solo junto a conexion:'entreSedes'): a qué TIPO de entidad apunta el
-  // dropdown "Conectar a". Por defecto (sin campo) son Sedes/Matrices; `destino:'nube'` (Cloud
-  // Interconnect, v9 §4) lista Nubes en su lugar — ver candidatosConexionEntreSedes.
+  // Campo `destinosConexion` (solo junto a conexion:'entreSedes'): a qué TIPOS de entidad apunta
+  // el dropdown "Conectar a" — lista con cualquier combinación de 'sede'|'matriz'|'nube'|
+  // 'datacenter'. Por defecto (sin campo) son Sedes/Matrices; Cloud Interconnect usa ['nube'] y
+  // Canal de Conexión ['sede','matriz','datacenter'] — ver candidatosConexionEntreSedes.
+  // Ojo: es independiente de `destinos` (sobre qué nodo se puede SOLTAR el chip). Uno responde
+  // "¿de quién sale el servicio?" y el otro "¿a quién puede llegar el cable?".
   // Campo `permiteBackup`: habilita el checkbox "Backup" en el popup (v9 §2) — genera un segundo
   // enlace en paralelo hacia el mismo destino, ligado a la misma instancia (ver syncBackupConexion).
   // Campo `requiereConexionExistente`: en vez del dropdown "Conectar a" (que crea un cable
@@ -73,16 +76,26 @@ const SUBPRODUCTOS = [
     // Corporativo/Startup/Teleworking mantienen el plural, porque ahí sí puede haber varias sedes.
     parametros:['Ancho de banda','Ubicación geográfica'], conexion:'entreSedes',
     parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
+    // ago/2026 (pedido cliente 28/08): el Datacenter Epicentro entra por los dos lados —
+    // `destinos` lo suma como nodo sobre el que se puede SOLTAR el producto, y `destinosConexion`
+    // lo suma a la lista del dropdown "Conectar a" (antes solo Sedes/Matrices), de modo que un
+    // canal Sede↔Datacenter se pueda contratar como producto y no solo tendiendo el cable a mano
+    // desde el puerto.
+    destinos:['sede','matriz','datacenter'], destinosConexion:['sede','matriz','datacenter'],
     ocultaEnServiciosAsignados:true, permiteBackup:true },
   // Cloud Interconnect (v9 §4): el dropdown "Conectar a" ya no lista Sedes/Matrices — lista
   // Nubes (entidad `nube`, ver createNube/candidatosConexionEntreSedes). Sigue siendo
   // `conexion:'entreSedes'` (así reutiliza el mismo dropdown genérico y el mismo flujo de
-  // "+ Agregar nueva ..."), pero con `destino:'nube'` para que renderPopupConexionOptions y
-  // candidatosConexionEntreSedes sepan de qué lista de candidatos tomar.
+  // "+ Agregar nueva ..."), pero con `destinosConexion:['nube']` para que
+  // renderPopupConexionOptions y candidatosConexionEntreSedes sepan de qué lista de candidatos
+  // tomar. ago/2026 (pedido cliente 28/08): "solo se puede conectar a Azure, no al internet" —
+  // la Nube automática de Internet (`esAutoInternet`) queda EXCLUIDA de esos candidatos; el
+  // destino válido es siempre una nube de proveedor (Azure/AWS/GCP), ver
+  // candidatosConexionEntreSedes.
   { id:'cloud_interconnect', productoNivel2Id:'datos', nombre:'Cloud Interconnect',
     eslogan:'¡El camino más directo y seguro hacia tu nube!',
     descripcion:'Enlace de comunicación entre la ubicación del cliente y una nube.',
-    parametros:['Ancho de banda'], conexion:'entreSedes', destino:'nube',
+    parametros:['Ancho de banda'], conexion:'entreSedes', destinosConexion:['nube'],
     parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
     ocultaEnServiciosAsignados:true, permiteBackup:true },
   // Conectividad — Sdwan (v9 §3): deja de ser una conexión física (`entreSedes`) — ahora es un
@@ -120,6 +133,11 @@ const SUBPRODUCTOS = [
     // + "Número de IPs públicas" (pedido cliente 31/07/2026).
     parametros:['Ancho de banda','Ubicaciones geográficas','Número de IPs públicas'],
     parametrosTipos:{ 'Ancho de banda':'anchoBanda', 'Número de IPs públicas':'numero' },
+    // ago/2026 (pedido cliente 28/08): "podrías contratar un canal dedicado, tuyo, del datacenter
+    // al internet" — el Datacenter Epicentro pasa a ser un nodo válido para este producto. Al
+    // asignarlo ahí, `conexion:'internetAuto'` genera el cable Datacenter → Nube de Internet
+    // igual que desde una sede (ver ensureConexionAutomatica).
+    destinos:['sede','matriz','datacenter'],
     conexion:'internetAuto', permiteBackup:true },
   { id:'internet_startup', productoNivel2Id:'internet', nombre:'Internet Startup',
     eslogan:'¡Arranca con internet confiable al mejor precio!',
@@ -174,14 +192,19 @@ const SUBPRODUCTOS = [
   // Firewall On Premise: ícono propio ('firewall_onpremise', ago/2026) para diferenciarlo del
   // Firewall Virtual — antes ambos usaban el escudo genérico de "Perimetral" y no se distinguían
   // en la escena 3D (pedido cliente ago/2026).
+  // ago/2026 (pedido cliente 28/08): "Firewall, también datacenter, on premise e IaaS, ambos" —
+  // los dos suman el Datacenter Epicentro a sus destinos (el equipo físico se instala en el rack
+  // del cliente dentro del DC; el virtual protege el perímetro de lo que el cliente tenga ahí).
   { id:'firewall_on_premise', productoNivel2Id:'perimetral', nombre:'Firewall On Premise',
     eslogan:'¡Tu primera línea de defensa, instalada en casa!',
     descripcion:'Hardware físico para protección perimetral.',
-    parametros:['Marca','Modelo de equipo'], assetKey:'firewall_onpremise' },
+    parametros:['Marca','Modelo de equipo'], assetKey:'firewall_onpremise',
+    destinos:['sede','matriz','datacenter'] },
   { id:'firewall_iaas', productoNivel2Id:'perimetral', nombre:'Firewall IaaS',
     eslogan:'¡La misma protección, sin cables ni hardware!',
     descripcion:'Hardware virtual para protección perimetral.',
-    parametros:['Marca','Modelo de equipo'] },
+    parametros:['Marca','Modelo de equipo'],
+    destinos:['sede','matriz','datacenter'] },
   // Internet Seguro (ago/2026): a partir de esta fase se comporta como el resto de la familia
   // Internet — `conexion:'internetAuto'` lo conecta solo a la Nube de Internet compartida del
   // proyecto (getOrCreateNubeInternetAuto), igual que Internet Corporativo/Startup/Teleworking —
@@ -215,18 +238,23 @@ const SUBPRODUCTOS = [
     descripcion:'Autenticación de múltiple factor para ingreso a información crítica.',
     parametros:['Marca','Número de licencias'] },
   // WAF (ago/2026): se habilita también sobre el Datacenter Epicentro y sobre una Nube pública,
-  // además de sede/Matriz (comportamiento previo) — igual alcance que DNS/DDoS.
+  // además de sede/Matriz (comportamiento previo). Es el único de Aplicación que llega a 'nube'.
   { id:'waf', productoNivel2Id:'aplicacion', nombre:'WAF',
     eslogan:'¡Tu sitio web, a prueba de ataques 24/7!',
     descripcion:'Protege aplicaciones web, sitios de comercio electrónico y portales al filtrar y bloquear ataques.',
     parametros:['Ancho de banda','Tipo de licencia'],
     parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
     destinos:['sede','matriz','datacenter','nube'] },
+  // DNS/DDoS (ago/2026, pedido cliente 28/08): "DDoS también se puede añadir a datacenter". Suma
+  // el Datacenter a sus destinos. Queda SIN 'nube' a propósito: WAF sí la tiene, así que los dos
+  // productos de Aplicación ya no tienen el mismo alcance (el comentario de WAF que decía "igual
+  // alcance que DNS/DDoS" quedó viejo) — está en la lista de puntos a confirmar.
   { id:'dns_ddos', productoNivel2Id:'aplicacion', nombre:'DNS/DDoS',
     eslogan:'¡Que ningún ataque tumbe tu operación en línea!',
     descripcion:'Solución en la nube que protege el acceso a internet y los servicios DNS, filtrando tráfico malicioso.',
     parametros:['Ancho de banda','Número de licencias'],
-    parametrosTipos:{ 'Ancho de banda':'anchoBanda' } },
+    parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
+    destinos:['sede','matriz','datacenter'] },
   // Colaboración
   { id:'conferencia', productoNivel2Id:'conferencia_prod', nombre:'Conferencia',
     eslogan:'¡Reuniones sin cortes, como si estuvieran en la misma sala!',
@@ -467,13 +495,17 @@ function otroExtremo(conexion, entityId){
   return conexion.aId===entityId ? conexion.bId : conexion.aId;
 }
 
-/* --- Regla provisional de tipo de conexión (pendiente de validar con el cliente final, ver
-   documentación adjunta): si cualquiera de los 2 extremos es el Datacenter Epicentro, la
-   conexión se guarda como "Cloud Interconnect"; si es Sede↔Matriz, como "Canal de Conexión".
-   Se aplica igual sea que la conexión se haya creado arrastrando el cable a mano desde el
-   puerto (§5) o soltando un chip del catálogo sobre una entidad (§4, auto-conexión). */
-function tipoConexionPorDestino(aId, bId){
-  return (aId==='datacenter' || bId==='datacenter') ? 'cloud_interconnect' : 'canal_conexion';
+/* --- Tipo de conexión del cable tendido a mano desde el puerto (§5) ---
+   Hasta ago/2026 la regla era provisional: un extremo en el Datacenter Epicentro guardaba la
+   conexión como "Cloud Interconnect", cualquier otro par como "Canal de Conexión". El cliente
+   (28/08/2026) cerró la pregunta en sentido contrario: Cloud Interconnect va ÚNICAMENTE hacia una
+   nube de proveedor (Azure/AWS/GCP), nunca hacia el Datacenter ni hacia Internet — y en cambio el
+   Canal de Conexión sí puede terminar en el Datacenter. Como una Nube nunca puede ser extremo de
+   este gesto (ver onPointerMove: el cable a mano no sabe de Nubes), el único tipo posible acá
+   pasa a ser Canal de Conexión. Las conexiones hacia una nube se crean por el dropdown
+   "Conectar a" de Cloud Interconnect, que lleva su propio subproductoId. */
+function tipoConexionPorDestino(){
+  return 'canal_conexion';
 }
 
 /* --- Auto-conexión: ¿este subproducto, al asignarse a una Sede/Matriz, debe generar también
@@ -492,10 +524,11 @@ function generaConexionAutomatica(sub){
    Internet Corporativo/Startup/Teleworking (`conexion:'internetAuto'`) ya NO van al Datacenter
    Epicentro (conceptualmente incorrecto: el internet sale hacia afuera, no hacia el datacenter
    físico de Puntonet) — convergen todos a UNA sola Nube automática, creada sola la primera vez
-   que se necesita (el vendedor no la crea ni la nombra) y reutilizada después. El Datacenter NO
-   se conecta automáticamente a esta nube (decisión explícita del cliente, por seguridad: p.ej.
-   storage privado sin salida a Internet) — si se necesita, es una conexión manual aparte (cable
-   a mano desde el puerto, fuera del alcance de esta función). Se marca `esAutoInternet:true`
+   que se necesita (el vendedor no la crea ni la nombra) y reutilizada después. El Datacenter
+   sigue SIN conectarse solo a esta nube por el hecho de existir (decisión del cliente, por
+   seguridad: p.ej. storage privado sin salida a Internet); desde ago/2026 sí sale a Internet
+   cuando el vendedor le asigna explícitamente un Internet Corporativo — ahí el cable
+   Datacenter → Nube de Internet lo crea esta misma vía. Se marca `esAutoInternet:true`
    para distinguirla de una Nube de Hosting creada a mano (AWS/Azure/etc., v9 §5). */
 function getOrCreateNubeInternetAuto(){
   const existente = state.nubes.find(n=>n.esAutoInternet);
@@ -519,7 +552,11 @@ function getOrCreateNubeInternetAuto(){
    al mismo destino, más líneas delgadas en paralelo se ven — no una sola línea más gruesa (ver el
    "abanico" en rebuildConnections). */
 function ensureConexionAutomatica(entityId, subproductoId, instanciaId){
-  if(entityId==='datacenter') return;
+  // Hasta ago/2026 esta función salía temprano si el origen era el Datacenter (no había ningún
+  // producto `internetAuto` asignable a él, y un producto `conexion:'datacenter'` asignado ahí
+  // habría intentado conectarlo consigo mismo). Ahora Internet Corporativo sí se asigna al
+  // Datacenter (pedido cliente 28/08), así que el corte lo hace el chequeo genérico
+  // parValidoConexion de abajo: Datacenter → Nube de Internet pasa; Datacenter → Datacenter no.
   const sub = getSubproducto(subproductoId);
   const destinoId = sub.conexion==='internetAuto' ? getOrCreateNubeInternetAuto().id : 'datacenter';
   if(!parValidoConexion(entityId, destinoId)) return;
@@ -2321,10 +2358,10 @@ function onPointerMove(e){
       // o mover una sede, sin importar dónde haya empezado el gesto.
       pointerMode = 'pan';
     } else if(pointerDownInfo.hit.port && !pointerDownInfo.forcePan && tipoEntidad(pointerDownInfo.hit.port.entityId)!=='nube' && moved > PORT_DRAG_THRESHOLD){
-      // El cable manual desde el puerto infiere su tipo con tipoConexionPorDestino (Datacenter →
-      // Cloud Interconnect, si no → Canal de Conexión) — no sabe de Nubes (v9 §4), así que una
-      // Nube no puede ser origen de este gesto. Conectar una Nube es solo vía el dropdown
-      // "Conectar a" de Cloud Interconnect (candidatosConexionEntreSedes).
+      // El cable manual desde el puerto siempre es un Canal de Conexión (ver
+      // tipoConexionPorDestino, ago/2026) — no sabe de Nubes (v9 §4), así que una Nube no puede
+      // ser origen de este gesto. Conectar una Nube es solo vía el dropdown "Conectar a" de
+      // Cloud Interconnect (candidatosConexionEntreSedes).
       pointerMode = 'connecting';
       connectingFromId = pointerDownInfo.hit.port.entityId;
       connectingHoverId = null;
@@ -2374,7 +2411,7 @@ function onPointerUp(e){
     if(pointerMode==='connecting'){
       endTempCable();
       if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
-        const subproductoId = tipoConexionPorDestino(connectingFromId, connectingHoverId);
+        const subproductoId = tipoConexionPorDestino();
         const sub = getSubproducto(subproductoId);
         const producto = getProducto(sub.productoNivel2Id);
         // Dueño de la instancia: el lado que no es el Datacenter (si aplica), o el origen del
@@ -2855,7 +2892,7 @@ function renderRightPanel(){
     : isNube
       ? 'Arrastra un producto de Hosting (IaaS/BaaS/DRaaS) desde el panel izquierdo sobre esta Nube para agregarlo como producto propio.'
       : isDatacenter
-      ? 'Arrastra un producto de Cloud (Housing/Hosting) desde el panel izquierdo para agregarlo como producto propio, o arrastra desde el puerto (●) de una sede o Matriz hasta aquí para contratar Internet/ISP.'
+      ? 'Arrastra sobre el Datacenter un producto de Cloud (Housing/Hosting), un Canal de Conexión, un Internet Corporativo o un producto de seguridad (Firewall On Premise/IaaS, WAF, DNS/DDoS) para agregarlo como producto propio. También puedes tender un cable a mano desde el puerto (●) de una sede o Matriz hasta aquí.'
       : '';
 
   renderSedeEditBox(isSedeSingle ? getSedeById(singleId) : null);
@@ -3318,11 +3355,24 @@ function openPopupForNew(subproductoId, targetIds){
    (p.ej. Canal de Conexión Y Sdwan pueden existir entre las mismas 2 sedes a la vez), así que no
    se excluyen pares ya conectados — eso llevaba a que, al agregar un segundo producto de este
    tipo a una sede que ya tenía uno, la única Matriz/Sede disponible desapareciera del dropdown. */
+/* Tipos de entidad que puede listar el dropdown "Conectar a" de un subproducto `entreSedes`.
+   Igual que destinosPermitidos() pero para el otro extremo del cable: sin campo en el catálogo,
+   Sedes y Matrices (comportamiento histórico de Canal de Conexión / Túnel IPsec). */
+function destinosConexionPermitidos(sub){
+  return (sub && sub.destinosConexion) || ['sede','matriz'];
+}
 function candidatosConexionEntreSedes(entityId, sub){
-  if(sub && sub.destino==='nube'){
-    return state.nubes.filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
-  }
-  return entidadesPortadoras().filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
+  const tipos = destinosConexionPermitidos(sub);
+  const candidatos = [];
+  candidatos.push(...entidadesPortadoras().filter(e=>tipos.includes(tipoEntidad(e.id))));
+  // Nubes: se excluye la Nube automática de Internet (pedido cliente 28/08/2026 — "Cloud
+  // Interconnect solo se puede conectar a Azure, no al internet"). Es una salida a Internet
+  // compartida que administra la propia app (getOrCreateNubeInternetAuto), no una nube de
+  // proveedor contra la que se pueda tender un enlace privado.
+  if(tipos.includes('nube')) candidatos.push(...state.nubes.filter(n=>!n.esAutoInternet));
+  // El Datacenter solo es candidato mientras siga en el proyecto (ver deleteDatacenter).
+  if(tipos.includes('datacenter') && state.datacenter.activo) candidatos.push(state.datacenter);
+  return candidatos.filter(e=>e.id!==entityId && parValidoConexion(entityId, e.id));
 }
 function instanciaTieneConexionLigada(instanciaId){
   return state.conexiones.some(c=>c.instanciaId===instanciaId);
@@ -3337,14 +3387,17 @@ let popupConexionSub = null;      // subproducto vigente en el popup, para saber
 /* Dibuja las opciones del <select>: candidatos existentes + accesos rápidos para crear una
    entidad nueva al vuelo si todavía no hay ninguna disponible (o si igual se quiere agregar
    otra) — se ubica sola en una celda libre de la grilla, sin que el vendedor tenga que ir a
-   arrastrarla y colocarla aparte. Para Cloud Interconnect (`destino:'nube'`) los candidatos son
-   Nubes, no Sedes/Matrices (v9 §4).
+   arrastrarla y colocarla aparte. Qué se lista depende de `destinosConexion` del subproducto
+   (§1): Canal de Conexión lista Sedes, Matrices y el Datacenter Epicentro (ago/2026); Cloud
+   Interconnect lista solo Nubes de proveedor, sin la Nube automática de Internet (v9 §4 +
+   pedido cliente 28/08/2026); Túnel IPsec, Sedes y Matrices.
    v10 (31/07/2026): ya NO se ofrece "Sin conectar por ahora" — Canal de Conexión, Cloud
    Interconnect y Túnel IPsec (los 3 únicos que usan este dropdown) ahora requieren
    obligatoriamente un destino antes de poder guardar (ver validación en btnSavePopup más abajo),
    así que ofrecer la opción de dejarlo sin resolver iba contra esa regla. */
+const ETIQUETA_TIPO_ENTIDAD = { sede:'Sede', matriz:'Matriz', nube:'Nube', datacenter:'Datacenter' };
 function renderPopupConexionOptions(entityId, sub){
-  const esNube = sub && sub.destino==='nube';
+  const tipos = destinosConexionPermitidos(sub);
   const candidatos = candidatosConexionEntreSedes(entityId, sub);
   // Placeholder NO seleccionable (disabled): a diferencia de la vieja "Sin conectar por ahora",
   // esto no es una opción válida para guardar (la validación de btnSavePopup la rechaza igual que
@@ -3352,16 +3405,16 @@ function renderPopupConexionOptions(entityId, sub){
   // pre-seleccionada por el navegador (si eso pasara, el usuario no podría "reelegirla" para
   // disparar el evento change y resolverla — típico caso: recién se crea la primera Sede del
   // proyecto y el único candidato es "+ Agregar nueva Matriz").
+  // Accesos "+ Agregar ..." solo para los tipos que se pueden crear al vuelo. El Datacenter
+  // Epicentro no está: es único y fijo, ya existe o fue eliminado del proyecto (en cuyo caso
+  // tampoco es candidato — se restaura desde el panel izquierdo, no desde acá).
+  const nuevos = [];
+  if(tipos.includes('sede')) nuevos.push(`<option value="${CONEXION_NUEVA_SEDE}">+ Agregar nueva Sede</option>`);
+  if(tipos.includes('matriz')) nuevos.push(`<option value="${CONEXION_NUEVA_MATRIZ}">+ Agregar nueva Matriz</option>`);
+  if(tipos.includes('nube')) nuevos.push(`<option value="${CONEXION_NUEVA_NUBE}">+ Agregar nueva Nube</option>`);
   const opciones = ['<option value="" disabled selected>Elegí un destino…</option>']
-    .concat(esNube
-      ? candidatos.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)} (Nube)</option>`)
-      : candidatos.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)} (${tipoEntidad(e.id)==='matriz'?'Matriz':'Sede'})</option>`))
-    .concat(esNube
-      ? [`<option value="${CONEXION_NUEVA_NUBE}">+ Agregar nueva Nube</option>`]
-      : [
-          `<option value="${CONEXION_NUEVA_SEDE}">+ Agregar nueva Sede</option>`,
-          `<option value="${CONEXION_NUEVA_MATRIZ}">+ Agregar nueva Matriz</option>`,
-        ]);
+    .concat(candidatos.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)} (${ETIQUETA_TIPO_ENTIDAD[tipoEntidad(e.id)]})</option>`))
+    .concat(nuevos);
   popupConexionSelect.innerHTML = opciones.join('');
 }
 // Un solo listener persistente (no uno nuevo por cada render): si se elige una de las opciones
@@ -3604,7 +3657,11 @@ byId('btnSavePopup').addEventListener('click', ()=>{
       sede.instancias.push(instancia);
       instanciaPorSedeId[sedeId] = instancia;
       refreshSedeAssets(sede);
-      if(generaConexionAutomatica(sub) && sedeId!=='datacenter'){
+      // El Datacenter ya no se excluye acá (ago/2026): con Internet Corporativo asignado a él,
+      // la auto-conexión hacia la Nube de Internet es justamente el "canal dedicado del
+      // datacenter al internet" que pidió el cliente. ensureConexionAutomatica descarta sola el
+      // caso Datacenter → Datacenter.
+      if(generaConexionAutomatica(sub)){
         ensureConexionAutomatica(sedeId, sub.id, instancia.instanciaId);
       }
     });
