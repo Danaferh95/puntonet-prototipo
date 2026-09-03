@@ -212,6 +212,19 @@
   #herenciaBox .herenciaName{flex:1;}
   #herenciaBox .herenciaRemove{color:var(--danger);font-weight:700;cursor:pointer;padding:0 3px;flex-shrink:0;}
   #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
+  /* --- Concentrador (sep/2026): campo de SOLO LECTURA del bloque de Matriz. No lleva input ni
+     borde de campo editable justamente para que se lea como un dato calculado y no como algo que
+     el vendedor pueda escribir: total en grande, desglose canal por canal debajo. --- */
+  .concentradorTotal{font-size:19px;font-weight:700;color:var(--cian);line-height:1.15;}
+  .concentradorEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
+  .concentradorList{display:flex;flex-direction:column;gap:3px;margin-top:6px;}
+  .concentradorRow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);
+    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:4px 7px;}
+  .concentradorOrigen{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .concentradorMbps{color:var(--muted);flex-shrink:0;}
+  .concentradorBackupTag{flex-shrink:0;font-size:9px;letter-spacing:.03em;color:var(--indigo);
+    border:1px solid var(--indigo);border-radius:3px;padding:0 4px;line-height:1.5;}
+  .concentradorHint{font-size:10px;color:var(--muted);line-height:1.45;margin-top:6px;}
   #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
   #popupBackupField{display:none;}
   #popupBackupField .toggleRow{margin-bottom:0;} /* el hint va debajo, no hace falta separación extra */
@@ -366,6 +379,10 @@
   .report-inst .rprop{font-size:10.5px;background:var(--panel-2);border:1px solid var(--border);
     padding:2px 7px;border-radius:4px;}
   .report-inst .rnotes{font-size:11px;color:var(--muted);margin-top:6px;font-style:italic;}
+  /* Concentrador (sep/2026): usa el mismo renglón que un producto, pero con un borde izquierdo
+     cian y el total resaltado, porque NO es un producto contratado — es capacidad agregada. */
+  .report-concentrador{border-left:3px solid var(--cian);}
+  .report-concentrador .muted-small{color:var(--cian);font-weight:700;font-size:12.5px;}
   .report-empty{font-size:12px;color:var(--muted);padding:14px;text-align:center;}
 
   /* ---------- Responsive: se adapta el TAMAÑO, la orientación siempre queda horizontal ----------

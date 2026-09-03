@@ -61,6 +61,11 @@ const SUBPRODUCTOS = [
   // "¿de quién sale el servicio?" y el otro "¿a quién puede llegar el cable?".
   // Campo `permiteBackup`: habilita el checkbox "Backup" en el popup (v9 §2) — genera un segundo
   // enlace en paralelo hacia el mismo destino, ligado a la misma instancia (ver syncBackupConexion).
+  // Campo `sumaConcentrador` (sep/2026, pedido cliente 03/09): el ancho de banda de este enlace
+  // suma al Concentrador de la entidad a la que llega (hoy solo se muestra en la Matriz, ver
+  // concentradorDe/renderConcentradorField). Es un dato CALCULADO, no un producto que se arrastre:
+  // "3 canales de 100 megas → concentrador de 300 megas". Los enlaces de Backup NO suman: heredan
+  // el ancho de banda de su canal principal, no lo duplican.
   // Campo `requiereConexionExistente`: en vez del dropdown "Conectar a" (que crea un cable
   // nuevo), muestra "Aplicar Sdwan a" con las conexiones YA EXISTENTES de la sede — la instancia
   // guarda `targetConexionId` apuntando a esa conexión, y su ícono se dibuja sobre ella (ver
@@ -82,7 +87,7 @@ const SUBPRODUCTOS = [
     // canal Sede↔Datacenter se pueda contratar como producto y no solo tendiendo el cable a mano
     // desde el puerto.
     destinos:['sede','matriz','datacenter'], destinosConexion:['sede','matriz','datacenter'],
-    ocultaEnServiciosAsignados:true, permiteBackup:true },
+    ocultaEnServiciosAsignados:true, permiteBackup:true, sumaConcentrador:true },
   // Cloud Interconnect (v9 §4): el dropdown "Conectar a" ya no lista Sedes/Matrices — lista
   // Nubes (entidad `nube`, ver createNube/candidatosConexionEntreSedes). Sigue siendo
   // `conexion:'entreSedes'` (así reutiliza el mismo dropdown genérico y el mismo flujo de
@@ -344,12 +349,16 @@ const EMPLEADOS_SLIDER_MAX = 100; // el slider llega hasta 100; el campo numéri
    vendedor a mano (ej. "1 Gbps"). --- */
 const ANCHO_BANDA_SLIDER_MAX = 1000; // Mbps (=1 Gbps); el campo numérico permite ingresar más
 const ANCHO_BANDA_DEFAULT = 100; // Mbps
-function parseAnchoBandaMbps(str){
-  if(!str) return ANCHO_BANDA_DEFAULT;
+/* `fallback` (sep/2026): qué devolver cuando el valor está vacío o no se puede leer. El popup
+   necesita ANCHO_BANDA_DEFAULT (arranca el slider en 100 Mbps si el vendedor todavía no eligió
+   nada), pero el Concentrador necesita 0: sumar 100 Mbps "fantasma" por cada canal sin ancho de
+   banda cargado daría un total que el vendedor no puede explicar. */
+function parseAnchoBandaMbps(str, fallback = ANCHO_BANDA_DEFAULT){
+  if(!str) return fallback;
   const m = String(str).match(/([\d.]+)\s*(mbps|gbps|mb|gb)?/i);
-  if(!m) return ANCHO_BANDA_DEFAULT;
+  if(!m) return fallback;
   const n = parseFloat(m[1]);
-  if(isNaN(n)) return ANCHO_BANDA_DEFAULT;
+  if(isNaN(n)) return fallback;
   const unidad = (m[2]||'mbps').toLowerCase();
   return unidad.startsWith('g') ? n*1000 : n;
 }
@@ -493,6 +502,64 @@ function conexionesDe(entityId){
 }
 function otroExtremo(conexion, entityId){
   return conexion.aId===entityId ? conexion.bId : conexion.aId;
+}
+
+/* --- Concentrador (sep/2026, pedido cliente 03/09) -----------------------------------------
+   "Si sumas 3 canales de 100 megas tienes 300 megas en el concentrador; eso debería estar dentro
+   de la Matriz — no se ve en el mapa, se ve cuando le das clic a la Matriz, o en el reporte."
+
+   No es un producto del catálogo ni algo que se arrastre: es un valor DERIVADO de los cables que
+   ya existen. Por eso vive acá, junto a los helpers de conexiones, y no en SUBPRODUCTOS ni en el
+   estado — no hay nada que guardar ni que sincronizar, se recalcula en cada render.
+
+   Reglas (las 3 salen textuales de los mensajes del cliente del 28/08 y del 03/09):
+     1. Suman los enlaces marcados `sumaConcentrador` en el catálogo (hoy: Canal de Conexión) que
+        llegan a la entidad, venga el cable desde donde venga (da igual qué extremo sea el dueño
+        de la instancia).
+     2. Los enlaces de Backup NO suman: "no es que el concentrador sube a 600 megas, sigue siendo
+        de 300". Se cuentan aparte, para poder decir cuántos canales están respaldados.
+     3. El Backup hereda el ancho de banda de su canal principal — es la misma instancia, así que
+        el dato ya es literalmente el mismo objeto; solo faltaba mostrarlo (ver reporte y PDF).
+
+   Se calcula para cualquier entityId (Sede, Matriz, Nube o Datacenter); hoy solo se MUESTRA en la
+   Matriz, que es lo que pidió el cliente — habilitarlo en otra entidad es agregar la llamada en
+   su render, sin tocar este cálculo. */
+function anchoBandaMbpsDeInstancia(inst){
+  if(!inst || !inst.propiedades) return 0;
+  const sub = getSubproducto(inst.subproductoId);
+  if(!sub) return 0;
+  // Se busca el parámetro por su TIPO declarado en el catálogo, no por el literal "Ancho de
+  // banda": si algún subproducto lo llama distinto, esto lo sigue encontrando.
+  const tipos = sub.parametrosTipos || {};
+  const nombreProp = (sub.parametros||[]).find(p=>tipos[p]==='anchoBanda');
+  if(!nombreProp) return 0;
+  return parseAnchoBandaMbps(inst.propiedades[nombreProp], 0);
+}
+
+function concentradorDe(entityId){
+  const enlaces = [];
+  conexionesDe(entityId).forEach(c=>{
+    if(c.esBackup) return; // regla 2: el respaldo no suma
+    if(!c.subproductoId) return;
+    const sub = getSubproducto(c.subproductoId);
+    if(!sub || !sub.sumaConcentrador) return;
+    enlaces.push({
+      conexionId: c.id,
+      nombreSubproducto: sub.nombre,
+      origen: nombreEntidad(otroExtremo(c, entityId)),
+      mbps: anchoBandaMbpsDeInstancia(getInstanciaLigada(c)),
+      // El backup comparte instanciaId con su principal (ver syncBackupConexion).
+      tieneBackup: state.conexiones.some(x=>x.instanciaId===c.instanciaId && x.esBackup),
+    });
+  });
+  const totalMbps = enlaces.reduce((acc,e)=>acc+e.mbps, 0);
+  return {
+    enlaces,
+    totalMbps,
+    conBackup: enlaces.filter(e=>e.tieneBackup).length,
+    // formatAnchoBandaMbps devuelve '' para 0 — acá conviene el "0 Mbps" explícito.
+    texto: formatAnchoBandaMbps(totalMbps) || '0 Mbps',
+  };
 }
 
 /* --- Tipo de conexión del cable tendido a mano desde el puerto (§5) ---
@@ -2597,11 +2664,38 @@ const instanceSection = byId('instanceSection');
 const instanceSectionTitle = byId('instanceSectionTitle');
 const instanceListEl = byId('instanceList');
 
+/* Campo "Concentrador" del panel derecho (sep/2026): solo lectura, sin input ni botón — es un
+   valor calculado (ver concentradorDe), no algo que el vendedor edite. Muestra el total y el
+   desglose canal por canal, para que el número no aparezca "de la nada": el cliente tiene que
+   poder señalar de dónde salen los 300 Mbps. Devuelve HTML porque los bloques del panel derecho
+   se pintan con showBox(el, html) de una sola vez. */
+function concentradorFieldHtml(entityId){
+  const conc = concentradorDe(entityId);
+  const cuerpo = conc.enlaces.length===0
+    ? `<div class="concentradorEmpty">Todavía no llega ningún Canal de Conexión a esta Matriz.</div>`
+    : `<div class="concentradorTotal">${escapeHtml(conc.texto)}</div>
+       <div class="concentradorList">${conc.enlaces.map(e=>`
+         <div class="concentradorRow">
+           <span class="concentradorOrigen">${escapeHtml(e.origen)}</span>
+           ${e.tieneBackup ? '<span class="concentradorBackupTag" title="Este canal tiene un enlace de Backup: hereda el mismo ancho de banda, pero no suma al concentrador">+ backup</span>' : ''}
+           <span class="concentradorMbps">${escapeHtml(formatAnchoBandaMbps(e.mbps) || 'sin dato')}</span>
+         </div>`).join('')}</div>`;
+  const nota = conc.conBackup>0
+    ? `Suma de los Canales de Conexión que llegan a esta Matriz. ${conc.conBackup} de ${conc.enlaces.length} tiene(n) Backup: el respaldo hereda el ancho de banda de su canal principal, pero no suma al concentrador.`
+    : 'Suma de los Canales de Conexión que llegan a esta Matriz. Los enlaces de Backup no suman: heredan el ancho de banda de su canal principal.';
+  return `
+    <div class="field concentradorField">
+      <label>Concentrador <span class="muted-inline">(calculado)</span></label>
+      ${cuerpo}
+      <div class="concentradorHint">${nota}</div>
+    </div>`;
+}
+
 /* Bloque de edición de la Matriz seleccionada: nombre editable (igual que una sede), Usuarios
    (pedido cliente 31/07/2026 — mismo patrón slider+número que Empleados de Sede, salvo que acá
-   el mínimo es 0: una Matriz puede no tener usuarios propios asignados) y botón de eliminar. La
-   posición no se edita con un campo numérico — se mueve arrastrándola en el canvas, igual que
-   una sede. */
+   el mínimo es 0: una Matriz puede no tener usuarios propios asignados), el Concentrador
+   calculado (sep/2026, solo lectura) y botón de eliminar. La posición no se edita con un campo
+   numérico — se mueve arrastrándola en el canvas, igual que una sede. */
 function renderMatrizEditBox(matriz){
   if(!matriz){
     hideBox(matrizEditBoxEl);
@@ -2621,6 +2715,7 @@ function renderMatrizEditBox(matriz){
         <input type="number" id="matrizUsuariosNumber" min="0" step="1" value="${usuarios}">
       </div>
     </div>
+    ${concentradorFieldHtml(matriz.id)}
     <button class="btn danger-outline block" id="btnDeleteMatriz">Eliminar Matriz</button>
   `);
   byId('matrizNombreInput').addEventListener('input', (e)=>{
@@ -3846,7 +3941,10 @@ renderLogoButton();
 
 function buildConfiguracionCliente(){
   return {
-    version: 13, // v13: Sdwan se aplica sobre un canal EXISTENTE elegido por el vendedor
+    version: 14, // v14: cada Matriz exporta su `concentrador` calculado (total + desglose por
+                 // canal). Es dato derivado, no editable — se incluye para que quien consuma el
+                 // JSON no tenga que reimplementar la regla de "los backups no suman".
+                 // v13: Sdwan se aplica sobre un canal EXISTENTE elegido por el vendedor
                  // (inst.targetConexionId), en vez de ser un estado genérico de la sede — su
                  // ícono se dibuja sobre esa conexión específica (ver rebuildSdwanBadges).
                  // v12: Backup/doble enlace por instancia (esBackup en conexiones, backup en
@@ -3861,6 +3959,7 @@ function buildConfiguracionCliente(){
     },
     matrices: state.matrices.map(m=>({
       id: m.id, nombre: m.nombre, gx: m.gx, gz: m.gz, usuarios: m.usuarios||0,
+      concentrador: concentradorDe(m.id),
       instancias: m.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,
@@ -4004,13 +4103,21 @@ function openReport(){
     // Backup (v9 §2): línea propia, con su destino — es el mismo servicio contratado, pero el
     // cliente lo ve como un renglón aparte (aparece en la Salud de infraestructura como un enlace
     // más, no como un atributo invisible del original).
+    // sep/2026 (pedido cliente 03/09): "lo que falta en el reporte es que cuando prendas un backup,
+    // el backup hereda la velocidad del canal principal — tengo una operación de 100 megas y tengo
+    // un backup de 100 megas también". El backup ES la misma instancia (comparte instanciaId), así
+    // que las propiedades ya eran las mismas: lo único que faltaba era imprimirlas acá, en vez de
+    // dejar el renglón con una sola línea de texto y sin ancho de banda.
     const backupConexion = state.conexiones.find(c=>c.instanciaId===inst.instanciaId && c.esBackup);
     if(backupConexion){
       const backupRow = document.createElement('div');
       backupRow.className = 'report-inst';
+      const notaConcentrador = sub.sumaConcentrador
+        ? ' No suma al concentrador: es el respaldo del mismo canal, no capacidad adicional.' : '';
       backupRow.innerHTML = `
         <div class="rline1"><span>${inst.nombreSubproducto} (Backup) <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId)))}</span></span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
-        <div class="rmeta">Enlace de respaldo en paralelo — misma contratación que ${inst.nombreSubproducto}.</div>
+        <div class="rmeta">Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${inst.nombreSubproducto}).${notaConcentrador}</div>
+        ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
       `;
       container.appendChild(backupRow);
     }
@@ -4029,6 +4136,24 @@ function openReport(){
       const mh3 = document.createElement('h3');
       mh3.innerHTML = `<span>${escapeHtml(matriz.nombre)}</span><span class="muted-meta">(${matriz.usuarios||0} usuarios · ${matriz.instancias.length} producto(s) propio(s) · ${escapeHtml(conexionesTexto(matriz.id))})</span>`;
       matrizBox.appendChild(mh3);
+      // Concentrador (sep/2026): renglón propio arriba de los productos, porque no ES un producto
+      // — es la capacidad agregada que la Matriz tiene que soportar. Se omite cuando no llega
+      // ningún canal, para no ensuciar el reporte con un "0 Mbps" sin sentido.
+      const conc = concentradorDe(matriz.id);
+      if(conc.enlaces.length>0){
+        const concRow = document.createElement('div');
+        concRow.className = 'report-inst report-concentrador';
+        const desglose = conc.enlaces.map(e=>
+          `<span class="rprop">${escapeHtml(e.origen)}: ${escapeHtml(formatAnchoBandaMbps(e.mbps) || 'sin ancho de banda')}${e.tieneBackup ? ' (+ backup)' : ''}</span>`
+        ).join('');
+        const notaBackup = conc.conBackup>0
+          ? ` ${conc.conBackup} de ${conc.enlaces.length} canal(es) tiene(n) Backup: el respaldo hereda el mismo ancho de banda, pero no suma al concentrador.` : '';
+        concRow.innerHTML = `
+          <div class="rline1"><span>Concentrador <span class="muted-inline">(calculado — no es un producto contratable)</span></span><span class="muted-small">${escapeHtml(conc.texto)}</span></div>
+          <div class="rmeta">Suma de los ${conc.enlaces.length} Canal(es) de Conexión que llegan a esta Matriz.${notaBackup}</div>
+          <div class="rprops">${desglose}</div>`;
+        matrizBox.appendChild(concRow);
+      }
       if(matriz.instancias.length===0){
         const empty = document.createElement('div');
         empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
@@ -4329,12 +4454,19 @@ function downloadPDF(){
     y += 6;
 
     // Backup (v9 §2): línea propia en el PDF, con su propio destino.
+    // sep/2026 (pedido cliente 03/09): el backup hereda el ancho de banda del canal principal —
+    // se imprimen las MISMAS propiedades que el principal (es la misma instancia), que era
+    // justamente lo que faltaba en el reporte.
     const backupConexion = state.conexiones.find(c=>c.instanciaId===inst.instanciaId && c.esBackup);
     if(backupConexion){
       const backupDestinoTxt = `  →  ${nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId))}`;
       addLine(`${inst.nombreSubproducto} (Backup)${backupDestinoTxt}  —  ${vertical.nombre} · ${producto.nombre}`,
         { bold:true, size:10.5, color:[20,24,30] });
-      addLine(`Enlace de respaldo en paralelo — misma contratación que ${inst.nombreSubproducto}.`, { size:9, color:[130,138,150] });
+      const notaConcentrador = sub.sumaConcentrador
+        ? ' No suma al concentrador: es el respaldo del mismo canal, no capacidad adicional.' : '';
+      addLine(`Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${inst.nombreSubproducto}).${notaConcentrador}`,
+        { size:9, color:[130,138,150] });
+      if(props) addLine(props, { size:9, color:[90,98,110] });
       y += 6;
     }
   }
@@ -4402,6 +4534,21 @@ function downloadPDF(){
   } else {
     config.matrices.forEach(matriz=>{
       addSectionHeading(`${matriz.nombre}  ·  ${matriz.usuarios||0} usuarios  ·  ${matriz.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto(matriz.id)}`);
+      // Concentrador (sep/2026): mismo criterio que en el reporte en pantalla — va antes de los
+      // productos propios y se omite si no llega ningún canal.
+      const conc = concentradorDe(matriz.id);
+      if(conc.enlaces.length>0){
+        addLine(`Concentrador: ${conc.texto}  (calculado — no es un producto contratable)`,
+          { bold:true, size:10.5, color:[20,24,30] });
+        const notaBackup = conc.conBackup>0
+          ? ` ${conc.conBackup} de ${conc.enlaces.length} canal(es) tiene(n) Backup: el respaldo hereda el mismo ancho de banda, pero no suma al concentrador.` : '';
+        addLine(`Suma de los ${conc.enlaces.length} Canal(es) de Conexión que llegan a esta Matriz.${notaBackup}`,
+          { size:9, color:[130,138,150] });
+        addLine(conc.enlaces.map(e=>
+          `${e.origen}: ${formatAnchoBandaMbps(e.mbps) || 'sin ancho de banda'}${e.tieneBackup ? ' (+ backup)' : ''}`
+        ).join('   ·   '), { size:9, color:[90,98,110] });
+        y += 6;
+      }
       if(matriz.instancias.length===0) addEmpty('Sin productos propios asignados.');
       else matriz.instancias.forEach(inst=>addProduct(inst, null));
     });
