@@ -802,6 +802,421 @@ function updateNameLabelPositions(){
 const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
 scene.add(grid);
 
+/* =========================================================================
+   3B. MODELOS 3D (.glb) — v16 (reemplazo de las primitivas de las entidades)
+   -------------------------------------------------------------------------
+   Primera tanda del proveedor: las 6 ENTIDADES (3 Sedes, Matriz, Nube, Datacenter). Los íconos
+   de producto (AssetRegistry) siguen siendo primitivas hasta que llegue su tanda.
+
+   Qué resuelve este bloque:
+   - Carga cada .glb UNA sola vez (ModelLibrary.precargar) y entrega clones que COMPARTEN la
+     geometría (ModelLibrary.instanciar). 20 sedes medianas = 1 buffer en la GPU, no 20.
+   - Reemplaza los materiales del proveedor por materiales propios, COMPARTIDOS por tipo de
+     entidad (MODELO_LOOKS). El color lo decide el código, no el archivo: el proveedor entregó
+     un metal azul marino y un emisivo azul (no el blanco de la especificación v2 §6.5), pero como
+     cada modelo trae exactamente 2 slots bien separados, se mapean por NOMBRE de material y el
+     efecto es el mismo que con el blanco. Se aceptan los 2 juegos de nombres: 'metal'/'emissive'
+     (esta entrega) y 'mat_base'/'mat_glow' (la especificación), así una entrega corregida no
+     obliga a tocar código.
+   - Si un .glb no carga (archivo faltante, GLTFLoader ausente, error de parseo), esa entidad
+     sigue dibujándose con su primitiva de siempre: el fallback es el código que ya existía.
+
+   De dónde salen los bytes (resuelve el caso "abrir index.html con doble clic"):
+   1. window.PN_MODELOS_GLB — js/modelos-glb.js, los mismos .glb embebidos en base64. Funciona
+      con file://, con servidor y dentro del empaquetado de la app. Se regenera con
+      `node tools/empaquetar-modelos.js` cada vez que cambia un .glb de assets/glb/.
+   2. Si ese archivo no está, fetch('assets/glb/<archivo>.glb') — requiere servidor (http://).
+
+   Escala: el proveedor modeló todas las entidades más chicas que la envolvente de §2 (ver doc
+   v16). MODELOS_ESCALA las agranda a todas por IGUAL, así se conserva la proporción entre ellas
+   que diseñó el proveedor. 1.5 es el máximo que no hace chocar edificios en celdas vecinas de la
+   grilla (con 1.8 el Datacenter pisa a una Matriz puesta al lado). Si el cliente quiere agrandar
+   una sola entidad, cada entrada de MODELOS acepta `escala` propia, que pisa a la global.
+   El layout (halo, hitbox, puerto, anillo de productos, etiqueta) se calcula a partir de las
+   medidas reales del modelo ya escalado (userData.dims), no de números fijos.
+   ========================================================================= */
+const MODELOS_ESCALA = 1.5;
+
+// clave interna -> archivo (sin .glb) + familia de materiales (+ `escala` opcional, pisa a
+// MODELOS_ESCALA). Las claves de sede usan los mismos ids que TAMANOS_LOCAL ('pequeno' |
+// 'mediano' | 'grande').
+const MODELOS = {
+  sede_pequeno: { archivo:'pn_ent_sede_pequena', look:'sede' },
+  sede_mediano: { archivo:'pn_ent_sede_mediana', look:'sede' },
+  sede_grande:  { archivo:'pn_ent_sede_grande',  look:'sede' },
+  matriz:       { archivo:'pn_ent_matriz',       look:'matriz' },
+  nube:         { archivo:'pn_ent_nube',         look:'nube' },
+  datacenter:   { archivo:'pn_ent_datacenter',   look:'datacenter' },
+};
+const MODELOS_RUTA = 'assets/glb/';
+
+/* Paleta de las entidades en la escena 3D. No vive en css/styles.css porque no es estilo del DOM:
+   son parámetros de materiales WebGL, igual que los colores del catálogo (§1). Se conserva el
+   acento de cada entidad en v39 (cian en Sede/Matriz/Datacenter, violeta en la Nube: "otra clase
+   de nodo"). `glowIntensidad` > 1 queda preparado para el bloom de la fase de post-proceso. */
+const MODELO_METAL = { color:0x7d95c0, metalness:0.85, roughness:0.3, envMapIntensity:1.0 };
+const MODELO_LOOKS = {
+  sede:       { glow:0x22d3ee, glowIntensidad:1.0 },
+  matriz:     { glow:0x22d3ee, glowIntensidad:1.0 },
+  nube:       { glow:0xa78bfa, glowIntensidad:1.0 },
+  datacenter: { glow:0x22d3ee, glowIntensidad:1.0 },
+};
+const NOMBRES_SLOT_BASE = ['metal', 'mat_base'];
+const NOMBRES_SLOT_GLOW = ['emissive', 'mat_glow'];
+
+/* Environment map propio para el metal. Sin él, un MeshStandardMaterial con metalness alto se ve
+   negro (v2 §7.2 punto 7). Es una "sala" chica armada por código — cúpula con degradado azul
+   marino y unos paneles claros que hacen de softbox — procesada una sola vez con PMREMGenerator.
+   Da los filos de luz sobre los bordes redondeados, que es lo que se ve en los renders aprobados.
+   Si el renderer no puede generarlo (p. ej. en el smoke test), el metal queda sin reflejos pero
+   la escena no se rompe. */
+function crearEntornoMetal(){
+  try{
+    const envScene = new THREE.Scene();
+    const domoGeo = new THREE.SphereGeometry(10, 32, 16);
+    const colores = [];
+    const pos = domoGeo.attributes.position;
+    const arriba = new THREE.Color(0x3a5a8c), horizonte = new THREE.Color(0x101a2e), abajo = new THREE.Color(0x020409);
+    const c = new THREE.Color();
+    for(let i=0;i<pos.count;i++){
+      const y = pos.getY(i) / 10; // -1..1
+      if(y >= 0) c.copy(horizonte).lerp(arriba, Math.pow(y, 0.7));
+      else c.copy(horizonte).lerp(abajo, Math.min(1, -y*2.2));
+      colores.push(c.r, c.g, c.b);
+    }
+    domoGeo.setAttribute('color', new THREE.Float32BufferAttribute(colores, 3));
+    envScene.add(new THREE.Mesh(domoGeo, new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.BackSide })));
+    // softboxes: uno cenital grande, uno lateral frío y una tira de contraluz
+    const panel = (w, h, color, x, y, z)=>{
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide }));
+      m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m);
+    };
+    panel(9, 4, 0xbfd4ff, 0, 8.5, 2);
+    panel(3, 6, 0x6f9bff, 8, 3, 4);
+    panel(10, 0.8, 0x9fc0ff, -3, 2, -8);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const rt = pmrem.fromScene(envScene, 0.035);
+    pmrem.dispose();
+    return rt.texture;
+  } catch(err){
+    console.warn('[modelos] sin environment map, el metal se verá plano:', err);
+    return null;
+  }
+}
+
+const ModelLibrary = (()=>{
+  const plantillas = {};   // archivo -> { objeto:THREE.Group (escalado y con materiales propios), dims:{w,h,d} }
+  const materiales = {};   // look -> { base, glow } — compartidos por todas las instancias de ese tipo
+  const animables = { beams:[], luces:[] }; // materiales que el loop anima (ver animarModelos)
+  let entorno = null;
+  let estado = 'pendiente'; // 'pendiente' | 'listo' | 'parcial' | 'sin_modelos'
+  const errores = {};       // archivo -> mensaje
+
+  function materialesDe(look){
+    if(materiales[look]) return materiales[look];
+    if(entorno === null) entorno = crearEntornoMetal() || false;
+    const L = MODELO_LOOKS[look];
+    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: entorno || null }));
+    const glow = new THREE.MeshStandardMaterial({
+      color:0x000000, emissive:L.glow, emissiveIntensity:L.glowIntensidad, metalness:0, roughness:1,
+    });
+    base.name = 'pn_' + look + '_base';
+    glow.name = 'pn_' + look + '_glow';
+    materiales[look] = { base, glow };
+    return materiales[look];
+  }
+
+  function base64ABuffer(b64){
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+  function obtenerBytes(archivo){
+    const embebido = window.PN_MODELOS_GLB && window.PN_MODELOS_GLB[archivo];
+    if(embebido) return Promise.resolve(base64ABuffer(embebido));
+    if(typeof fetch !== 'function') return Promise.reject(new Error('sin datos embebidos y sin fetch'));
+    return fetch(MODELOS_RUTA + archivo + '.glb').then(r=>{
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.arrayBuffer();
+    });
+  }
+  function parsear(buffer){
+    return new Promise((resolve, reject)=> new THREE.GLTFLoader().parse(buffer, '', resolve, reject));
+  }
+
+  /* Deja la plantilla lista para clonar: materiales propios, pivote verificado, escala aplicada.
+     Todo lo que depende del archivo se resuelve acá UNA vez; instanciar() solo clona. */
+  function prepararPlantilla(archivo, look, escala, gltf){
+    const raiz = gltf.scene;
+    const mats = materialesDe(look);
+    raiz.traverse(o=>{
+      if(!o.isMesh) return;
+      o.layers.enable(CAPA_BRILLO); // v17: participa de la fuente del bloom (§3C); clone() copia las capas
+      const nombre = (o.material && o.material.name) || '';
+      if(NOMBRES_SLOT_GLOW.includes(nombre)) o.material = mats.glow;
+      else {
+        if(!NOMBRES_SLOT_BASE.includes(nombre)) console.warn('[modelos] ' + archivo + ': material "' + nombre + '" desconocido, se trata como base');
+        o.material = mats.base;
+      }
+    });
+    // Piezas que el código anima por nombre (v2 §6.4): cada una recibe su propio material para
+    // poder variar la intensidad sin afectar al resto del modelo.
+    const beam = raiz.getObjectByName('beam');
+    if(beam){
+      const m = mats.glow.clone();
+      beam.traverse(o=>{ if(o.isMesh) o.material = m; });
+      animables.beams.push(m);
+    }
+    for(let i=1;i<=7;i++){
+      const luz = raiz.getObjectByName('luz_' + String(i).padStart(2,'0'));
+      if(!luz) continue;
+      const m = mats.glow.clone();
+      luz.traverse(o=>{ if(o.isMesh) o.material = m; });
+      animables.luces.push({ material:m, fase:i });
+    }
+    // Pivote: la especificación pide base en Y=0 y centrado en X/Z. Esta entrega cumple; si una
+    // futura no, se corrige acá con un aviso en consola en vez de que el edificio aparezca hundido.
+    const caja = new THREE.Box3().setFromObject(raiz);
+    const centro = caja.getCenter(new THREE.Vector3());
+    if(Math.abs(caja.min.y) > 0.005 || Math.abs(centro.x) > 0.01 || Math.abs(centro.z) > 0.01){
+      console.warn('[modelos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
+      raiz.position.set(-centro.x, -caja.min.y, -centro.z);
+    }
+    const envoltorio = new THREE.Group();
+    envoltorio.name = 'modeloGLB';
+    envoltorio.add(raiz);
+    envoltorio.scale.setScalar(escala);
+    const tam = caja.getSize(new THREE.Vector3()).multiplyScalar(escala);
+    plantillas[archivo] = { objeto:envoltorio, dims:{ w:tam.x, h:tam.y, d:tam.z } };
+  }
+
+  function precargar(){
+    if(typeof THREE.GLTFLoader !== 'function'){
+      estado = 'sin_modelos';
+      console.warn('[modelos] THREE.GLTFLoader no está cargado (js/vendor/GLTFLoader.js): se usan las primitivas');
+      return Promise.resolve(estado);
+    }
+    const archivos = {};
+    Object.values(MODELOS).forEach(m=>{ archivos[m.archivo] = m; });
+    const tareas = Object.keys(archivos).map(archivo=>
+      obtenerBytes(archivo)
+        .then(parsear)
+        .then(gltf=> prepararPlantilla(archivo, archivos[archivo].look, archivos[archivo].escala || MODELOS_ESCALA, gltf))
+        .catch(err=>{ errores[archivo] = String(err && err.message || err); console.warn('[modelos] ' + archivo + ' no cargó, se usa la primitiva:', err); })
+    );
+    return Promise.all(tareas).then(()=>{
+      const cargados = Object.keys(plantillas).length, total = Object.keys(archivos).length;
+      estado = cargados === total ? 'listo' : (cargados ? 'parcial' : 'sin_modelos');
+      return estado;
+    });
+  }
+
+  /* Devuelve { objeto, dims } o null si ese modelo no está disponible (-> primitiva).
+     clone(true) comparte geometría y material con la plantilla. Las mallas del modelo NO
+     participan del raycast: la selección usa los hitbox invisibles de siempre, que son 1 caja o
+     1 cilindro por entidad en vez de miles de triángulos. */
+  function instanciar(clave){
+    const def = MODELOS[clave];
+    const plantilla = def && plantillas[def.archivo];
+    if(!plantilla) return null;
+    const objeto = plantilla.objeto.clone(true);
+    objeto.traverse(o=>{ if(o.isMesh) o.raycast = ()=>{}; });
+    return { objeto, dims: Object.assign({}, plantilla.dims) };
+  }
+
+  return {
+    precargar, instanciar,
+    estado: ()=> estado,
+    errores: ()=> Object.assign({}, errores),
+    animables,
+    materiales: ()=> materiales,
+  };
+})();
+
+/* Animación de las piezas nombradas. La Matriz de esta entrega NO trae cascarones que giren
+   (el proveedor los reemplazó por alas fijas, ver doc v16): lo único que se anima es el pulso
+   del acento vertical (`beam`) y el parpadeo escalonado de las 7 luces de la fachada del
+   Datacenter. Todo por intensidad de emisión, sin mover geometría. */
+function animarModelos(t){
+  const A = ModelLibrary.animables;
+  const pulso = 0.75 + 0.25 * Math.sin(t * 2.2);
+  A.beams.forEach(m=>{ m.emissiveIntensity = MODELO_LOOKS.matriz.glowIntensidad * pulso; });
+  A.luces.forEach(({ material, fase })=>{
+    const s = Math.sin(t * 1.6 + fase * 1.3);
+    material.emissiveIntensity = MODELO_LOOKS.datacenter.glowIntensidad * (s > 0.82 ? 0.35 : 1);
+  });
+}
+
+/* Medidas visuales de una entidad (las que usa el layout: halo, anillo de productos, etiqueta,
+   efecto de recubrimiento). Las pone el builder en group.userData.dims, tanto si la entidad usa
+   el modelo como la primitiva. */
+function dimsEntidad(entity){
+  const ud = entity.group && entity.group.userData;
+  if(ud && ud.dims) return ud.dims;
+  if(entity.tipo === 'sede'){ const [w,h,d] = getTamanoLocal(entity.tamano).box; return { w, h, d }; }
+  return { w:2, h:2, d:2 };
+}
+
+/* =========================================================================
+   3C. BRILLO (post-proceso) — v17
+   -------------------------------------------------------------------------
+   El resplandor de neón de los renders aprobados: el emisivo no es solo una línea de color, se
+   "abre" en un halo alrededor. Eso es bloom (especificación v2 §7.3, puntos 12 y 15).
+
+   Es un bloom SELECTIVO: solo brillan los emisivos de los modelos .glb (ranuras, luces, canal de
+   la plataforma, contorno de la Nube). Los cables, halos de selección, íconos y puertos NO
+   brillan, así que la escena no se lava ni la selección se convierte en una mancha.
+
+   Cómo, en cada frame:
+   1. Fuente del brillo: se dibujan solo las mallas de los modelos (capa CAPA_BRILLO) en un render
+      target aparte. El metal se dibuja con colorWrite:false — escribe profundidad pero no color —,
+      así tapa los emisivos que quedan detrás del edificio sin aportar brillo. Son 4 materiales
+      compartidos (uno por tipo de entidad): el cambio es de 4 flags, no un recorrido de la escena.
+   2. UnrealBloomPass (three r128) difumina esa fuente en 5 niveles.
+   3. Se dibuja la escena normal en pantalla y encima, en modo aditivo, la fuente + su halo, sin
+      tocar el alfa: el canvas sigue transparente y el halo se suma como luz sobre el degradado de
+      fondo que define css/styles.css (#canvasWrap).
+   4. Los puertos de conexión (+) se vuelven a dibujar encima del halo (capa CAPA_PUERTOS): son
+      un control, no parte del edificio, y el brillo no debe lavarlos.
+
+   Si el post-proceso no está (falta js/vendor/postproceso-r128.js) o falla en un frame, se apaga
+   solo y la escena sigue exactamente como en v40, sin brillo.
+
+   PDF (v2 §7.4, decisión tomada: "el reporte sale sin efectos, por ahora"): BRILLO_EN_PDF = false.
+   Si el cliente lo pide con efectos, es cambiar ese booleano — captureHeroSnapshot ya pasa por
+   renderizarFrame().
+   ========================================================================= */
+const CAPA_BRILLO = 1;
+const CAPA_PUERTOS = 2; // los puertos (+) siguen en la capa 0 para el raycast; esta capa es solo para redibujarlos
+const BRILLO = {
+  activo: true,
+  intensidad: 3.0,   // fuerza del halo (UnrealBloomPass.strength)
+  radio: 0.5,        // cuánto se abre (UnrealBloomPass.radius, 0..1). Más de ~0.6 ya es neblina, no neón
+  nucleo: 1.5,       // cuánto se suma la línea emisiva sobre sí misma: da el centro casi blanco del neón
+  resolucion: 1,     // tamaño del render target respecto del canvas en px CSS (bajar a 0.5 si la tablet no da)
+};
+const BRILLO_EN_PDF = false;
+
+const Brillo = (()=>{
+  let estado = 'pendiente'; // 'activo' | 'apagado' | 'sin_soporte' | 'error'
+  let fuente = null, pase = null, quad = null;
+  const tam = new THREE.Vector2();
+  const clearPrevio = new THREE.Color();
+
+  function medidas(){
+    renderer.getSize(tam);
+    return { w: Math.max(2, Math.round(tam.x * BRILLO.resolucion)), h: Math.max(2, Math.round(tam.y * BRILLO.resolucion)) };
+  }
+
+  function crear(){
+    if(typeof THREE.UnrealBloomPass !== 'function' || typeof THREE.FullScreenQuad !== 'function'){
+      estado = 'sin_soporte';
+      console.warn('[brillo] falta js/vendor/postproceso-r128.js: la escena sigue sin bloom');
+      return;
+    }
+    if(!BRILLO.activo){ estado = 'apagado'; return; }
+    try{
+      const { w, h } = medidas();
+      // Multisample (WebGL2): las líneas emisivas miden ~1 px en pantalla; sin antialiasing el
+      // contorno de la Nube salía punteado. En WebGL1 cae a un render target común.
+      const opciones = { minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, format:THREE.RGBAFormat };
+      if(renderer.capabilities && renderer.capabilities.isWebGL2 && typeof THREE.WebGLMultisampleRenderTarget === 'function'){
+        fuente = new THREE.WebGLMultisampleRenderTarget(w, h, opciones);
+        fuente.samples = 4;
+      } else {
+        fuente = new THREE.WebGLRenderTarget(w, h, opciones);
+      }
+      fuente.texture.name = 'brillo.fuente';
+      pase = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), BRILLO.intensidad, BRILLO.radio, 0);
+      quad = new THREE.FullScreenQuad(new THREE.ShaderMaterial({
+        uniforms: { tBrillo:{ value:fuente.texture }, nucleo:{ value:BRILLO.nucleo } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        // Luz pura: suma color y NO toca el alfa del canvas. Sobre la escena (alfa 1) es un aditivo
+        // normal; donde el canvas es transparente, el navegador compone color premultiplicado con
+        // alfa 0 como "sumar sobre lo de abajo", así el halo ilumina el degradado CSS del fondo en
+        // vez de oscurecerlo (con alfa > 0 el fondo quedaba teñido y más oscuro alrededor del halo).
+        fragmentShader: 'uniform sampler2D tBrillo; uniform float nucleo; varying vec2 vUv;' +
+          'void main(){ gl_FragColor = vec4(texture2D(tBrillo, vUv).rgb * nucleo, 0.0); }',
+        blending: THREE.CustomBlending,
+        blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+        blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor, // el alfa del canvas no cambia
+        depthTest: false, depthWrite: false, transparent: true,
+      }));
+      estado = 'activo';
+    } catch(err){
+      estado = 'error';
+      console.warn('[brillo] no se pudo crear el post-proceso, la escena sigue sin bloom:', err);
+    }
+  }
+
+  function asegurarTamano(){
+    const { w, h } = medidas();
+    if(fuente.width !== w || fuente.height !== h){ fuente.setSize(w, h); pase.setSize(w, h); }
+  }
+
+  // Paso 1 y 2: fuente (solo modelos, metal sin color) + halo. Todo lo que se toca se restaura
+  // en el finally, falle lo que falle.
+  function renderizarFuente(){
+    const bases = Object.values(ModelLibrary.materiales()).map(m=>m.base);
+    const capasPrevias = camera.layers.mask;
+    renderer.getClearColor(clearPrevio);
+    const alfaPrevio = renderer.getClearAlpha();
+    try{
+      bases.forEach(m=>{ m.colorWrite = false; });
+      camera.layers.set(CAPA_BRILLO);
+      renderer.setRenderTarget(fuente);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(scene, camera);
+    } finally {
+      bases.forEach(m=>{ m.colorWrite = true; });
+      camera.layers.mask = capasPrevias;
+      renderer.setClearColor(clearPrevio, alfaPrevio);
+    }
+    pase.strength = BRILLO.intensidad;
+    pase.radius = BRILLO.radio;
+    pase.render(renderer, null, fuente, 0, false); // deja fuente = emisivos + halo
+    renderer.setRenderTarget(null);
+  }
+
+  function hayModelos(){ const e = ModelLibrary.estado(); return e === 'listo' || e === 'parcial'; }
+
+  /* Dibuja un frame. conBrillo=false (o brillo no disponible) = render directo, igual que v40. */
+  function renderizar(conBrillo){
+    if(!conBrillo || estado !== 'activo' || !hayModelos()){ renderer.render(scene, camera); return; }
+    try{
+      asegurarTamano();
+      renderizarFuente();
+      renderer.render(scene, camera);
+      quad.material.uniforms.nucleo.value = BRILLO.nucleo;
+      const autoClearPrevio = renderer.autoClear, capasPrevias = camera.layers.mask;
+      renderer.autoClear = false;
+      try {
+        quad.render(renderer);
+        camera.layers.set(CAPA_PUERTOS); // paso 4: solo los puertos, sobre el halo
+        renderer.render(scene, camera);
+      } finally { renderer.autoClear = autoClearPrevio; camera.layers.mask = capasPrevias; }
+    } catch(err){
+      estado = 'error';
+      console.warn('[brillo] falló el post-proceso, se apaga y la escena sigue sin bloom:', err);
+      renderer.setRenderTarget(null);
+      renderer.render(scene, camera);
+    }
+  }
+
+  function activar(si){
+    if(si && !fuente){ BRILLO.activo = true; crear(); return estado; }
+    if(estado === 'activo' || estado === 'apagado') estado = si ? 'activo' : 'apagado';
+    return estado;
+  }
+
+  crear();
+  return { renderizar, activar, estado: ()=> estado, tamano: ()=> fuente ? { w:fuente.width, h:fuente.height } : null };
+})();
+
+function renderizarFrame(conBrillo){ Brillo.renderizar(conBrillo); }
+
 /* --- Matriz: geometría 3D reutilizable ---
    Antes era un único "hub" fijo en el centro. Ahora una Matriz se comporta como una sede
    especial: se puede crear más de una, y cada una se coloca donde el usuario la arrastre en la
@@ -809,7 +1224,41 @@ scene.add(grid);
    buildSedeMesh()), y createMatriz() (más abajo, §4B) lo instancia y lo agrega al estado. */
 function buildMatrizMesh(){
   const group = new THREE.Group();
+  let coreY = 0;
 
+  // v16: modelo .glb del proveedor si está cargado; si no, la torre de primitivas de siempre
+  const modelo = ModelLibrary.instanciar('matriz');
+  if(modelo){
+    group.add(modelo.objeto);
+    coreY = modelo.dims.h;
+    group.userData.dims = modelo.dims;
+    group.userData.modelo = true;
+  } else {
+    construirMatrizPrimitiva(group);
+    coreY = group.userData.dims.h;
+  }
+  const portX = modelo ? Math.max(2.0, modelo.dims.w/2 + 0.3) : 2.0;
+
+  const matrizHitbox = hitboxMesh(new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16), 'matrizHitbox');
+  matrizHitbox.position.y = (coreY + 2.6) / 2;
+  group.add(matrizHitbox);
+
+  group.add(haloRing(2.5, 2.68, 0x22d3ee, 'matrizHalo', 0.03));
+
+  // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
+  const matrizPort = makePortSprite();
+  matrizPort.position.set(portX, coreY*0.5, 0);
+  group.add(matrizPort);
+
+  // coreY se guarda en userData porque otras funciones (nombre flotante, anillo de productos,
+  // efecto de "recubrimiento") necesitan conocer la altura del núcleo para posicionarse bien,
+  // y cada Matriz ahora es una instancia independiente (ya no hay una variable global coreY).
+  group.userData.coreY = coreY;
+  return group;
+}
+
+/* Matriz de primitivas (v39): fallback de v16 cuando pn_ent_matriz.glb no está disponible. */
+function construirMatrizPrimitiva(group){
   // núcleo: torre escalonada de cajas wireframe
   const coreSizes = [ [2.0,0.35,2.0], [1.5,0.55,1.5], [1.0,1.1,1.0] ];
   let coreY = 0;
@@ -843,22 +1292,7 @@ function buildMatrizMesh(){
   beam.position.y = coreY + 1.2;
   group.add(beam);
 
-  const matrizHitbox = hitboxMesh(new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16), 'matrizHitbox');
-  matrizHitbox.position.y = (coreY + 2.6) / 2;
-  group.add(matrizHitbox);
-
-  group.add(haloRing(2.5, 2.68, 0x22d3ee, 'matrizHalo', 0.03));
-
-  // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
-  const matrizPort = makePortSprite();
-  matrizPort.position.set(2.0, coreY*0.5, 0);
-  group.add(matrizPort);
-
-  // coreY se guarda en userData porque otras funciones (nombre flotante, anillo de productos,
-  // efecto de "recubrimiento") necesitan conocer la altura del núcleo para posicionarse bien,
-  // y cada Matriz ahora es una instancia independiente (ya no hay una variable global coreY).
-  group.userData.coreY = coreY;
-  return group;
+  group.userData.dims = { w:2.0, h:coreY, d:2.0 };
 }
 
 /* --- Nube (v9 §4/§5): entidad destino de Cloud Interconnect. Representación mínima para esta
@@ -870,6 +1304,39 @@ function buildNubeMesh(){
   const group = new THREE.Group();
   const color = 0xa78bfa; // violeta, distinto de los tonos de Conectividad/Matriz — se lee como "otra clase de nodo"
 
+  // v16: modelo .glb si está cargado; si no, el cúmulo de primitivas de siempre
+  const modelo = ModelLibrary.instanciar('nube');
+  let coreY;
+  if(modelo){
+    group.add(modelo.objeto);
+    coreY = modelo.dims.h;
+    group.userData.dims = modelo.dims;
+    group.userData.modelo = true;
+  } else {
+    construirNubePrimitiva(group, color);
+    coreY = 1.9; // altura de referencia para nombre flotante y efecto "recubrimiento"
+    group.userData.dims = { w:2.3, h:coreY, d:2.3 };
+  }
+  const portX = modelo ? modelo.dims.w/2 + 0.4 : 1.3;
+
+  // mismo name que Matriz/Datacenter: hitTest/selección son genéricos por userData
+  const nubeHitbox = hitboxMesh(new THREE.CylinderGeometry(1.4, 1.4, coreY + 0.6, 16), 'matrizHitbox');
+  nubeHitbox.position.y = (coreY + 0.6) / 2;
+  group.add(nubeHitbox);
+
+  // mismo name que la Matriz: updateSelectionVisuals los trata igual
+  group.add(haloRing(1.55, 1.7, color, 'matrizHalo', 0.03));
+
+  const nubePort = makePortSprite();
+  nubePort.position.set(portX, coreY*0.5, 0);
+  group.add(nubePort);
+
+  group.userData.coreY = coreY;
+  return group;
+}
+
+/* Nube de primitivas (v39): fallback de v16 cuando pn_ent_nube.glb no está disponible. */
+function construirNubePrimitiva(group, color){
   const puffs = [
     { r:0.62, pos:[-0.55, 1.05, 0.05] },
     { r:0.78, pos:[0.05, 1.25, 0] },
@@ -890,23 +1357,6 @@ function buildNubeMesh(){
   const baseFill = fillMesh(baseGeo);
   baseEdges.position.y = 0.06; baseFill.position.y = 0.06;
   group.add(baseEdges, baseFill);
-
-  const coreY = 1.9; // altura de referencia para nombre flotante y efecto "recubrimiento"
-
-  // mismo name que Matriz/Datacenter: hitTest/selección son genéricos por userData
-  const nubeHitbox = hitboxMesh(new THREE.CylinderGeometry(1.4, 1.4, coreY + 0.6, 16), 'matrizHitbox');
-  nubeHitbox.position.y = (coreY + 0.6) / 2;
-  group.add(nubeHitbox);
-
-  // mismo name que la Matriz: updateSelectionVisuals los trata igual
-  group.add(haloRing(1.55, 1.7, color, 'matrizHalo', 0.03));
-
-  const nubePort = makePortSprite();
-  nubePort.position.set(1.3, coreY*0.5, 0);
-  group.add(nubePort);
-
-  group.userData.coreY = coreY;
-  return group;
 }
 
 /* --- Marcador del centro de la grilla ---
@@ -941,37 +1391,60 @@ state.datacenter.group = datacenterGroup;
 
 const DC_TIERS = [ [3.0,0.55,2.2], [2.0,1.0,1.5], [1.1,0.7,0.85] ];
 let dcY = 0;
-DC_TIERS.forEach(dims=>{
-  const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-  const edges = wire(geo, 0xe6edf3);
-  const fill = fillMesh(geo);
-  const y = dcY + dims[1]/2;
-  edges.position.y = y; fill.position.y = y;
-  datacenterGroup.add(edges, fill);
-  dcY += dims[1];
-});
-// hilera de "luces de servidor" en la fachada, para dar sensación de datacenter activo
-for(let i=0;i<7;i++){
-  const light = solid(new THREE.SphereGeometry(0.05,8,8),
-    { color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 });
-  light.position.set(-1.2 + i*0.4, 0.3, 1.11);
-  datacenterGroup.add(light);
+
+/* v16: el contenido del Datacenter se arma en una función (antes era código suelto a nivel de
+   archivo) porque ahora hay que poder rearmarlo cuando terminan de cargar los modelos
+   (aplicarModelosAEscena). datacenterGroup NO se reemplaza — hay referencias a él en todo el
+   archivo —: se vacía y se vuelve a llenar, conservando el anillo de productos. */
+function construirDatacenter(){
+  datacenterGroup.children.filter(o=>o.name!=='assetsContainer').forEach(o=>datacenterGroup.remove(o));
+  const modelo = ModelLibrary.instanciar('datacenter');
+  let w, d;
+  if(modelo){
+    datacenterGroup.add(modelo.objeto);
+    ({ w, d } = modelo.dims);
+    dcY = modelo.dims.h;
+  } else {
+    dcY = 0;
+    DC_TIERS.forEach(dims=>{
+      const geo = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
+      const edges = wire(geo, 0xe6edf3);
+      const fill = fillMesh(geo);
+      const y = dcY + dims[1]/2;
+      edges.position.y = y; fill.position.y = y;
+      datacenterGroup.add(edges, fill);
+      dcY += dims[1];
+    });
+    // hilera de "luces de servidor" en la fachada, para dar sensación de datacenter activo
+    for(let i=0;i<7;i++){
+      const light = solid(new THREE.SphereGeometry(0.05,8,8),
+        { color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 });
+      light.position.set(-1.2 + i*0.4, 0.3, 1.11);
+      datacenterGroup.add(light);
+    }
+    w = DC_TIERS[0][0]; d = DC_TIERS[0][2];
+  }
+  datacenterGroup.userData.dims = { w, h:dcY, d };
+  datacenterGroup.userData.modelo = !!modelo;
+  if(state.datacenter.activo) upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');
+
+  // mismo name que el halo de la Matriz: updateSelectionVisuals los trata igual. Con el modelo el
+  // radio sale de la diagonal de la planta, para que las esquinas no atraviesen el anillo.
+  const haloR = modelo ? Math.hypot(w/2, d/2) + 0.2 : 2.2;
+  datacenterGroup.add(haloRing(haloR, haloR + 0.18, 0x22d3ee, 'matrizHalo', 0.03));
+
+  // mismo name que la Matriz: sedeId + isSedeRoot
+  const dcHitbox = hitboxMesh(new THREE.BoxGeometry(Math.max(3.4, w + 0.4), dcY+0.6, Math.max(2.6, d + 0.4)), 'matrizHitbox');
+  dcHitbox.position.y = (dcY+0.6)/2;
+  dcHitbox.userData = { sedeId:'datacenter', isSedeRoot:true, isMatrizRoot:true };
+  datacenterGroup.add(dcHitbox);
+
+  const dcPort = makePortSprite();
+  dcPort.position.set(0, dcY*0.4, Math.max(1.4, d/2 + 0.45));
+  dcPort.userData = { isPort:true, entityId:'datacenter' };
+  datacenterGroup.add(dcPort);
 }
-upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');
-
-// mismo name que el halo de la Matriz: updateSelectionVisuals los trata igual
-datacenterGroup.add(haloRing(2.2, 2.38, 0x22d3ee, 'matrizHalo', 0.03));
-
-// mismo name que la Matriz: sedeId + isSedeRoot
-const dcHitbox = hitboxMesh(new THREE.BoxGeometry(3.4, dcY+0.6, 2.6), 'matrizHitbox');
-dcHitbox.position.y = (dcY+0.6)/2;
-dcHitbox.userData = { sedeId:'datacenter', isSedeRoot:true, isMatrizRoot:true };
-datacenterGroup.add(dcHitbox);
-
-const dcPort = makePortSprite();
-dcPort.position.set(0, dcY*0.4, 1.4);
-dcPort.userData = { isPort:true, entityId:'datacenter' };
-datacenterGroup.add(dcPort);
+construirDatacenter();
 
 /* --- Cables entre entidades (arcos suaves con partícula viajera) ---
    Cada conexión (state.conexiones) es un producto contratado independiente, se dibuja como un
@@ -1594,15 +2067,29 @@ const AssetRegistry = {
 function buildSedeMesh(tamanoId){
   const tamano = getTamanoLocal(tamanoId);
   const group = new THREE.Group();
-  const [w,h,d] = tamano.box;
-  const geo = new THREE.BoxGeometry(w,h,d);
-  const edges = wire(geo, 0xe6edf3);
-  edges.position.y = h/2;
-  edges.name = 'sedeHitbox';
-  group.add(edges);
-  const fill = solid(geo, { color:0x1a2230, transparent:true, opacity:.55 });
-  fill.position.y = h/2;
-  group.add(fill);
+  // v16: modelo .glb del tamaño si está cargado; si no, la caja de primitivas de siempre
+  const modelo = ModelLibrary.instanciar('sede_' + tamano.id);
+  let w, h, d;
+  if(modelo){
+    ({ w, h, d } = modelo.dims);
+    group.add(modelo.objeto);
+    // hitbox invisible del tamaño del modelo (antes el blanco del raycast eran las aristas)
+    const hitbox = hitboxMesh(new THREE.BoxGeometry(w, h, d), 'sedeHitbox');
+    hitbox.position.y = h/2;
+    group.add(hitbox);
+    group.userData.modelo = true;
+  } else {
+    [w,h,d] = tamano.box;
+    const geo = new THREE.BoxGeometry(w,h,d);
+    const edges = wire(geo, 0xe6edf3);
+    edges.position.y = h/2;
+    edges.name = 'sedeHitbox';
+    group.add(edges);
+    const fill = solid(geo, { color:0x1a2230, transparent:true, opacity:.55 });
+    fill.position.y = h/2;
+    group.add(fill);
+  }
+  group.userData.dims = { w, h, d };
 
   // marcador de selección (halo), escalado según el tamaño de la sede
   const haloR = Math.max(w,d)/2 + 0.35;
@@ -1621,7 +2108,7 @@ function buildSedeMesh(tamanoId){
    función que antes (updateSedeNameSprite) para no tener que tocar cada punto donde se llama al
    renombrar, cambiar de tamaño o crear una sede/Matriz. */
 function updateSedeNameSprite(sede){
-  const y = (sede.tipo==='matriz' || sede.tipo==='nube') ? sede.group.userData.coreY + 1.7 : getTamanoLocal(sede.tamano).box[1] + 0.85;
+  const y = (sede.tipo==='matriz' || sede.tipo==='nube') ? sede.group.userData.coreY + 1.7 : dimsEntidad(sede).h + 0.85;
   upsertNameLabel(sede.id, sede.group, y, sede.nombre);
 }
 
@@ -1660,6 +2147,7 @@ function makePortSprite(){
   sprite.scale.set(PORT_BASE_SCALE, PORT_BASE_SCALE, 1);
   sprite.name = 'connPort';
   sprite.renderOrder = 10; // siempre visible por encima de otros objetos, no se "esconde" detrás de una caja
+  sprite.layers.enable(CAPA_PUERTOS); // v17: se redibuja DESPUÉS del halo del brillo, para que no lo lave (§3C)
   return sprite;
 }
 
@@ -1679,7 +2167,7 @@ function refreshSedeAssets(sede){
     radius = 2.1; assetY = sede.group.userData.coreY + 0.45; // anillo alrededor del cúmulo de nube (v9 §5)
   } else {
     const tamano = getTamanoLocal(sede.tamano);
-    radius = tamano.assetRadius; assetY = tamano.box[1] + 0.35;
+    radius = tamano.assetRadius; assetY = dimsEntidad(sede).h + 0.35;
   }
 
   const propias = sede.instancias;
@@ -1764,7 +2252,7 @@ function createSede(empleados, gx, gz){
     id, nombre, tipo:'sede', tamano: tamano.id, empleados,
     gx, gz, group, instancias:[], herenciaIds:[],
   };
-  group.userData = { sedeId:id, isSedeRoot:true };
+  Object.assign(group.userData, { sedeId:id, isSedeRoot:true }); // Object.assign: conserva userData.dims del builder (v16)
   group.traverse(o=>{
     if(o.name==='sedeHitbox'){ o.userData.sedeId=id; o.userData.isSedeRoot=true; }
     if(o.name==='connPort'){ o.userData.sedeId=id; o.userData.isPort=true; o.userData.entityId=id; }
@@ -1779,15 +2267,15 @@ function createSede(empleados, gx, gz){
 /* Reconstruye la geometría 3D de la sede cuando el tamaño (tier) cambia al editar empleados,
    conservando posición, instancias y conexiones (las conexiones se redibujan desde sus puertos,
    que se recalculan solos ya que son hijos del nuevo group). */
-function rebuildSedeMeshIfNeeded(sede, newTamanoId){
-  if(sede.tamano === newTamanoId){ updateSedeNameSprite(sede); return; }
+function rebuildSedeMeshIfNeeded(sede, newTamanoId, forzar){
+  if(sede.tamano === newTamanoId && !forzar){ updateSedeNameSprite(sede); return; }
   sede.tamano = newTamanoId;
   const pos = sede.group.position.clone();
   const wasSelected = state.selectedSedeIds.includes(sede.id);
   scene.remove(sede.group);
   const group = buildSedeMesh(newTamanoId);
   group.position.copy(pos);
-  group.userData = { sedeId: sede.id, isSedeRoot:true };
+  Object.assign(group.userData, { sedeId: sede.id, isSedeRoot:true });
   group.traverse(o=>{
     if(o.name==='sedeHitbox'){ o.userData.sedeId=sede.id; o.userData.isSedeRoot=true; }
     if(o.name==='connPort'){ o.userData.sedeId=sede.id; o.userData.isPort=true; o.userData.entityId=sede.id; }
@@ -2043,7 +2531,12 @@ function playWrapEffect(entityId, subproductoId, onDone){
   const sub = getSubproducto(subproductoId);
   const color = getSubproductoColor(sub);
   let w=1.8, h=1.8, d=1.8;
-  if(entity.tipo==='matriz'){ w = d = 4.6; h = entity.group.userData.coreY + 0.5; }
+  if(entity.group.userData.modelo){
+    // v16: con modelo, el recubrimiento abraza el edificio real (su planta no es cuadrada)
+    const dims = dimsEntidad(entity);
+    w = dims.w + 0.35; h = dims.h + 0.2; d = dims.d + 0.35;
+  }
+  else if(entity.tipo==='matriz'){ w = d = 4.6; h = entity.group.userData.coreY + 0.5; }
   else if(entity.tipo==='nube'){ w = d = 2.8; h = entity.group.userData.coreY + 0.5; }
   else if(entity.id==='datacenter'){ w = 3.6; h = dcY + 0.3; d = 2.8; }
   else { const tamano = getTamanoLocal(entity.tamano); w = tamano.box[0]+0.35; h = tamano.box[1]+0.2; d = tamano.box[2]+0.35; }
@@ -2623,15 +3116,46 @@ function animate(){
   });
   updateSatelliteAnims(t);
   updateSdwanAnims(t);
+  animarModelos(t);
 
   // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
   const portPulse = 1 + Math.sin(t*3) * 0.14;
   scene.traverse(o=>{ if(o.userData && o.userData.isPort) o.scale.setScalar(PORT_BASE_SCALE * portPulse); });
 
-  renderer.render(scene, camera);
+  renderizarFrame(true); // v17: escena + bloom de los emisivos (§3C)
   updateNameLabelPositions();
 }
 animate();
+
+/* --- v16: carga de modelos .glb ---
+   La escena arranca de inmediato con las primitivas (el Datacenter ya está dibujado). Cuando los
+   modelos terminan de cargar — con los datos embebidos es cuestión de milisegundos —, cada
+   entidad que ya exista se reconstruye con su modelo, conservando posición, productos,
+   conexiones y selección. Las que se creen después ya nacen con el modelo. */
+function reconstruirGrupoEntidad(entity, build){
+  const group = build();
+  group.position.copy(entity.group.position);
+  scene.remove(entity.group);
+  scene.add(group);
+  entity.group = group;
+  tagEntityGroup(group, entity.id);
+  refreshSedeAssets(entity);
+  updateSedeNameSprite(entity);
+}
+function aplicarModelosAEscena(){
+  construirDatacenter();
+  refreshSedeAssets(state.datacenter);
+  if(!state.datacenter.activo) datacenterGroup.visible = false;
+  state.sedes.forEach(sede=> rebuildSedeMeshIfNeeded(sede, sede.tamano, true));
+  state.matrices.forEach(m=> reconstruirGrupoEntidad(m, buildMatrizMesh));
+  state.nubes.forEach(n=> reconstruirGrupoEntidad(n, buildNubeMesh));
+  rebuildConnections();
+  updateSelectionVisuals();
+}
+const modelosListos = ModelLibrary.precargar().then(estado=>{
+  if(estado !== 'sin_modelos') aplicarModelosAEscena();
+  return estado;
+});
 
 /* =========================================================================
    6. PANEL DERECHO — navegación de niveles + instancias existentes
@@ -4326,7 +4850,7 @@ function captureHeroSnapshot(targetAspect){
   camera.updateProjectionMatrix();
 
   renderer.setClearColor(0x0a0e14, 1);
-  renderer.render(scene, camera);
+  renderizarFrame(BRILLO_EN_PDF); // v17: sin efectos por decisión (v2 §7.4); cambiar el booleano los incluye
 
   const src = renderer.domElement;
   const sw = src.width, sh = src.height;
