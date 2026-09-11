@@ -310,6 +310,16 @@ function darkenColor(intColor, factor){
   c.setHSL(hsl.h, hsl.s, Math.max(0, hsl.l * factor));
   return c.getHex();
 }
+/* Aclara un color ya resuelto (int hex), conservando matiz/saturación — usado por IconLibrary
+   (§3D) para el slot `mat_glow` de los íconos de producto: ahí "glow" es un tono más claro de la
+   MISMA familia de color (no un acento propio, a diferencia de MODELO_LOOKS con las entidades). */
+function lightenColor(intColor, factor){
+  const c = new THREE.Color(intColor);
+  const hsl = {};
+  c.getHSL(hsl);
+  c.setHSL(hsl.h, hsl.s, Math.min(1, hsl.l * factor));
+  return c.getHex();
+}
 function getProductoColor(producto){
   return hslToHex(producto.hue, producto.sat, producto.light);
 }
@@ -1031,6 +1041,164 @@ const ModelLibrary = (()=>{
     errores: ()=> Object.assign({}, errores),
     animables,
     materiales: ()=> materiales,
+  };
+})();
+
+/* =========================================================================
+   3D. ÍCONOS DE PRODUCTO (.glb) — v18 (primera tanda: Ciberseguridad)
+   -------------------------------------------------------------------------
+   Reemplaza, assetKey por assetKey, las primitivas de AssetRegistry (§5) por modelos reales, a
+   medida que llegan tandas del proveedor. Mismo patrón que ModelLibrary (arriba), con una
+   diferencia importante: una ENTIDAD tiene ~4 "looks" fijos (sede/matriz/nube/datacenter), pero
+   un ÍCONO se tiñe con el color del Subproducto — hasta ~40 colores de catálogo distintos (v2
+   §7.2 punto 8) — así que el material no se cachea por tipo de ícono sino por color resuelto, y
+   se comparte entre TODOS los assetKeys que usen ese mismo color.
+
+   Slots de material (v2 §6.5, ampliados en la entrega de Ciberseguridad — ver LEEME.md del
+   paquete): `mat_base` (cuerpo), `mat_glow` (rasgo distintivo — ranuras, pantallas: NO participa
+   del bloom de §3C, ver mockup v17 "no brillan… íconos de producto"; acá "glow" es una variante
+   más clara del MISMO tinte, no una capa que pasa por UnrealBloomPass), `mat_translucido`
+   (vidrio/pantalla) y `mat_receso` (hueco/sombra — variante más oscura del mismo tinte). Un
+   ícono no necesariamente trae los 4 slots (p. ej. el escudo no trae `mat_base`, ver checks.json
+   del paquete).
+
+   Fuente de los bytes: window.PN_ICONOS_GLB (js/iconos-glb.js, generado por
+   tools/empaquetar-iconos.js desde assets/glb-iconos/) y, si falta, fetch('assets/glb-iconos/…').
+   Deliberadamente en un archivo y una carpeta separados de los de las 6 entidades
+   (PN_MODELOS_GLB / assets/glb/): smoke-test-modelos.js valida que PN_MODELOS_GLB traiga
+   EXACTAMENTE los archivos de MODELOS, así que mezclar los íconos ahí rompería ese test.
+
+   Si un assetKey no está en ICONOS_GLB, o su .glb no cargó, AssetRegistry sigue usando su
+   primitiva de siempre — mismo criterio de entrega por tandas que las entidades (v2 §6.7).
+   ========================================================================= */
+const ICONOS_ESCALA = 1;
+
+// assetKey (mismo que en PRODUCTOS/SUBPRODUCTOS, §1) -> archivo (sin .glb). Va creciendo tanda a
+// tanda; los assetKeys que faltan acá siguen con su primitiva de AssetRegistry (§5).
+const ICONOS_GLB = {
+  escudo:              { archivo:'pn_ico_escudo' },             // Perimetral
+  candado:             { archivo:'pn_ico_candado' },            // End Point
+  llave:               { archivo:'pn_ico_llave' },              // Acceso
+  muro:                { archivo:'pn_ico_muro' },                // Aplicación
+  firewall_onpremise:  { archivo:'pn_ico_firewall_onpremise' },  // Firewall On Premise (subproducto propio)
+};
+const ICONOS_RUTA = 'assets/glb-iconos/';
+const NOMBRES_SLOT_ICONO_TRANSLUCIDO = ['mat_translucido'];
+const NOMBRES_SLOT_ICONO_RECESO = ['mat_receso'];
+
+const IconLibrary = (()=>{
+  const plantillas = {};          // archivo -> THREE.Group crudo (geometría cacheada, SIN material asignado)
+  const materialesPorColor = {};  // color (int) -> { base, glow, translucido, receso } — compartidos entre assetKeys
+  let estado = 'pendiente';       // 'pendiente' | 'listo' | 'parcial' | 'sin_modelos'
+  const errores = {};             // archivo -> mensaje
+
+  function materialesDeColor(color){
+    if(materialesPorColor[color]) return materialesPorColor[color];
+    const set = {
+      base:        new THREE.MeshStandardMaterial({ color, metalness:0.55, roughness:0.4 }),
+      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:0.5, metalness:0.1, roughness:0.35 }),
+      translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.5, side:THREE.DoubleSide }),
+      receso:      new THREE.MeshStandardMaterial({ color: darkenColor(color, 0.45), metalness:0.2, roughness:0.75 }),
+    };
+    materialesPorColor[color] = set;
+    return set;
+  }
+
+  function base64ABuffer(b64){
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+  function obtenerBytes(archivo){
+    const embebido = window.PN_ICONOS_GLB && window.PN_ICONOS_GLB[archivo];
+    if(embebido) return Promise.resolve(base64ABuffer(embebido));
+    if(typeof fetch !== 'function') return Promise.reject(new Error('sin datos embebidos y sin fetch'));
+    return fetch(ICONOS_RUTA + archivo + '.glb').then(r=>{
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.arrayBuffer();
+    });
+  }
+  function parsear(buffer){
+    return new Promise((resolve, reject)=> new THREE.GLTFLoader().parse(buffer, '', resolve, reject));
+  }
+
+  /* Deja la plantilla lista para clonar y teñir: pivote verificado, escala aplicada, SIN
+     material propio todavía (eso se resuelve por color en instanciar/materialesDeColor). Guarda
+     el slot de cada malla en userData para no tener que volver a mirar el nombre de material del
+     proveedor en cada clonado. */
+  function prepararPlantilla(archivo, escala, gltf){
+    const raiz = gltf.scene;
+    raiz.traverse(o=>{
+      if(!o.isMesh) return;
+      const nombre = (o.material && o.material.name) || '';
+      if(NOMBRES_SLOT_GLOW.includes(nombre)) o.userData.slot = 'glow';
+      else if(NOMBRES_SLOT_ICONO_TRANSLUCIDO.includes(nombre)) o.userData.slot = 'translucido';
+      else if(NOMBRES_SLOT_ICONO_RECESO.includes(nombre)) o.userData.slot = 'receso';
+      else {
+        if(!NOMBRES_SLOT_BASE.includes(nombre)) console.warn('[iconos] ' + archivo + ': material "' + nombre + '" desconocido, se trata como base');
+        o.userData.slot = 'base';
+      }
+    });
+    // Pivote: la especificación pide base en Y=0 y centrado en X/Z (v2 §6.4), igual que las
+    // entidades — misma corrección defensiva si alguna entrega futura no cumple.
+    const caja = new THREE.Box3().setFromObject(raiz);
+    const centro = caja.getCenter(new THREE.Vector3());
+    if(Math.abs(caja.min.y) > 0.005 || Math.abs(centro.x) > 0.01 || Math.abs(centro.z) > 0.01){
+      console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
+      raiz.position.set(-centro.x, -caja.min.y, -centro.z);
+    }
+    const envoltorio = new THREE.Group();
+    envoltorio.name = 'iconoGLB';
+    envoltorio.add(raiz);
+    envoltorio.scale.setScalar(escala);
+    plantillas[archivo] = envoltorio;
+  }
+
+  function precargar(){
+    if(typeof THREE.GLTFLoader !== 'function'){
+      estado = 'sin_modelos';
+      return Promise.resolve(estado);
+    }
+    const archivos = {};
+    Object.values(ICONOS_GLB).forEach(m=>{ archivos[m.archivo] = m; });
+    const claves = Object.keys(archivos);
+    if(!claves.length){ estado = 'sin_modelos'; return Promise.resolve(estado); }
+    const tareas = claves.map(archivo=>
+      obtenerBytes(archivo)
+        .then(parsear)
+        .then(gltf=> prepararPlantilla(archivo, archivos[archivo].escala || ICONOS_ESCALA, gltf))
+        .catch(err=>{ errores[archivo] = String(err && err.message || err); console.warn('[iconos] ' + archivo + ' no cargó, se usa la primitiva:', err); })
+    );
+    return Promise.all(tareas).then(()=>{
+      const cargados = Object.keys(plantillas).length, total = claves.length;
+      estado = cargados === total ? 'listo' : (cargados ? 'parcial' : 'sin_modelos');
+      return estado;
+    });
+  }
+
+  /* Devuelve un THREE.Group listo para agregar a la escena, teñido con `color`, o null si ese
+     assetKey todavía no tiene .glb o no cargó — el llamador (AssetRegistry) cae a la primitiva.
+     clone(true) comparte geometría entre instancias; los materiales salen del caché por color.
+     A diferencia de ModelLibrary.instanciar(), NO se desactiva el raycast: los íconos se siguen
+     seleccionando por su malla real, igual que las primitivas de siempre (no tienen hitbox propio). */
+  function instanciar(assetKey, color){
+    const def = ICONOS_GLB[assetKey];
+    const plantilla = def && plantillas[def.archivo];
+    if(!plantilla) return null;
+    const mats = materialesDeColor(color);
+    const objeto = plantilla.clone(true);
+    objeto.traverse(o=>{
+      if(!o.isMesh) return;
+      o.material = mats[o.userData.slot] || mats.base;
+    });
+    return objeto;
+  }
+
+  return {
+    precargar, instanciar,
+    estado: ()=> estado,
+    errores: ()=> Object.assign({}, errores),
   };
 })();
 
@@ -1864,6 +2032,9 @@ window.addEventListener('orientationchange', ()=>{ setTimeout(handleViewportResi
 /* --- Registro de assets por assetKey (§5) --- */
 const AssetRegistry = {
   escudo: (color)=>{
+    // v18: modelo .glb (Perimetral, tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
+    const modelo = IconLibrary.instanciar('escudo', color);
+    if(modelo) return modelo;
     const g = new THREE.ConeGeometry(0.34, 0.55, 4);
     const mesh = wire(g, color);
     mesh.rotation.y = Math.PI/4;
@@ -1872,6 +2043,9 @@ const AssetRegistry = {
   // Firewall On Premise (ago/2026): caja compacta de hardware de rack, con "puertos" en el
   // frente — se lee como equipo físico, a diferencia del escudo con anillo de firewall_virtual.
   firewall_onpremise: (color)=>{
+    // v18: modelo .glb (tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
+    const modelo = IconLibrary.instanciar('firewall_onpremise', color);
+    if(modelo) return modelo;
     const group = new THREE.Group();
     const bodyGeo = new THREE.BoxGeometry(0.42, 0.16, 0.22);
     const body = wire(bodyGeo, color);
@@ -1922,6 +2096,9 @@ const AssetRegistry = {
     return mesh;
   },
   candado: (color)=>{
+    // v18: modelo .glb (End Point, tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
+    const modelo = IconLibrary.instanciar('candado', color);
+    if(modelo) return modelo;
     const group = new THREE.Group();
     const body = new THREE.BoxGeometry(0.34,0.28,0.16);
     const bodyMesh = wire(body, color);
@@ -1977,6 +2154,11 @@ const AssetRegistry = {
     return group;
   },
   llave: (color)=>{
+    // v18: modelo .glb (Acceso, tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
+    // Nota (LEEME del paquete): el diseño aprobado de Acceso ya no es literalmente una llave —
+    // el nombre del assetKey/archivo se conserva por compatibilidad con el catálogo.
+    const modelo = IconLibrary.instanciar('llave', color);
+    if(modelo) return modelo;
     // Acceso: llave (aro + eje + diente)
     const group = new THREE.Group();
     const ringGeo = new THREE.TorusGeometry(0.13, 0.035, 6, 14);
@@ -1996,6 +2178,11 @@ const AssetRegistry = {
     return group;
   },
   muro: (color)=>{
+    // v18: modelo .glb (Aplicación, tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
+    // Nota (LEEME del paquete): el diseño aprobado de Aplicación ya no es literalmente un muro —
+    // el nombre del assetKey/archivo se conserva por compatibilidad con el catálogo.
+    const modelo = IconLibrary.instanciar('muro', color);
+    if(modelo) return modelo;
     // Aplicación: muro/barrera con marca en X (WAF, DNS/DDoS)
     const group = new THREE.Group();
     const g = new THREE.BoxGeometry(0.42,0.42,0.05);
@@ -3156,6 +3343,15 @@ const modelosListos = ModelLibrary.precargar().then(estado=>{
   if(estado !== 'sin_modelos') aplicarModelosAEscena();
   return estado;
 });
+/* v18: misma estrategia que modelosListos, pero para los íconos de producto (§3D), en su propia
+   promesa — deliberadamente SIN tocar el contrato de modelosListos (los smoke tests existentes
+   lo esperan resuelto como un string de estado de las 6 entidades nada más). Si una sede/Matriz
+   ya tiene productos asignados y sus íconos llegan después de dibujarse, aplicarModelosAEscena()
+   los reconstruye igual que hace con las entidades. */
+const iconosListos = IconLibrary.precargar().then(estado=>{
+  if(estado !== 'sin_modelos') aplicarModelosAEscena();
+  return estado;
+});
 
 /* =========================================================================
    6. PANEL DERECHO — navegación de niveles + instancias existentes
@@ -3169,10 +3365,16 @@ const ICONS_SVG = {
   globo:     '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="12" cy="12" rx="3.2" ry="8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 12h16" stroke="currentColor" stroke-width="1.4"/></svg>',
   rack:      '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="10" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="16" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   nube:      '<svg viewBox="0 0 24 24"><path d="M7 17a4 4 0 01-.6-7.96A5 5 0 0116.9 8 4.5 4.5 0 0117 17H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-  escudo:    '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-  candado:   '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
-  llave:     '<svg viewBox="0 0 24 24"><circle cx="7" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 12h9M15 12v3M18 12v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  muro:      '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  // v18: lineup aprobado de Ciberseguridad (paquete del proveedor, ver LEEME.md) — mismo SVG que
+  // acompaña a cada .glb de IconLibrary (§3D), color editable vía currentColor. Se retira el
+  // atributo `color="#EC7069"` del archivo de origen: es solo el valor de vista previa del
+  // proveedor y, dejado en el SVG, pisaría el color heredado del `style` del contenedor (§6, el
+  // `<span class="catalog-producto-icon" style="color:...">` que envuelve a cada ícono).
+  escudo:    '<svg viewBox="0 0 128 128" role="img"><title>Perimetral</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 45V29Q18 18 29 18H45V26H29Q26 26 26 29V45Z M83 18H99Q110 18 110 29V45H102V29Q102 26 99 26H83Z M110 83V99Q110 110 99 110H83V102H99Q102 102 102 99V83Z M45 110H29Q18 110 18 99V83H26V99Q26 102 29 102H45Z"/></g></svg>',
+  candado:   '<svg viewBox="0 0 128 128" role="img"><title>End Point</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="12" y="12" width="104" height="104" rx="25"/><rect x="23" y="23" width="82" height="82" rx="21"/><rect x="34" y="34" width="60" height="60" rx="17"/><path d="M54 61V54a10 10 0 0 1 20 0V61"/><rect x="49" y="61" width="30" height="25" rx="4"/><path d="M64 71V77"/></g></svg>',
+  llave:     '<svg viewBox="0 0 128 128" role="img"><title>Acceso</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M25 112V29Q25 16 38 16H90Q103 16 103 29V112H87V37Q87 32 82 32H46Q41 32 41 37V112Z"/></g></svg>',
+  muro:      '<svg viewBox="0 0 128 128" role="img"><title>Aplicación</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="12" y="19" width="104" height="90" rx="10"/><path d="M12 40H116"/><circle cx="24" cy="29" r="2" fill="currentColor"/><circle cx="35" cy="29" r="2" fill="currentColor"/><circle cx="60" cy="69" r="17"/><path d="M72 81L89 98"/></g></svg>',
+  firewall_onpremise: '<svg viewBox="0 0 128 128" role="img"><title>Firewall físico</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="38" width="112" height="52" rx="9"/><rect x="22" y="51" width="22" height="26" rx="2"/><rect x="56" y="51" width="22" height="26" rx="2"/><path d="M93 64H108"/></g></svg>',
   pantalla:  '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20h6M12 17v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   documento: '<svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 12h6M10 16h6M10 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   puerta:    '<svg viewBox="0 0 24 24"><path d="M6 21V6a2 2 0 012-2h8a2 2 0 012 2v15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 21h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
