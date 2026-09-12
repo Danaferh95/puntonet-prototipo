@@ -813,6 +813,109 @@ const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
 scene.add(grid);
 
 /* =========================================================================
+   3A-bis. PISO OSCURO CON REFLEJO FALSO (v2 §7.3 punto 13, pendiente desde v17)
+   -------------------------------------------------------------------------
+   Reflejo FALSO: copias espejadas (scale.y = -1) de cada entidad, translúcidas y sincronizadas a
+   mano cada frame — no un THREE.Reflector real (cámara espejada que renderiza la escena completa
+   una segunda vez). Con la cámara ortográfica sin culling (§1) y hasta ~150 íconos en pantalla,
+   Reflector es el paso más caro de la lista y queda deliberadamente fuera de esta tanda; esto es
+   lo barato de la misma sección, para medir antes de subir de nivel.
+   Solo se reflejan las ENTIDADES (sedes, matrices, nubes, datacenter — unas 20 como mucho), nunca
+   los íconos de producto que orbitan alrededor: son esos ~150 los que harían caro el efecto, y
+   quedan afuera clonando la entidad SIN su `assetsContainer` (§3E). */
+const piso = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 48),
+  new THREE.MeshBasicMaterial({ color:0x05070d, transparent:true, opacity:0.55, depthWrite:false })
+);
+piso.name = 'piso';
+piso.rotation.x = -Math.PI/2;
+piso.position.y = -0.02; // apenas debajo de la grilla, evita z-fighting con sus líneas
+piso.raycast = function(){}; // decorativo: no debe interceptar los clicks/arrastres que hoy resuelven contra un plano matemático (§4)
+scene.add(piso);
+
+const PISO_REFLEJO = { activo:true, opacidad:0.18 };
+const reflejosPiso = new THREE.Group();
+reflejosPiso.name = 'reflejosPiso';
+scene.add(reflejosPiso);
+const reflejosPorEntidad = new Map(); // entityId -> { espejo, origen: entity.group de cuando se creó el reflejo }
+
+function disposeReflejo(espejo){
+  espejo.traverse(o=>{ if(o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m=>m.dispose()); });
+}
+
+/* Fuerza a actualizarReflejosPiso() a reconstruir TODOS los reflejos desde cero en el próximo
+   frame. Hace falta porque no todas las entidades reemplazan su `.group` al pasar de primitiva a
+   modelo real — el Datacenter reconstruye sus hijos sobre el mismo objeto (ver construirDatacenter
+   y su llamador aplicarModelosAEscena, §5/§6) — así que el chequeo por identidad de objeto no
+   detecta ese caso por sí solo. Barato: son ~20 entidades como mucho, y solo pasa una vez por
+   tanda de modelos cargada, no en cada frame. */
+function invalidarReflejosPiso(){
+  reflejosPorEntidad.forEach(entry=>{ reflejosPiso.remove(entry.espejo); disposeReflejo(entry.espejo); });
+  reflejosPorEntidad.clear();
+}
+
+/* Copia espejada de UNA entidad: solo su cuerpo real, los meshes con material 'pn_<look>_base' o
+   'pn_<look>_glow' que arma ModelLibrary (§3B) — halos, hitboxes, puertos y sprites quedan afuera
+   (se ocultan, no se borran, para no desincronizar el clon de su origen). */
+function crearReflejoDeEntidad(entity){
+  const espejo = entity.group.clone(true);
+  const assetsContainer = espejo.getObjectByName('assetsContainer');
+  if(assetsContainer) espejo.remove(assetsContainer);
+  espejo.traverse(o=>{
+    if(o.isSprite){ o.visible = false; return; }
+    if(!o.isMesh) return;
+    const nombreMat = (o.material && o.material.name) || '';
+    if(nombreMat.indexOf('pn_') !== 0){ o.visible = false; return; } // halo, hitbox, primitivas de fallback, etc. — no son el cuerpo del modelo
+    o.raycast = function(){}; // nunca intercepta clicks ni arrastre: es un reflejo, no un objeto
+    o.layers.disable(CAPA_BRILLO); // fuera del paso de brillo — si no, el cuerpo completo "brillaría" en el reflejo (ver Brillo.renderizarFuente, §3C)
+    o.material = o.material.clone();
+    o.material.transparent = true;
+    o.material.depthWrite = false;
+    o.material.side = THREE.DoubleSide; // el flip en Y invierte el sentido de las caras; sin esto se ve hueco
+    o.material.opacity = PISO_REFLEJO.opacidad;
+  });
+  espejo.renderOrder = -1; // se dibuja antes que la escena real, nunca la tapa
+  return espejo;
+}
+
+/* Sincroniza reflejosPiso contra el estado real, cuadro a cuadro (llamada desde animate(), §4).
+   Deliberadamente NO se engancha a createSede/deleteSede/createMatriz/etc.: lee
+   todasLasEntidades() —la misma fuente de verdad que ya usa el resto del código— y arma, mueve o
+   borra reflejos por diferencia contra el frame anterior. Así arrastrar una sede, cambiarle el
+   tier, eliminarla o cargar un proyecto guardado quedan cubiertos sin tocar esos flujos uno por
+   uno ni arriesgarse a que alguno quede sin su reflejo actualizado. */
+function actualizarReflejosPiso(){
+  if(!PISO_REFLEJO.activo){ reflejosPiso.visible = false; return; }
+  reflejosPiso.visible = true;
+  const activos = new Set();
+  todasLasEntidades().forEach(entity=>{
+    if(!entity || !entity.group || entity.group.visible === false) return;
+    activos.add(entity.id);
+    let entry = reflejosPorEntidad.get(entity.id);
+    if(entry && entry.origen !== entity.group){
+      reflejosPiso.remove(entry.espejo);
+      disposeReflejo(entry.espejo);
+      entry = null;
+    }
+    if(!entry){
+      entry = { espejo: crearReflejoDeEntidad(entity), origen: entity.group };
+      reflejosPorEntidad.set(entity.id, entry);
+      reflejosPiso.add(entry.espejo);
+    }
+    const g = entity.group;
+    entry.espejo.position.set(g.position.x, g.position.y, g.position.z);
+    entry.espejo.quaternion.copy(g.quaternion);
+    entry.espejo.scale.set(g.scale.x, -g.scale.y, g.scale.z);
+  });
+  reflejosPorEntidad.forEach((entry, id)=>{
+    if(activos.has(id)) return;
+    reflejosPiso.remove(entry.espejo);
+    disposeReflejo(entry.espejo);
+    reflejosPorEntidad.delete(id);
+  });
+}
+
+/* =========================================================================
    3B. MODELOS 3D (.glb) — v16 (reemplazo de las primitivas de las entidades)
    -------------------------------------------------------------------------
    Primera tanda del proveedor: las 6 ENTIDADES (3 Sedes, Matriz, Nube, Datacenter). Los íconos
@@ -864,7 +967,7 @@ const MODELOS_RUTA = 'assets/glb/';
    son parámetros de materiales WebGL, igual que los colores del catálogo (§1). Se conserva el
    acento de cada entidad en v39 (cian en Sede/Matriz/Datacenter, violeta en la Nube: "otra clase
    de nodo"). `glowIntensidad` > 1 queda preparado para el bloom de la fase de post-proceso. */
-const MODELO_METAL = { color:0x7d95c0, metalness:0.85, roughness:0.3, envMapIntensity:1.0 };
+const MODELO_METAL = { color:0x7d95c0, metalness:0.85, roughness:0.28, envMapIntensity:1.4 };
 const MODELO_LOOKS = {
   sede:       { glow:0x22d3ee, glowIntensidad:1.0 },
   matriz:     { glow:0x22d3ee, glowIntensidad:1.0 },
@@ -874,12 +977,13 @@ const MODELO_LOOKS = {
 const NOMBRES_SLOT_BASE = ['metal', 'mat_base'];
 const NOMBRES_SLOT_GLOW = ['emissive', 'mat_glow'];
 
-/* Environment map propio para el metal. Sin él, un MeshStandardMaterial con metalness alto se ve
-   negro (v2 §7.2 punto 7). Es una "sala" chica armada por código — cúpula con degradado azul
-   marino y unos paneles claros que hacen de softbox — procesada una sola vez con PMREMGenerator.
-   Da los filos de luz sobre los bordes redondeados, que es lo que se ve en los renders aprobados.
-   Si el renderer no puede generarlo (p. ej. en el smoke test), el metal queda sin reflejos pero
-   la escena no se rompe. */
+/* Environment map propio para el metal, COMPARTIDO por entidades (ModelLibrary, acá abajo) e
+   íconos de producto (IconLibrary, §3D) — ver obtenerEntornoMetal(). Sin él, un
+   MeshStandardMaterial con metalness alto se ve negro (v2 §7.2 punto 7). Es una "sala" chica
+   armada por código — cúpula con degradado azul marino, dos paneles claros que hacen de softbox,
+   una tira de contraluz y un filo angosto y casi blanco que da el highlight nítido sobre los
+   biseles — procesada una sola vez con PMREMGenerator. Si el renderer no puede generarlo (p. ej.
+   en el smoke test), el metal queda sin reflejos pero la escena no se rompe. */
 function crearEntornoMetal(){
   try{
     const envScene = new THREE.Scene();
@@ -896,7 +1000,8 @@ function crearEntornoMetal(){
     }
     domoGeo.setAttribute('color', new THREE.Float32BufferAttribute(colores, 3));
     envScene.add(new THREE.Mesh(domoGeo, new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.BackSide })));
-    // softboxes: uno cenital grande, uno lateral frío y una tira de contraluz
+    // softboxes: uno cenital grande, uno lateral frío, una tira de contraluz y un filo angosto y
+    // más brillante — el "hot spot" que engancha el reflejo como una línea de luz nítida.
     const panel = (w, h, color, x, y, z)=>{
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide }));
       m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m);
@@ -904,8 +1009,9 @@ function crearEntornoMetal(){
     panel(9, 4, 0xbfd4ff, 0, 8.5, 2);
     panel(3, 6, 0x6f9bff, 8, 3, 4);
     panel(10, 0.8, 0x9fc0ff, -3, 2, -8);
+    panel(0.6, 5, 0xf3f8ff, 6, 4, -6);
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const rt = pmrem.fromScene(envScene, 0.035);
+    const rt = pmrem.fromScene(envScene, 0.03);
     pmrem.dispose();
     return rt.texture;
   } catch(err){
@@ -914,19 +1020,27 @@ function crearEntornoMetal(){
   }
 }
 
+/* Cache del environment de crearEntornoMetal(): se genera una sola vez (la primera vez que algún
+   material lo pide, entidad o ícono) y de ahí en más se reusa — mismo look en todo, sin pagar el
+   costo de PMREMGenerator dos veces. `false` (en vez de null) marca "ya se intentó y no se pudo",
+   así un renderer sin soporte no reintenta en cada material nuevo que se crea. */
+let entornoMetalCache = null;
+function obtenerEntornoMetal(){
+  if(entornoMetalCache === null) entornoMetalCache = crearEntornoMetal() || false;
+  return entornoMetalCache || null;
+}
+
 const ModelLibrary = (()=>{
   const plantillas = {};   // archivo -> { objeto:THREE.Group (escalado y con materiales propios), dims:{w,h,d} }
   const materiales = {};   // look -> { base, glow } — compartidos por todas las instancias de ese tipo
   const animables = { beams:[], luces:[] }; // materiales que el loop anima (ver animarModelos)
-  let entorno = null;
   let estado = 'pendiente'; // 'pendiente' | 'listo' | 'parcial' | 'sin_modelos'
   const errores = {};       // archivo -> mensaje
 
   function materialesDe(look){
     if(materiales[look]) return materiales[look];
-    if(entorno === null) entorno = crearEntornoMetal() || false;
     const L = MODELO_LOOKS[look];
-    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: entorno || null }));
+    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: obtenerEntornoMetal() }));
     const glow = new THREE.MeshStandardMaterial({
       color:0x000000, emissive:L.glow, emissiveIntensity:L.glowIntensidad, metalness:0, roughness:1,
     });
@@ -1045,7 +1159,7 @@ const ModelLibrary = (()=>{
 })();
 
 /* =========================================================================
-   3D. ÍCONOS DE PRODUCTO (.glb) — v18 (primera tanda: Ciberseguridad)
+   3D. ÍCONOS DE PRODUCTO (.glb) — v21 (tandas: Ciberseguridad v18 + Cloud v20 + Colaboración v21)
    -------------------------------------------------------------------------
    Reemplaza, assetKey por assetKey, las primitivas de AssetRegistry (§5) por modelos reales, a
    medida que llegan tandas del proveedor. Mismo patrón que ModelLibrary (arriba), con una
@@ -1060,7 +1174,17 @@ const ModelLibrary = (()=>{
    más clara del MISMO tinte, no una capa que pasa por UnrealBloomPass), `mat_translucido`
    (vidrio/pantalla) y `mat_receso` (hueco/sombra — variante más oscura del mismo tinte). Un
    ícono no necesariamente trae los 4 slots (p. ej. el escudo no trae `mat_base`, ver checks.json
-   del paquete).
+   del paquete). La tanda Cloud (v20) trae solo `mat_base` + `mat_glow`, que es lo que pide la
+   especificación base; los otros dos slots siguen disponibles para tandas que los usen. La tanda
+   Colaboración (v21) es la primera que usa los 4 en un mismo archivo: `pn_ico_puerta` combina
+   cuerpo, aros emisivos, carcasa oscura y credencial translúcida.
+
+   Sobre el color del archivo: el .glb de Cloud llega teñido en el celeste de la categoría y con
+   emisión, no en el blanco puro que pide v2 §6.5. No hace falta corregirlo en el archivo porque
+   `materialesDeColor()` DESCARTA el material del .glb y crea el suyo desde el color del catálogo;
+   de la entrega solo se lee el NOMBRE del slot para saber qué malla es cuerpo y cuál es glow. El
+   acabado celeste del render del proveedor, entonces, no llega a la app a propósito — decisión
+   tomada en v20 para que los 7 íconos se tiñan por el mismo camino (ver doc v20).
 
    Fuente de los bytes: window.PN_ICONOS_GLB (js/iconos-glb.js, generado por
    tools/empaquetar-iconos.js desde assets/glb-iconos/) y, si falta, fetch('assets/glb-iconos/…').
@@ -1081,10 +1205,37 @@ const ICONOS_GLB = {
   llave:               { archivo:'pn_ico_llave' },              // Acceso
   muro:                { archivo:'pn_ico_muro' },                // Aplicación
   firewall_onpremise:  { archivo:'pn_ico_firewall_onpremise' },  // Firewall On Premise (subproducto propio)
+  // v20 — tanda Cloud
+  rack:                { archivo:'pn_ico_rack' },                // Housing (Collocation/Energía, Crossconexión)
+  nube:                { archivo:'pn_ico_nube' },                // Hosting (IaaS, BaaS, DRaaS)
+  // v21 — tanda Colaboración
+  pantalla:            { archivo:'pn_ico_pantalla' },            // Conferencia (además: fallback de cualquier producto sin ícono, v2 §3 B12)
+  documento:           { archivo:'pn_ico_documento' },           // Ofimática
+  puerta:              { archivo:'pn_ico_puerta' },              // Portal Cautivo
+  antena:              { archivo:'pn_ico_antena' },              // Zona Wireless
 };
 const ICONOS_RUTA = 'assets/glb-iconos/';
 const NOMBRES_SLOT_ICONO_TRANSLUCIDO = ['mat_translucido'];
 const NOMBRES_SLOT_ICONO_RECESO = ['mat_receso'];
+
+/* Normalización de tamaño entre tandas (v21 — resuelve el Pendiente 39 de v20).
+   El proveedor entrega cada ícono dentro de la envolvente de 0.6³ de v2 §3, pero la
+   especificación fija un TECHO, no una medida común, así que cada tanda se acomoda distinto
+   adentro de esa caja. Medidos por su dimensión mayor los 11 van de 0.460 a 0.580 — apenas un
+   26% de dispersión —, y este factor los lleva a todos al mismo número.
+
+   Por qué la dimensión MAYOR y no la altura, que es como lo planteaba el Pendiente 39: `antena` y
+   `puerta` son chatos (0.089 y 0.290 de alto) pero gastan los 0.580 completos en X y Z, porque su
+   rasgo son los aros de cobertura, que son horizontales. Escalarlos hasta una altura común los
+   llevaría a ~2.3 de ancho: cuatro veces la envolvente, invadiendo las sedes vecinas del anillo.
+   La dimensión mayor es la que el ojo lee como "tamaño del ícono" con cámara ortográfica fija.
+
+   Consecuencia que conviene tener presente: esto NO iguala alturas y no pretende hacerlo. Un
+   access point sigue siendo chato y un rack sigue siendo alto, que es como se leen en la realidad;
+   lo que se empareja es cuánto espacio ocupa cada ícono en el anillo.
+
+   Para desactivarlo y volver a la escala tal cual la entrega el proveedor: ICONOS_DIM_OBJETIVO = 0. */
+const ICONOS_DIM_OBJETIVO = 0.58;
 
 const IconLibrary = (()=>{
   const plantillas = {};          // archivo -> THREE.Group crudo (geometría cacheada, SIN material asignado)
@@ -1094,10 +1245,14 @@ const IconLibrary = (()=>{
 
   function materialesDeColor(color){
     if(materialesPorColor[color]) return materialesPorColor[color];
+    // Mismo environment que las entidades (ModelLibrary, §3B): antes los íconos no tenían envMap
+    // y por eso no mostraban ningún reflejo aunque el material ya fuera metálico. `receso` queda
+    // sin envMap a propósito: es un hueco/sombra, un reflejo ahí contradice la lectura de "hundido".
+    const entorno = obtenerEntornoMetal();
     const set = {
-      base:        new THREE.MeshStandardMaterial({ color, metalness:0.55, roughness:0.4 }),
-      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:0.5, metalness:0.1, roughness:0.35 }),
-      translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.5, side:THREE.DoubleSide }),
+      base:        new THREE.MeshStandardMaterial({ color, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.1 }),
+      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:0.5, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.8 }),
+      translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.25, side:THREE.DoubleSide, envMap: entorno, envMapIntensity:1.2 }),
       receso:      new THREE.MeshStandardMaterial({ color: darkenColor(color, 0.45), metalness:0.2, roughness:0.75 }),
     };
     materialesPorColor[color] = set;
@@ -1148,10 +1303,19 @@ const IconLibrary = (()=>{
       console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
       raiz.position.set(-centro.x, -caja.min.y, -centro.z);
     }
+    // Normalización de tamaño entre tandas (ver ICONOS_DIM_OBJETIVO, arriba). Se mide DESPUÉS de
+    // corregir el pivote y se multiplica por la escala del catálogo, no la reemplaza: un ícono que
+    // algún día pida su propia `escala` sigue respetándola sobre la medida ya normalizada.
+    let factor = escala;
+    if(ICONOS_DIM_OBJETIVO > 0){
+      const tam = caja.getSize(new THREE.Vector3());
+      const mayor = Math.max(tam.x, tam.y, tam.z);
+      if(mayor > 0.001) factor = escala * (ICONOS_DIM_OBJETIVO / mayor);
+    }
     const envoltorio = new THREE.Group();
     envoltorio.name = 'iconoGLB';
     envoltorio.add(raiz);
-    envoltorio.scale.setScalar(escala);
+    envoltorio.scale.setScalar(factor);
     plantillas[archivo] = envoltorio;
   }
 
@@ -1550,7 +1714,11 @@ scene.add(centerMarkerGroup);
 /* --- Datacenter "Epicentro": edificio fijo de Puntonet, siempre presente, ubicado detrás de la
    Matriz. Representa la infraestructura física a la que se conectan sedes/Matriz cuando quieren
    servicio de Internet/ISP de Puntonet (reemplaza la antigua "torre" decorativa). --- */
-const DATACENTER_GZ = -5; // celdas de grilla detrás del hub — bien separado de la Matriz, se excluye de las celdas libres para sedes
+const DATACENTER_GZ = -2; // celdas de grilla detrás del hub — se excluye de las celdas libres para sedes.
+// sep/2026, pedido del cliente: venía de -5 (quedaba perdido al fondo), se probó -3 y sobre esa
+// prueba pidió acercarlo una celda más. -1 no entra: el edificio y la etiqueta se enciman con una
+// Matriz puesta en el centro. También mueve sola la Nube automática de Internet, que se crea en
+// esta misma fila (getOrCreateNubeInternetAuto, §1).
 const datacenterGroup = new THREE.Group();
 const dcPos = { x: 0*GRID_SPACING, z: DATACENTER_GZ*GRID_SPACING };
 datacenterGroup.position.set(dcPos.x, 0, dcPos.z);
@@ -1970,12 +2138,21 @@ function panCamera(dxPixels, dyPixels){
 
 /* --- Zoom real para cámara ortográfica: se controla con camera.zoom, no con la distancia --- */
 const ZOOM_MIN = 0.4, ZOOM_MAX = 4.5;
+/* Zoom con el que arranca la app y al que vuelve "Restablecer vista" (los dos usan esta misma
+   constante a propósito: el botón tiene que devolver exactamente la vista de entrada).
+   sep/2026, pedido del cliente: "los elementos un poco más grandes" — 1.5 = todo se ve 50% más
+   grande al entrar. Es la cámara la que se acerca, NO los modelos: agrandar los modelos es
+   MODELOS_ESCALA (§3B), que ya está en su tope (1.5) porque más arriba los edificios de celdas
+   vecinas se chocan entre sí. El rango de zoom manual no cambia (ZOOM_MIN/ZOOM_MAX), así que
+   alejarse sigue llegando igual de lejos que antes, y el encuadre del snapshot del PDF tampoco se
+   toca: ese se calcula solo con fitZoomToBox() (§7). */
+const ZOOM_INICIAL = 1.5;
 function applyZoom(newZoom){
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
   camera.zoom = zoomLevel;
   camera.updateProjectionMatrix();
 }
-applyZoom(1);
+applyZoom(ZOOM_INICIAL);
 
 /* La órbita de cámara, el arrastre de sedes ya colocadas y el clic de selección comparten el
    mismo gesto de "botón izquierdo presionado sobre el canvas", así que se resuelven en un único
@@ -2001,7 +2178,7 @@ byId('zoomReset').addEventListener('click', ()=>{
   camAngleX = DEFAULT_CAM_ANGLE_X;
   camTarget.set(0,0,0);
   updateCameraFromAngles();
-  applyZoom(1);
+  applyZoom(ZOOM_INICIAL);
 });
 
 /* --- Modo mano (pan): botón que alterna el gesto por defecto del arrastre entre orbitar y
@@ -2077,6 +2254,9 @@ const AssetRegistry = {
     return group;
   },
   nube: (color)=>{
+    // v20: modelo .glb (Hosting, tanda Cloud) si está cargado; si no, la primitiva de siempre.
+    const modelo = IconLibrary.instanciar('nube', color);
+    if(modelo) return modelo;
     const group = new THREE.Group();
     const sizes = [0.22,0.3,0.2];
     const offsets = [[-0.22,0],[0.05,0.08],[0.24,-0.02]];
@@ -2112,6 +2292,12 @@ const AssetRegistry = {
     return group;
   },
   pantalla: (color)=>{
+    // v21: modelo .glb (Conferencia, tanda Colaboración) si está cargado; si no, la primitiva.
+    // Nota (LEEME del paquete): el diseño aprobado de Conferencia ya no es literalmente una
+    // pantalla — son tres participantes y una cámara. El assetKey se conserva por compatibilidad
+    // con el catálogo, y porque además es el fallback de cualquier producto sin ícono (v2 §3 B12).
+    const modelo = IconLibrary.instanciar('pantalla', color);
+    if(modelo) return modelo;
     const g = new THREE.BoxGeometry(0.5,0.34,0.04);
     const mesh = wire(g, color);
     mesh.position.y = 0.3;
@@ -2144,6 +2330,9 @@ const AssetRegistry = {
   },
   rack: (color)=>{
     // Housing: rack de servidores apilados
+    // v20: modelo .glb (tanda Cloud) si está cargado; si no, la primitiva de siempre.
+    const modelo = IconLibrary.instanciar('rack', color);
+    if(modelo) return modelo;
     const group = new THREE.Group();
     for(let i=0;i<3;i++){
       const g = new THREE.BoxGeometry(0.38,0.12,0.24);
@@ -2198,6 +2387,9 @@ const AssetRegistry = {
     return group;
   },
   documento: (color)=>{
+    // v21: modelo .glb (Ofimática, tanda Colaboración) si está cargado; si no, la primitiva.
+    const modelo = IconLibrary.instanciar('documento', color);
+    if(modelo) return modelo;
     // Ofimática: documento/página con líneas de texto
     const group = new THREE.Group();
     const g = new THREE.BoxGeometry(0.3,0.4,0.03);
@@ -2214,6 +2406,12 @@ const AssetRegistry = {
     return group;
   },
   puerta: (color)=>{
+    // v21: modelo .glb (Portal Cautivo, tanda Colaboración) si está cargado; si no, la primitiva.
+    // Nota (LEEME del paquete): el diseño aprobado ya no es un arco sino el mismo access point de
+    // `antena` más una credencial translúcida — es el único ícono del lineup que usa los 4 slots
+    // de material. El assetKey se conserva por compatibilidad con el catálogo.
+    const modelo = IconLibrary.instanciar('puerta', color);
+    if(modelo) return modelo;
     // Portal Cautivo: puerta/portal de acceso
     const group = new THREE.Group();
     const postGeo = new THREE.CylinderGeometry(0.035,0.035,0.5,8);
@@ -2230,6 +2428,12 @@ const AssetRegistry = {
     return group;
   },
   antena: (color)=>{
+    // v21: modelo .glb (Zona Wireless, tanda Colaboración) si está cargado; si no, la primitiva.
+    // Nota (LEEME del paquete): el diseño aprobado no tiene antenas sino aros de cobertura —
+    // bandas planas de doble cara, no tubos. Se ven mal mirados exactamente a ras; con la cámara
+    // ortográfica elevada de la app eso no pasa.
+    const modelo = IconLibrary.instanciar('antena', color);
+    if(modelo) return modelo;
     // Zona Wireless: access point (cuerpo plano) con dos antenas — nuevo Producto propio,
     // ver §1 catálogo (reubicado desde Conectividad → Internet a Colaboración, 31/07/2026).
     const group = new THREE.Group();
@@ -3304,6 +3508,7 @@ function animate(){
   updateSatelliteAnims(t);
   updateSdwanAnims(t);
   animarModelos(t);
+  actualizarReflejosPiso(); // v18-bis: piso con reflejo falso (§3A-bis)
 
   // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
   const portPulse = 1 + Math.sin(t*3) * 0.14;
@@ -3338,6 +3543,9 @@ function aplicarModelosAEscena(){
   state.nubes.forEach(n=> reconstruirGrupoEntidad(n, buildNubeMesh));
   rebuildConnections();
   updateSelectionVisuals();
+  invalidarReflejosPiso(); // §3A-bis: construirDatacenter() reconstruye datacenterGroup EN el mismo
+  // objeto (no reasigna .group), así que el chequeo "origen !== entity.group" de
+  // actualizarReflejosPiso() no alcanza a notar el cambio por sí solo — se fuerza acá.
 }
 const modelosListos = ModelLibrary.precargar().then(estado=>{
   if(estado !== 'sin_modelos') aplicarModelosAEscena();
@@ -3363,8 +3571,6 @@ const ICONS_SVG = {
   enlace:    '<svg viewBox="0 0 24 24"><path d="M8 12h8M6 8a3 3 0 000 8M18 8a3 3 0 010 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   nodo:      '<svg viewBox="0 0 24 24"><path d="M12 3l8 5v8l-8 5-8-5V8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   globo:     '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="12" cy="12" rx="3.2" ry="8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 12h16" stroke="currentColor" stroke-width="1.4"/></svg>',
-  rack:      '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="10" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="5" y="16" width="14" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
-  nube:      '<svg viewBox="0 0 24 24"><path d="M7 17a4 4 0 01-.6-7.96A5 5 0 0116.9 8 4.5 4.5 0 0117 17H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   // v18: lineup aprobado de Ciberseguridad (paquete del proveedor, ver LEEME.md) — mismo SVG que
   // acompaña a cada .glb de IconLibrary (§3D), color editable vía currentColor. Se retira el
   // atributo `color="#EC7069"` del archivo de origen: es solo el valor de vista previa del
@@ -3375,10 +3581,28 @@ const ICONS_SVG = {
   llave:     '<svg viewBox="0 0 128 128" role="img"><title>Acceso</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M25 112V29Q25 16 38 16H90Q103 16 103 29V112H87V37Q87 32 82 32H46Q41 32 41 37V112Z"/></g></svg>',
   muro:      '<svg viewBox="0 0 128 128" role="img"><title>Aplicación</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="12" y="19" width="104" height="90" rx="10"/><path d="M12 40H116"/><circle cx="24" cy="29" r="2" fill="currentColor"/><circle cx="35" cy="29" r="2" fill="currentColor"/><circle cx="60" cy="69" r="17"/><path d="M72 81L89 98"/></g></svg>',
   firewall_onpremise: '<svg viewBox="0 0 128 128" role="img"><title>Firewall físico</title><g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="38" width="112" height="52" rx="9"/><rect x="22" y="51" width="22" height="26" rx="2"/><rect x="56" y="51" width="22" height="26" rx="2"/><path d="M93 64H108"/></g></svg>',
-  pantalla:  '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20h6M12 17v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  documento: '<svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 12h6M10 16h6M10 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
-  puerta:    '<svg viewBox="0 0 24 24"><path d="M6 21V6a2 2 0 012-2h8a2 2 0 012 2v15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 21h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  antena:    '<svg viewBox="0 0 24 24"><path d="M4 9a13 13 0 0116 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 13a8 8 0 0110 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 17a3 3 0 014 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="20" r="1.2" fill="currentColor"/></svg>',
+  // v20: tanda Cloud, mismo criterio que el bloque de arriba. Acá el atributo retirado es
+  // `color="#1BAFDE"`. Ojo con por qué hay que sacarlo y no alcanza con el CSS: es un atributo de
+  // presentación sobre el propio <svg>, y un color heredado del contenedor pierde contra el
+  // atributo del elemento — el ícono habría quedado siempre celeste, ignorando el catálogo.
+  // `nube` es el único del lineup que se dibuja con relleno (fill) en vez de trazo (stroke): el
+  // contorno es el propio relleno con fill-rule="evenodd", así que currentColor va en el <path>.
+  rack:      '<svg viewBox="0 0 128 128" fill="none" role="img"><title>Housing</title><g stroke="currentColor" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"><path d="M29 16H20V112H29M99 16H108V112H99"/><rect x="35" y="24" width="58" height="23" rx="7"/><path d="M55 35.5H73"/><rect x="35" y="51" width="58" height="23" rx="7"/><path d="M55 62.5H73"/><rect x="35" y="78" width="58" height="23" rx="7"/><path d="M55 89.5H73"/></g></svg>',
+  nube:      '<svg viewBox="0 0 128 128" fill="none" role="img"><title>Hosting</title><g transform="translate(64 74) scale(102 -102)"><path fill="currentColor" fill-rule="evenodd" d="M-.3 -.29C-.57 -.29 -.61 .14 -.31 .16C-.28 .47 .24 .51 .28 .16C.59 .18 .60 -.29 .31 -.29C.15 -.29 -.15 -.29 -.3 -.29Z M-.29 -.17C-.47 -.17 -.49 .075 -.235 .065C-.23 .36 .17 .37 .195 .065C.46 .10 .49 -.17 .29 -.17C.15 -.17 -.15 -.17 -.29 -.17Z M-.075 -.242H.075A.012 .012 0 0 1 .075 -.218H-.075A.012 .012 0 0 1 -.075 -.242Z"/></g></svg>',
+  // v21: tanda Colaboración, mismo criterio que los dos bloques de arriba. Acá el atributo retirado
+  // es `color="#DCE361"`. Dos particularidades de esta entrega:
+  // · `pantalla` llegó como export de Adobe Illustrator: 43 KB, de los cuales 42 eran metadata
+  //   (`<i:aipgf>` en base64) y, sobre todo, el color NO era `currentColor` sino un `<style>` con
+  //   `.st0,.st1{fill:#dce361}`. Una clase dentro del propio SVG gana contra el `color` heredado
+  //   del contenedor, así que el ícono habría quedado lima fijo. Se reescribió a `fill="currentColor"`
+  //   conservando los mismos paths; el `fill-rule="evenodd"` del cuerpo de la cámara es lo que abre
+  //   el hueco del lente y no se puede perder.
+  // · `puerta` y `antena` comparten los aros y el equipo: `puerta` es `antena` + la credencial.
+  //   Se distinguen a 128 px, pero a 32 px la credencial es un borrón — ver Pendiente de esta fase.
+  pantalla:  '<svg viewBox="0 0 128 128" role="img"><title>Conferencia</title><g fill="currentColor"><circle cx="64" cy="24.47" r="6.5"/><path d="M51,47.47v-5c0-13,26-13,26,0v5h-26Z"/><circle cx="33" cy="72.86" r="6.5"/><path d="M20,95.86v-5c0-13,26-13,26,0v5h-26Z"/><circle cx="95" cy="72.86" r="6.5"/><path d="M82,95.86v-5c0-13,26-13,26,0v5h-26Z"/><path fill-rule="evenodd" d="M49,53h30c3.33,0,5,1.67,5,5v14c0,3.33-1.67,5-5,5h-30c-3.33,0-5-1.67-5-5v-14c0-3.33,1.67-5,5-5ZM72,65c0-4.42-3.58-8-8-8s-8,3.58-8,8,3.58,8,8,8,8-3.58,8-8Z"/><circle cx="64" cy="65" r="3"/></g></svg>',
+  documento: '<svg viewBox="0 0 128 128" role="img"><title>Ofimática</title><g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M80 28V19H31Q24 19 24 26V88Q24 95 31 95H34 M89 44V28H41Q34 28 34 35V97Q34 104 41 104H44 M51 37H82L104 59V106Q104 113 97 113H51Q44 113 44 106V44Q44 37 51 37Z M82 37V59H104 M56 74H91 M56 86H91 M56 98H91"/></g></svg>',
+  puerta:    '<svg viewBox="0 0 128 128" role="img"><title>Portal Cautivo</title><g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M24 76C4 68 5 49 23 39C43 27 85 27 105 39C123 49 124 68 104 76 M32 66C19 60 23 49 35 44C51 37 77 37 93 44C105 49 109 60 96 66"/><rect x="29" y="80" width="70" height="23" rx="7"/><path d="M55 92H73"/><path d="M50 76V52Q50 48 54 48H74Q78 48 78 52V76"/><circle cx="64" cy="57" r="4" fill="currentColor" stroke="none"/><path d="M56 71V68C56 61 72 61 72 68V71Z" fill="currentColor" stroke="none"/></g></svg>',
+  antena:    '<svg viewBox="0 0 128 128" role="img"><title>Zona Wireless</title><g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M24 76C4 68 5 49 23 39C43 27 85 27 105 39C123 49 124 68 104 76 M32 66C19 60 23 49 35 44C51 37 77 37 93 44C105 49 109 60 96 66"/><rect x="29" y="80" width="70" height="23" rx="7"/><path d="M55 92H73"/></g></svg>',
 };
 
 const navEmpty = byId('navEmpty');

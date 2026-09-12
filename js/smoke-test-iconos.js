@@ -1,5 +1,8 @@
-/* Smoke test v18 / prototipo v42 — íconos de producto en .glb, primera tanda: Ciberseguridad
-   (escudo/Perimetral, candado/End Point, llave/Acceso, muro/Aplicación, firewall_onpremise).
+/* Smoke test v20 / prototipo v42 — íconos de producto en .glb.
+   Tanda 1 (v18, Ciberseguridad): escudo/Perimetral, candado/End Point, llave/Acceso,
+   muro/Aplicación, firewall_onpremise. Tanda 2 (v20, Cloud): rack/Housing, nube/Hosting.
+   Tanda 3 (v21, Colaboración): pantalla/Conferencia, documento/Ofimática, puerta/Portal Cautivo,
+   antena/Zona Wireless.
    Ver functions.js §3D (IconLibrary) y AssetRegistry (§5).
    Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-iconos.js
    Mismo doble de jsdom que smoke-test-modelos.js / smoke-test-brillo.js: WebGLRenderer y canvas 2D
@@ -76,7 +79,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   check('PN_MODELOS_GLB e PN_ICONOS_GLB no se pisan (archivos separados)',
     Object.keys(w.PN_MODELOS_GLB).every(k=>!claves.includes(k)) && claves.every(k=>!Object.keys(w.PN_MODELOS_GLB).includes(k)));
   const estado = await E(w,'iconosListos');
-  check('los 5 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
+  check('los 11 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
   check('modelosListos sigue resolviendo su propio estado (string), sin verse afectado por los íconos', typeof await E(w,'modelosListos') === 'string');
   check('sin excepciones en la carga de la página', w.__erroresScript.length === 0, w.__erroresScript);
 
@@ -87,13 +90,19 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     ['mfa', 'ciberseguridad', 'llave'],
     ['waf', 'ciberseguridad', 'muro'],
     ['firewall_onpremise_sub', 'ciberseguridad', 'firewall_onpremise'],
+    ['collocation', 'cloud', 'rack'],
+    ['iaas', 'cloud', 'nube'],
+    ['conferencia', 'colaboracion', 'pantalla'],
+    ['ofimatica', 'colaboracion', 'documento'],
+    ['portal_cautivo', 'colaboracion', 'puerta'],
+    ['zona_wireless', 'colaboracion', 'antena'],
   ];
   // subproductoId reales del catálogo: se resuelven por assetKey esperado, no se asume el id exacto
   const subPorAssetKey = {};
   E(w, 'SUBPRODUCTOS').forEach ? null : null;
   const subs = E(w, 'SUBPRODUCTOS');
   const prods = E(w, 'PRODUCTOS');
-  ['candado','escudo','llave','muro'].forEach(ak=>{
+  ['candado','escudo','llave','muro','rack','nube','pantalla','documento','puerta','antena'].forEach(ak=>{
     const p = prods.find(p=>p.assetKey===ak);
     const s = subs.find(s=>s.productoNivel2Id===p.id);
     subPorAssetKey[ak] = { subproductoId:s.id, verticalId:p.verticalId };
@@ -102,7 +111,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     const s = subs.find(s=>s.assetKey==='firewall_onpremise');
     subPorAssetKey['firewall_onpremise'] = { subproductoId:s.id, verticalId: prods.find(p=>p.id===s.productoNivel2Id).verticalId };
   }
-  ['candado','escudo','llave','muro','firewall_onpremise'].forEach(ak=>{
+  ['candado','escudo','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena'].forEach(ak=>{
     const { subproductoId, verticalId } = subPorAssetKey[ak];
     const icono = iconoDe(w, subproductoId, verticalId);
     const mesh = esMalla(icono);
@@ -111,7 +120,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   });
 
   console.log('\nC. Íconos que TODAVÍA no tienen .glb (siguen con su primitiva)');
-  ['nodo','globo','rack','nube','pantalla'].forEach(ak=>{
+  ['enlace','nodo','globo','firewall_virtual'].forEach(ak=>{
     check(`${ak} no está en ICONOS_GLB (fuera de esta tanda)`, !E(w,'ICONOS_GLB')[ak], ak);
   });
   const p2 = E(w,'PRODUCTOS'), s2 = E(w,'SUBPRODUCTOS');
@@ -143,7 +152,66 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   iCandado.traverse(o=>{ if(o.isMesh){ mallas++; if(o.layers.mask & (1 << capaBrillo)) algunaEnCapaBrillo = true; } });
   check('candado: al menos una malla (más de un slot de material en juego)', mallas > 0, mallas);
   check('los íconos de producto NO participan del bloom (mockup v17: "no brillan… íconos de producto")', !algunaEnCapaBrillo);
-  check('sin avisos de "material desconocido" para los 5 .glb de esta tanda', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
+  check('sin avisos de "material desconocido" para los 11 .glb integrados', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
+  // La tanda Cloud trae SOLO mat_base + mat_glow (la de Ciberseguridad ampliaba con translucido y
+  // receso). Se valida que los dos slots lleguen como mallas separadas: si el proveedor hubiera
+  // pintado el glow como máscara en vez de geometría propia, acá habría una sola malla.
+  const iNube = iconoDe(w, subPorAssetKey.nube.subproductoId, subPorAssetKey.nube.verticalId);
+  const slotsNube = []; iNube.traverse(o=>{ if(o.isMesh) slotsNube.push(o.userData.slot); });
+  check('nube (Cloud): base y glow llegan como mallas separadas', slotsNube.includes('base') && slotsNube.includes('glow'), slotsNube);
+  const iRack = iconoDe(w, subPorAssetKey.rack.subproductoId, subPorAssetKey.rack.verticalId);
+  const slotsRack = []; iRack.traverse(o=>{ if(o.isMesh) slotsRack.push(o.userData.slot); });
+  check('rack (Cloud): base y glow llegan como mallas separadas', slotsRack.includes('base') && slotsRack.includes('glow'), slotsRack);
+  // El .glb de Cloud viene teñido en celeste; materialesDeColor() lo descarta y usa el catálogo.
+  const colorNube = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subPorAssetKey.nube.subproductoId}'))`);
+  const mallaNubeBase = (()=>{ let m=null; iNube.traverse(o=>{ if(!m && o.isMesh && o.userData.slot==='base') m=o; }); return m; })();
+  check('nube: el celeste del archivo NO llega a la escena, manda el color del catálogo',
+    !!mallaNubeBase && mallaNubeBase.material.color.getHex() === colorNube, mallaNubeBase && [mallaNubeBase.material.color.getHex(), colorNube]);
+
+  // v21 — Colaboración. `puerta` (Portal Cautivo) es el primer ícono del lineup que trae los
+  // CUATRO slots en un mismo archivo: cuerpo, aros emisivos, carcasa oscura y credencial
+  // translúcida. Si el proveedor los hubiera fusionado, acá faltaría alguno.
+  const iPuerta = iconoDe(w, subPorAssetKey.puerta.subproductoId, subPorAssetKey.puerta.verticalId);
+  const slotsPuerta = []; iPuerta.traverse(o=>{ if(o.isMesh) slotsPuerta.push(o.userData.slot); });
+  check('puerta (Colaboración): los 4 slots llegan como mallas separadas',
+    ['base','glow','receso','translucido'].every(x=>slotsPuerta.includes(x)), slotsPuerta);
+  const iAntena = iconoDe(w, subPorAssetKey.antena.subproductoId, subPorAssetKey.antena.verticalId);
+  const slotsAntena = []; iAntena.traverse(o=>{ if(o.isMesh) slotsAntena.push(o.userData.slot); });
+  check('antena (Colaboración): base, glow y receso llegan como mallas separadas',
+    ['base','glow','receso'].every(x=>slotsAntena.includes(x)), slotsAntena);
+  const iDocumento = iconoDe(w, subPorAssetKey.documento.subproductoId, subPorAssetKey.documento.verticalId);
+  const slotsDoc = []; iDocumento.traverse(o=>{ if(o.isMesh) slotsDoc.push(o.userData.slot); });
+  check('documento (Colaboración): base y glow llegan como mallas separadas',
+    slotsDoc.includes('base') && slotsDoc.includes('glow'), slotsDoc);
+  // El .glb de Colaboración viene teñido en el lima de la categoría (#DCE361); mismo criterio que
+  // el celeste de Cloud: materialesDeColor() lo descarta y manda el catálogo.
+  const colorPantalla = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subPorAssetKey.pantalla.subproductoId}'))`);
+  const iPantalla = iconoDe(w, subPorAssetKey.pantalla.subproductoId, subPorAssetKey.pantalla.verticalId);
+  const mallaPantallaBase = (()=>{ let m=null; iPantalla.traverse(o=>{ if(!m && o.isMesh && o.userData.slot==='base') m=o; }); return m; })();
+  check('pantalla: el lima del archivo NO llega a la escena, manda el color del catálogo',
+    !!mallaPantallaBase && mallaPantallaBase.material.color.getHex() === colorPantalla,
+    mallaPantallaBase && [mallaPantallaBase.material.color.getHex(), colorPantalla]);
+
+  console.log('\nF2. Normalización de tamaño entre tandas (v21, ICONOS_DIM_OBJETIVO)');
+  // Pendiente 39 de v20: la especificación fija un techo de envolvente (0.6³) y no una medida
+  // común, así que cada tanda se acomodaba distinto adentro. prepararPlantilla() escala cada
+  // plantilla para que su dimensión MAYOR — no la altura: ver el comentario de §3D — dé el mismo
+  // número. Se mide sobre íconos ya instanciados, que es lo que llega a la escena.
+  const objetivo = E(w, 'ICONOS_DIM_OBJETIVO');
+  const medidas = {};
+  for(const ak of ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena']){
+    medidas[ak] = E(w, `(function(){
+      const o = IconLibrary.instanciar('${ak}', 0xffffff);
+      const c = new THREE.Box3().setFromObject(o);
+      const t = c.getSize(new THREE.Vector3());
+      return Math.max(t.x, t.y, t.z);
+    })()`);
+  }
+  const fuera = Object.entries(medidas).filter(([,v])=> Math.abs(v - objetivo) > 0.005);
+  check(`los 11 íconos quedan en la misma dimensión mayor (${objetivo})`, fuera.length === 0, fuera);
+  // Y que siga cumpliendo la envolvente de v2 §3 después de normalizar.
+  check('ninguno se pasa de la envolvente de 0.6 de v2 §3 al normalizar',
+    Object.values(medidas).every(v=> v <= 0.6 + 1e-6), medidas);
 
   console.log('\nG. Raycast y herencia (translúcido al 50%)');
   let conRaycastPropio = 0;
@@ -186,10 +254,23 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
 
   console.log('\nI. Panel izquierdo (ICONS_SVG)');
   const svgs = E(w, 'ICONS_SVG');
-  check('escudo/candado/llave/muro/firewall_onpremise tienen SVG del lineup aprobado (viewBox 128)',
-    ['escudo','candado','llave','muro','firewall_onpremise'].every(k=> svgs[k] && svgs[k].includes('viewBox="0 0 128 128"')));
+  const SVG_LINEUP = ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena'];
+  check('los 11 íconos del lineup aprobado tienen SVG del proveedor (viewBox 128)',
+    SVG_LINEUP.every(k=> svgs[k] && svgs[k].includes('viewBox="0 0 128 128"')), SVG_LINEUP.filter(k=>!(svgs[k]||'').includes('viewBox="0 0 128 128"')));
   check('el SVG no trae el atributo color= del proveedor (pisaría el currentColor heredado)',
-    ['escudo','candado','llave','muro','firewall_onpremise'].every(k=> !/\scolor="#/.test(svgs[k])));
+    SVG_LINEUP.every(k=> !/\scolor="#/.test(svgs[k])), SVG_LINEUP.filter(k=>/\scolor="#/.test(svgs[k]||'')));
+  check('cada SVG del lineup usa currentColor (se tiñe desde el catálogo)',
+    SVG_LINEUP.every(k=> svgs[k].includes('currentColor')), SVG_LINEUP.filter(k=>!(svgs[k]||'').includes('currentColor')));
+  // v21: `pantalla` llegó como export de Illustrator con el color en un <style> interno
+  // (.st0,.st1{fill:#dce361}). Una clase del propio SVG le gana al `color` heredado del contenedor,
+  // así que el ícono habría quedado lima fijo. Se reescribió a fill="currentColor"; este check es
+  // para que una regeneración futura desde el archivo del proveedor no lo reintroduzca.
+  check('ningún SVG del lineup trae <style> ni fill de color fijo (pisarían el currentColor)',
+    SVG_LINEUP.every(k=> !/<style|fill="#|fill:\s*#/i.test(svgs[k])),
+    SVG_LINEUP.filter(k=>/<style|fill="#|fill:\s*#/i.test(svgs[k]||'')));
+  check('ningún SVG del lineup arrastra metadata de Illustrator',
+    SVG_LINEUP.every(k=> !/aipgf|AdobeIllustrator|<metadata/i.test(svgs[k])),
+    SVG_LINEUP.filter(k=>/aipgf|AdobeIllustrator|<metadata/i.test(svgs[k]||'')));
 
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que smoke-test-modelos.js: líneas (no ocurrencias) que contienen '.style.'
