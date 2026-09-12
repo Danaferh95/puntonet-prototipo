@@ -71,7 +71,12 @@ const E = (w, expr) => w.eval(expr);
   const mats = E(w,'ModelLibrary').materiales();
   check('una familia de materiales por tipo de entidad (4)', Object.keys(mats).sort().join() === 'datacenter,matriz,nube,sede', Object.keys(mats));
   check('metal = MeshStandardMaterial (PBR), glow emisivo', Object.values(mats).every(m=> m.base.isMeshStandardMaterial && m.glow.emissive.getHex() !== 0));
-  check('la Nube conserva el acento violeta de v39', mats.nube.glow.emissive.getHex() === 0xa78bfa);
+  // Desde el pipeline de color (functions.js §3A-ter) los colores de superficie se guardan en
+  // LINEAL, así que getHex() ya no devuelve el hex de catálogo: hay que volver a sRGB para
+  // comparar. Lo que se verifica sigue siendo lo mismo — que el acento violeta es el de v39.
+  const aSRGB = color => color.clone().convertLinearToSRGB().getHex();
+  check('la Nube conserva el acento violeta de v39', aSRGB(mats.nube.glow.emissive) === 0xa78bfa,
+    '0x' + aSRGB(mats.nube.glow.emissive).toString(16));
   check('sin environment map en jsdom, pero la escena no se rompe', mats.sede.base.envMap === null);
 
   console.log('\nC. Datacenter');

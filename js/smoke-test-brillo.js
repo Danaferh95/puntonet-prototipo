@@ -113,7 +113,7 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   check('los puertos siguen en la capa 0 (raycast) y además en la de redibujo', puertos.length >= 4 && puertos.every(o=>enCapa(o,0) && enCapa(o,CAPA_P)), puertos.length);
   const bases = Object.values(E(w,'ModelLibrary').materiales()).map(x=>x.base);
   check('después del frame todo queda como estaba (colorWrite, capas, autoClear)', bases.every(b=>b.colorWrite) && E(w,'camera').layers.mask === 1 && E(w,'renderer').autoClear === true);
-  check('el halo suma luz y no toca el alfa del canvas (fondo CSS intacto)', /blendSrcAlpha: THREE\.ZeroFactor, blendDstAlpha: THREE\.OneFactor/.test(FUNCS) && /gl_FragColor = vec4\(texture2D\(tBrillo, vUv\)\.rgb \* nucleo, 0\.0\)/.test(FUNCS));
+  check('el halo suma luz y no toca el alfa del canvas (fondo CSS intacto)', /blendSrcAlpha: THREE\.ZeroFactor, blendDstAlpha: THREE\.OneFactor/.test(FUNCS) && /gl_FragColor = vec4\(aSRGB\(texture2D\(tBrillo, vUv\)\.rgb\) \* nucleo, 0\.0\)/.test(FUNCS));
   check('el loop de animación dibuja con brillo', /renderizarFrame\(true\)/.test(FUNCS.slice(FUNCS.indexOf('function animate()'), FUNCS.indexOf('function animate()') + 3000)));
 
   console.log('\nD. Tamaño');

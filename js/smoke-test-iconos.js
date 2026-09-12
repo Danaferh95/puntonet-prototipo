@@ -139,11 +139,14 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   const subsPerim = subs.filter(s=>s.productoNivel2Id===pPerim.id);
   check('hay más de un subproducto para comparar colores en Perimetral', subsPerim.length >= 1, subsPerim.length);
   const colorA = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subsPerim[0].id}'))`);
+  // functions.js §3A-ter guarda los colores de superficie en lineal; para comparar contra el hex
+  // del catálogo hay que deshacer la conversión. La ida y vuelta es exacta.
+  const aSRGB = mat => mat.color.clone().convertLinearToSRGB().getHex();
   const i1 = iconoDe(w, subsPerim[0].id, pPerim.verticalId);
   const i2 = iconoDe(w, subsPerim[0].id, pPerim.verticalId);
   const m1 = esMalla(i1), m2 = esMalla(i2);
   check('dos instancias del mismo assetKey + color comparten el material (cache por color)', m1.material === m2.material);
-  check('el material tomó el color del subproducto', m1.material.color.getHex() === colorA, [m1.material.color.getHex(), colorA]);
+  check('el material tomó el color del subproducto', aSRGB(m1.material) === colorA, [aSRGB(m1.material), colorA]);
 
   console.log('\nF. Slots de material (base/glow/translucido/receso) y bloom');
   const iCandado = iconoDe(w, subPorAssetKey.candado.subproductoId, subPorAssetKey.candado.verticalId);
@@ -166,7 +169,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   const colorNube = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subPorAssetKey.nube.subproductoId}'))`);
   const mallaNubeBase = (()=>{ let m=null; iNube.traverse(o=>{ if(!m && o.isMesh && o.userData.slot==='base') m=o; }); return m; })();
   check('nube: el celeste del archivo NO llega a la escena, manda el color del catálogo',
-    !!mallaNubeBase && mallaNubeBase.material.color.getHex() === colorNube, mallaNubeBase && [mallaNubeBase.material.color.getHex(), colorNube]);
+    !!mallaNubeBase && aSRGB(mallaNubeBase.material) === colorNube, mallaNubeBase && [aSRGB(mallaNubeBase.material), colorNube]);
 
   // v21 — Colaboración. `puerta` (Portal Cautivo) es el primer ícono del lineup que trae los
   // CUATRO slots en un mismo archivo: cuerpo, aros emisivos, carcasa oscura y credencial
@@ -189,8 +192,8 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   const iPantalla = iconoDe(w, subPorAssetKey.pantalla.subproductoId, subPorAssetKey.pantalla.verticalId);
   const mallaPantallaBase = (()=>{ let m=null; iPantalla.traverse(o=>{ if(!m && o.isMesh && o.userData.slot==='base') m=o; }); return m; })();
   check('pantalla: el lima del archivo NO llega a la escena, manda el color del catálogo',
-    !!mallaPantallaBase && mallaPantallaBase.material.color.getHex() === colorPantalla,
-    mallaPantallaBase && [mallaPantallaBase.material.color.getHex(), colorPantalla]);
+    !!mallaPantallaBase && aSRGB(mallaPantallaBase.material) === colorPantalla,
+    mallaPantallaBase && [aSRGB(mallaPantallaBase.material), colorPantalla]);
 
   console.log('\nF2. Normalización de tamaño entre tandas (v21, ICONOS_DIM_OBJETIVO)');
   // Pendiente 39 de v20: la especificación fija un techo de envolvente (0.6³) y no una medida

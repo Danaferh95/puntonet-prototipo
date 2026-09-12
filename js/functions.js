@@ -748,8 +748,79 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setSize(wrap.clientWidth, wrap.clientHeight);
 wrap.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, .8));
-const dirLight = new THREE.DirectionalLight(0xffffff, .6);
+/* =========================================================================
+   3A-ter. PIPELINE DE COLOR (v2 §7.2, la pieza que faltaba)
+   -------------------------------------------------------------------------
+   Hasta v42 el renderer quedaba en los defaults de r128: `outputEncoding =
+   LinearEncoding` y `toneMapping = NoToneMapping`. Con MeshBasicMaterial daba igual, pero desde
+   que las entidades y los íconos son MeshStandardMaterial (§3B/§3D) eso anulaba medio trabajo del
+   environment map: los medios tonos salían aplastados —la escena se veía "plana" por más que el
+   metal fuera correcto— y el emisivo saturaba a blanco de golpe en vez de hacer roll-off, así que
+   el neón se leía como línea de color plano y nunca como núcleo caliente.
+
+   Son dos líneas, pero cambian TODOS los colores de la escena a la vez. Lo que sigue en esta
+   sección es la compensación, y conviene entenderla como una sola pieza:
+
+   a) `sRGBEncoding` aplica la curva de gamma a la salida. r128 no tiene ColorManagement (llegó en
+      r152), así que los hex se usan tal cual, en lineal: sin compensar, CADA color de la escena
+      sale bastante más claro que como fue elegido.
+   b) Los colores de superficie (albedo de entidades e íconos, emisivos) SÍ deben convertirse de
+      sRGB a lineal: fueron elegidos a ojo en sRGB y en un pipeline PBR el albedo va en lineal.
+      Esa conversión es, además, buena parte de la "recalibración de paleta" pendiente de
+      v2 §7.2 punto 10 — no toda, pero sí la mitad mecánica.
+   c) Los materiales SIN iluminación (cables, halos, partículas, badges, grilla, piso, sprites de
+      puerto) son INTERFAZ, no superficie física: fueron afinados a ojo contra el degradado CSS
+      de #canvasWrap y tienen que seguir viéndose exactamente igual. Para eso van con
+      `toneMapped:false` (no los toca la curva filmica) y con su color convertido a lineal, de
+      modo que la conversión de salida los devuelva al valor original: sRGB→lineal→sRGB = identidad.
+      Lo hace normalizarMaterialesUI(), abajo.
+   ========================================================================= */
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.75;
+
+/* Marca un material como "interfaz": fuera de la curva filmica y con el color pre-convertido para
+   que sobreviva intacto a outputEncoding. Idempotente vía userData.pnUI — importa porque
+   convertSRGBToLinear() es destructivo y aplicarlo dos veces apaga el color. */
+function normalizarMaterialUI(material){
+  if(!material || material.userData.pnUI) return;
+  material.userData.pnUI = true;
+  material.toneMapped = false;
+  if(material.color) material.color.convertSRGBToLinear();
+  material.needsUpdate = true; // toneMapped entra en la clave del programa: sin esto no recompila
+}
+
+/* Color de un material de interfaz que cambia en runtime: hay que reconvertir, porque .set()
+   escribe el hex crudo y pisa la conversión que hizo normalizarMaterialUI(). */
+function setColorUI(material, hex){
+  material.color.set(hex).convertSRGBToLinear();
+}
+
+/* Barrido de seguridad: recorre la escena y normaliza todo material sin iluminación que todavía
+   no haya pasado por acá. Va colgado del traverse que animate() ya hace cada frame (§4), así que
+   no agrega un recorrido nuevo, y gracias al guard de userData cada material se toca UNA vez y
+   después es un if que falla. Se hace por barrido y no en cada `new MeshBasicMaterial(...)` a
+   propósito: son ~20 puntos de creación repartidos por el archivo y un material nuevo que se
+   olvide de la llamada saldría oscurecido sin ningún aviso. */
+function normalizarMaterialesUI(objeto){
+  const m = objeto.material;
+  if(!m) return;
+  const lista = Array.isArray(m) ? m : [m];
+  lista.forEach(mat=>{
+    if(mat.isMeshBasicMaterial || mat.isLineBasicMaterial || mat.isSpriteMaterial || mat.isPointsMaterial){
+      normalizarMaterialUI(mat);
+    }
+  });
+}
+
+/* Luces: con env map real (§3B) un ambiente fuerte es contraproducente — le mete luz plana a
+   todas las caras por igual y borra justo el contraste que genera el IBL. Venían de la época de
+   MeshBasicMaterial, cuando efectivamente no hacían nada (de ahí la nota de v2 §7.2 punto 6) y
+   nadie las volvió a mirar después de migrar a Standard, donde sí pesan. El ambiente baja a un
+   relleno mínimo que solo evita que las caras en sombra se cierren a negro puro, y la direccional
+   sube un poco para marcar de dónde viene la luz. */
+scene.add(new THREE.AmbientLight(0xffffff, .14));
+const dirLight = new THREE.DirectionalLight(0xffffff, .85);
 dirLight.position.set(10,20,10);
 scene.add(dirLight);
 
@@ -810,6 +881,19 @@ function updateNameLabelPositions(){
 }
 
 const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
+/* GridHelper no pasa por normalizarMaterialesUI(): r128 ya le pone toneMapped:false, pero sus dos
+   tonos no viven en material.color sino horneados en el atributo `color` de la geometría
+   (vertexColors:true), así que la conversión de §3A-ter no los alcanza y la grilla salía bastante
+   más clara de lo elegido. Se convierten a mano, una sola vez. */
+(()=>{
+  const attr = grid.geometry.getAttribute('color');
+  const c = new THREE.Color();
+  for(let i=0;i<attr.count;i++){
+    c.fromBufferAttribute(attr, i).convertSRGBToLinear();
+    attr.setXYZ(i, c.r, c.g, c.b);
+  }
+  attr.needsUpdate = true;
+})();
 scene.add(grid);
 
 /* =========================================================================
@@ -967,12 +1051,21 @@ const MODELOS_RUTA = 'assets/glb/';
    son parámetros de materiales WebGL, igual que los colores del catálogo (§1). Se conserva el
    acento de cada entidad en v39 (cian en Sede/Matriz/Datacenter, violeta en la Nube: "otra clase
    de nodo"). `glowIntensidad` > 1 queda preparado para el bloom de la fase de post-proceso. */
-const MODELO_METAL = { color:0x7d95c0, metalness:0.85, roughness:0.28, envMapIntensity:1.4 };
+/* El cuerpo va oscuro a propósito: en la referencia aprobada las cajas son casi negras y TODO el
+   azul que se les ve es reflejo del entorno, no color propio. El 0x7d95c0 de v42 era un azul
+   grisáceo medio que competía con el reflejo y aplanaba la pieza — con el env map ya armado
+   (crearEntornoMetal) el motor para el acabado estaba, y el color base lo estaba contradiciendo.
+   Con `metalness` alto el albedo casi no aporta difuso: tiñe el reflejo, que es justo lo buscado. */
+const MODELO_METAL = { color:0x536fa8, metalness:0.90, roughness:0.22, envMapIntensity:1.6 };
+/* glowIntensidad por encima de 1 es lo que el comentario de v39 dejaba anunciado y el pipeline de
+   color (§3A-ter) recién ahora hace posible: bajo ACES un emisivo de 1.0 sale a ~0.8 y se lee como
+   color plano. Hace falta entrar bien arriba de 1 para que el centro de la línea sature a blanco y
+   la caída quede del color — que es exactamente cómo se lee el neón de la referencia. */
 const MODELO_LOOKS = {
-  sede:       { glow:0x22d3ee, glowIntensidad:1.0 },
-  matriz:     { glow:0x22d3ee, glowIntensidad:1.0 },
-  nube:       { glow:0xa78bfa, glowIntensidad:1.0 },
-  datacenter: { glow:0x22d3ee, glowIntensidad:1.0 },
+  sede:       { glow:0x22d3ee, glowIntensidad:1.6 },
+  matriz:     { glow:0x22d3ee, glowIntensidad:1.6 },
+  nube:       { glow:0xa78bfa, glowIntensidad:1.5 },
+  datacenter: { glow:0x22d3ee, glowIntensidad:1.6 },
 };
 const NOMBRES_SLOT_BASE = ['metal', 'mat_base'];
 const NOMBRES_SLOT_GLOW = ['emissive', 'mat_glow'];
@@ -996,20 +1089,31 @@ function crearEntornoMetal(){
       const y = pos.getY(i) / 10; // -1..1
       if(y >= 0) c.copy(horizonte).lerp(arriba, Math.pow(y, 0.7));
       else c.copy(horizonte).lerp(abajo, Math.min(1, -y*2.2));
+      c.convertSRGBToLinear(); // la cúpula es el relleno ambiental del IBL: también va en lineal
       colores.push(c.r, c.g, c.b);
     }
     domoGeo.setAttribute('color', new THREE.Float32BufferAttribute(colores, 3));
     envScene.add(new THREE.Mesh(domoGeo, new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.BackSide })));
     // softboxes: uno cenital grande, uno lateral frío, una tira de contraluz y un filo angosto y
     // más brillante — el "hot spot" que engancha el reflejo como una línea de luz nítida.
-    const panel = (w, h, color, x, y, z)=>{
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide }));
+    /* Los paneles van en HDR: `intensidad` multiplica el color por encima de 1, que es lo que un
+       LDR no puede representar. Importa más de lo que parece — PMREMGenerator trabaja en half
+       float, así que esos valores sobreviven, y son los que producen el reflejo especular
+       QUEMADO sobre el bisel. Con paneles topados en 1.0 (como hasta v42) el metal nunca llega a
+       la parte alta del rango: medido contra la referencia, las altas luces se quedaban ~45%
+       cortas y la pieza se leía apagada por más oscura que fuera la base. El filo angosto es el
+       más caliente de los cuatro: es el que se lee como línea de luz sobre la arista. */
+    const panel = (w, h, color, intensidad, x, y, z)=>{
+      const c = new THREE.Color(color).convertSRGBToLinear().multiplyScalar(intensidad);
+      const mat = new THREE.MeshBasicMaterial({ side:THREE.DoubleSide });
+      mat.color.copy(c);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m);
     };
-    panel(9, 4, 0xbfd4ff, 0, 8.5, 2);
-    panel(3, 6, 0x6f9bff, 8, 3, 4);
-    panel(10, 0.8, 0x9fc0ff, -3, 2, -8);
-    panel(0.6, 5, 0xf3f8ff, 6, 4, -6);
+    panel(9, 4, 0x6f9bff, 3.2, 0, 8.5, 2);    // cenital: el grueso de la luz
+    panel(3, 6, 0x4a7dff, 1.8, 8, 3, 4);      // lateral frío
+    panel(10, 0.8, 0x5f8fff, 2.4, -3, 2, -8); // contraluz: despega la silueta del fondo
+    panel(0.6, 5, 0xc3daff, 9.0, 6, 4, -6);   // filo caliente: el highlight nítido del bisel
     const pmrem = new THREE.PMREMGenerator(renderer);
     const rt = pmrem.fromScene(envScene, 0.03);
     pmrem.dispose();
@@ -1044,6 +1148,10 @@ const ModelLibrary = (()=>{
     const glow = new THREE.MeshStandardMaterial({
       color:0x000000, emissive:L.glow, emissiveIntensity:L.glowIntensidad, metalness:0, roughness:1,
     });
+    // Albedo y emisivo se eligieron a ojo en sRGB; en un pipeline PBR van en lineal (§3A-ter b).
+    // Sin esto el cian se va hacia un celeste lavado en cuanto sube la intensidad.
+    base.color.convertSRGBToLinear();
+    glow.emissive.convertSRGBToLinear();
     base.name = 'pn_' + look + '_base';
     glow.name = 'pn_' + look + '_glow';
     materiales[look] = { base, glow };
@@ -1250,11 +1358,19 @@ const IconLibrary = (()=>{
     // sin envMap a propósito: es un hueco/sombra, un reflejo ahí contradice la lectura de "hundido".
     const entorno = obtenerEntornoMetal();
     const set = {
-      base:        new THREE.MeshStandardMaterial({ color, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.1 }),
-      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:0.5, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.8 }),
+      base:        new THREE.MeshStandardMaterial({ color, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.3 }),
+      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:1.35, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.9 }),
       translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.25, side:THREE.DoubleSide, envMap: entorno, envMapIntensity:1.2 }),
       receso:      new THREE.MeshStandardMaterial({ color: darkenColor(color, 0.45), metalness:0.2, roughness:0.75 }),
     };
+    /* Los colores del catálogo se eligieron a ojo en sRGB: hay que pasarlos a lineal para que el
+       tinte por familia se conserve bajo el nuevo pipeline (§3A-ter b). Los íconos quedan fuera
+       del bloom por decisión de v17/v19, así que su emisivo no necesita entrar tan arriba como el
+       de las entidades: alcanza con pasar de 1 para que se despegue del cuerpo. */
+    Object.values(set).forEach(m=>{
+      m.color.convertSRGBToLinear();
+      if(m.emissive) m.emissive.convertSRGBToLinear();
+    });
     materialesPorColor[color] = set;
     return set;
   }
@@ -1423,9 +1539,13 @@ const CAPA_BRILLO = 1;
 const CAPA_PUERTOS = 2; // los puertos (+) siguen en la capa 0 para el raycast; esta capa es solo para redibujarlos
 const BRILLO = {
   activo: true,
-  intensidad: 3.0,   // fuerza del halo (UnrealBloomPass.strength)
-  radio: 0.5,        // cuánto se abre (UnrealBloomPass.radius, 0..1). Más de ~0.6 ya es neblina, no neón
-  nucleo: 1.5,       // cuánto se suma la línea emisiva sobre sí misma: da el centro casi blanco del neón
+  // Re-afinados para el pipeline de color de §3A-ter: los valores de v42 (3.0 / 0.5 / 1.5) estaban
+  // calibrados contra salida lineal sin tone mapping, donde el emisivo llegaba crudo al halo. Ahora
+  // la fuente entra comprimida por ACES y codificada a sRGB, así que la misma fuerza numérica rinde
+  // bastante más y hay que bajarla o la escena se lava.
+  intensidad: 0.9,  // fuerza del halo (UnrealBloomPass.strength)
+  radio: 0.30,       // cuánto se abre (UnrealBloomPass.radius, 0..1). Más de ~0.6 ya es neblina, no neón
+  nucleo: 0.60,      // cuánto se suma la línea emisiva sobre sí misma: da el centro casi blanco del neón
   resolucion: 1,     // tamaño del render target respecto del canvas en px CSS (bajar a 0.5 si la tablet no da)
 };
 const BRILLO_EN_PDF = false;
@@ -1468,8 +1588,14 @@ const Brillo = (()=>{
         // normal; donde el canvas es transparente, el navegador compone color premultiplicado con
         // alfa 0 como "sumar sobre lo de abajo", así el halo ilumina el degradado CSS del fondo en
         // vez de oscurecerlo (con alfa > 0 el fondo quedaba teñido y más oscuro alrededor del halo).
+        // El render target `fuente` queda en LINEAL: r128 solo aplica outputEncoding cuando
+        // dibuja al canvas, no a un render target. El canvas, en cambio, ya está en sRGB desde
+        // §3A-ter. Sumar lineal sobre sRGB mezcla dos espacios y el halo sale apagado y sucio, así
+        // que acá se codifica a sRGB antes de sumar. `nucleo` multiplica después de codificar, para
+        // que siga siendo una fuerza de pantalla directa de afinar.
         fragmentShader: 'uniform sampler2D tBrillo; uniform float nucleo; varying vec2 vUv;' +
-          'void main(){ gl_FragColor = vec4(texture2D(tBrillo, vUv).rgb * nucleo, 0.0); }',
+          'vec3 aSRGB(vec3 c){ return mix(c*12.92, 1.055*pow(max(c, vec3(0.0)), vec3(0.41666))-0.055, step(vec3(0.0031308), c)); }' +
+          'void main(){ gl_FragColor = vec4(aSRGB(texture2D(tBrillo, vUv).rgb) * nucleo, 0.0); }',
         blending: THREE.CustomBlending,
         blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
         blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor, // el alfa del canvas no cambia
@@ -2532,6 +2658,9 @@ function makePortSprite(){
   ctx.moveTo(28,48); ctx.lineTo(68,48);
   ctx.stroke();
   const texture = new THREE.CanvasTexture(canvas);
+  // El canvas 2D ya está pintado en sRGB. Sin declararlo, r128 lo toma como lineal y la conversión
+  // de salida (§3A-ter) le aplica gamma una segunda vez: el puerto salía lavado y casi blanco.
+  texture.encoding = THREE.sRGBEncoding;
   texture.needsUpdate = true;
   const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthWrite:false, depthTest:false });
   const sprite = new THREE.Sprite(material);
@@ -3254,7 +3383,7 @@ function updateTempCable(from, to, valid){
   if(!tempCableLine) return;
   tempCableLine.geometry.dispose();
   tempCableLine.geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
-  tempCableLine.material.color.set(valid ? 0x4ade80 : 0x22d3ee);
+  setColorUI(tempCableLine.material, valid ? 0x4ade80 : 0x22d3ee); // §3A-ter: .set() crudo pisaría la conversión a lineal
   tempCableLine.material.opacity = valid ? 1 : 0.7;
 }
 function endTempCable(){
@@ -3512,7 +3641,10 @@ function animate(){
 
   // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
   const portPulse = 1 + Math.sin(t*3) * 0.14;
-  scene.traverse(o=>{ if(o.userData && o.userData.isPort) o.scale.setScalar(PORT_BASE_SCALE * portPulse); });
+  scene.traverse(o=>{
+    if(o.userData && o.userData.isPort) o.scale.setScalar(PORT_BASE_SCALE * portPulse);
+    normalizarMaterialesUI(o); // §3A-ter: mantiene cables, halos, badges y sprites fuera de la curva filmica
+  });
 
   renderizarFrame(true); // v17: escena + bloom de los emisivos (§3C)
   updateNameLabelPositions();
