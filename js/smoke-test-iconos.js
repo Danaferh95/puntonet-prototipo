@@ -1,8 +1,9 @@
-/* Smoke test v20 / prototipo v42 — íconos de producto en .glb.
+/* Smoke test v23 / prototipo v44 — íconos de producto en .glb.
    Tanda 1 (v18, Ciberseguridad): escudo/Perimetral, candado/End Point, llave/Acceso,
    muro/Aplicación, firewall_onpremise. Tanda 2 (v20, Cloud): rack/Housing, nube/Hosting.
    Tanda 3 (v21, Colaboración): pantalla/Conferencia, documento/Ofimática, puerta/Portal Cautivo,
-   antena/Zona Wireless.
+   antena/Zona Wireless. Tanda 4 (v23, Conectividad): enlace/Datos, nodo/SD-WAN, globo/Internet
+   — con ella el catálogo queda sin primitivas visibles salvo firewall_virtual.
    Ver functions.js §3D (IconLibrary) y AssetRegistry (§5).
    Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-iconos.js
    Mismo doble de jsdom que smoke-test-modelos.js / smoke-test-brillo.js: WebGLRenderer y canvas 2D
@@ -79,7 +80,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   check('PN_MODELOS_GLB e PN_ICONOS_GLB no se pisan (archivos separados)',
     Object.keys(w.PN_MODELOS_GLB).every(k=>!claves.includes(k)) && claves.every(k=>!Object.keys(w.PN_MODELOS_GLB).includes(k)));
   const estado = await E(w,'iconosListos');
-  check('los 11 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
+  check('los 14 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
   check('modelosListos sigue resolviendo su propio estado (string), sin verse afectado por los íconos', typeof await E(w,'modelosListos') === 'string');
   check('sin excepciones en la carga de la página', w.__erroresScript.length === 0, w.__erroresScript);
 
@@ -96,13 +97,16 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     ['ofimatica', 'colaboracion', 'documento'],
     ['portal_cautivo', 'colaboracion', 'puerta'],
     ['zona_wireless', 'colaboracion', 'antena'],
+    ['canal_conexion', 'conectividad', 'enlace'],
+    ['sdwan', 'conectividad', 'nodo'],
+    ['internet_corporativo', 'conectividad', 'globo'],
   ];
   // subproductoId reales del catálogo: se resuelven por assetKey esperado, no se asume el id exacto
   const subPorAssetKey = {};
   E(w, 'SUBPRODUCTOS').forEach ? null : null;
   const subs = E(w, 'SUBPRODUCTOS');
   const prods = E(w, 'PRODUCTOS');
-  ['candado','escudo','llave','muro','rack','nube','pantalla','documento','puerta','antena'].forEach(ak=>{
+  ['candado','escudo','llave','muro','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo'].forEach(ak=>{
     const p = prods.find(p=>p.assetKey===ak);
     const s = subs.find(s=>s.productoNivel2Id===p.id);
     subPorAssetKey[ak] = { subproductoId:s.id, verticalId:p.verticalId };
@@ -111,7 +115,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     const s = subs.find(s=>s.assetKey==='firewall_onpremise');
     subPorAssetKey['firewall_onpremise'] = { subproductoId:s.id, verticalId: prods.find(p=>p.id===s.productoNivel2Id).verticalId };
   }
-  ['candado','escudo','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena'].forEach(ak=>{
+  ['candado','escudo','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo'].forEach(ak=>{
     const { subproductoId, verticalId } = subPorAssetKey[ak];
     const icono = iconoDe(w, subproductoId, verticalId);
     const mesh = esMalla(icono);
@@ -120,13 +124,51 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   });
 
   console.log('\nC. Íconos que TODAVÍA no tienen .glb (siguen con su primitiva)');
-  ['enlace','nodo','globo','firewall_virtual'].forEach(ak=>{
-    check(`${ak} no está en ICONOS_GLB (fuera de esta tanda)`, !E(w,'ICONOS_GLB')[ak], ak);
+  // Con la tanda Conectividad (v23) queda uno solo: firewall_virtual, que el proveedor excluyó del
+  // lineup a propósito (v2 §3 B8). enlace/nodo/globo salieron de esta lista en esta tanda.
+  ['firewall_virtual'].forEach(ak=>{
+    check(`${ak} no está en ICONOS_GLB (fuera del lineup)`, !E(w,'ICONOS_GLB')[ak], ak);
   });
   const p2 = E(w,'PRODUCTOS'), s2 = E(w,'SUBPRODUCTOS');
   const pInternet = p2.find(p=>p.assetKey==='globo'), subInternet = s2.find(s=>s.productoNivel2Id===pInternet.id);
   const iconoGlobo = iconoDe(w, subInternet.id, pInternet.verticalId);
-  check('globo (Internet, sin .glb en esta tanda) sigue como wireframe', !iconoGlobo.getObjectByName('iconoGLB') && !esMalla(iconoGlobo));
+  check('globo (Internet) ya NO cae a la primitiva: usa el .glb de Conectividad',
+    !!iconoGlobo.getObjectByName('iconoGLB') && !!esMalla(iconoGlobo));
+
+  console.log('\nC2. Conectividad (v23): composición por repetición y slots');
+  // `enlace` es el primer assetKey cuyo .glb NO es el ícono entero sino una pieza (el cubito de
+  // 0.18) que IconLibrary repite tres veces en diagonal. Si esta composición se rompiera, el test
+  // de F2 seguiría pasando — el conjunto mide 0.58 igual que una copia inflada —, así que hay que
+  // contar las copias explícitamente.
+  const iEnlace = iconoDe(w, subPorAssetKey.enlace.subproductoId, subPorAssetKey.enlace.verticalId);
+  const repetido = iEnlace.getObjectByName('iconoRepetido');
+  check('enlace: el .glb de una sola pieza se compone en 3 paquetes (ICONOS_GLB.enlace.repetir)',
+    !!repetido && repetido.children.length === 3, repetido && repetido.children.length);
+  const geosEnlace = new Set(); iEnlace.traverse(o=>{ if(o.isMesh) geosEnlace.add(o.geometry.uuid); });
+  check('enlace: las 3 copias comparten geometría (una por slot, no una por copia)', geosEnlace.size <= 2, geosEnlace.size);
+  const slotsEnlace = []; iEnlace.traverse(o=>{ if(o.isMesh) slotsEnlace.push(o.userData.slot); });
+  check('enlace: cada copia conserva sus dos slots (userData.slot sobrevive al clonado)',
+    slotsEnlace.filter(s=>s==='glow').length === 3 && slotsEnlace.filter(s=>s==='base').length === 3, slotsEnlace);
+  const cajaEnlace = E(w, `(function(){
+    const o = IconLibrary.instanciar('enlace', 0xffffff);
+    const c = new THREE.Box3().setFromObject(o);
+    return [c.min.y, c.getCenter(new THREE.Vector3()).x];
+  })()`);
+  check('enlace: el conjunto queda apoyado en Y=0 y centrado en X (pivote del conjunto, no de la copia)',
+    Math.abs(cajaEnlace[0]) < 0.005 && Math.abs(cajaEnlace[1]) < 0.005, cajaEnlace);
+  const iNodo = iconoDe(w, subPorAssetKey.nodo.subproductoId, subPorAssetKey.nodo.verticalId);
+  const slotsNodo = []; iNodo.traverse(o=>{ if(o.isMesh) slotsNodo.push(o.userData.slot); });
+  check('nodo (SD-WAN): base y glow llegan como mallas separadas', slotsNodo.includes('base') && slotsNodo.includes('glow'), slotsNodo);
+  const slotsGlobo = []; iconoGlobo.traverse(o=>{ if(o.isMesh) slotsGlobo.push(o.userData.slot); });
+  check('globo (Internet): llega solo con mat_base, sin rasgo emisivo (LEEME del paquete)',
+    slotsGlobo.length > 0 && slotsGlobo.every(s=>s==='base'), slotsGlobo);
+  // El .glb de Conectividad viene teñido en menta (#00FFBA); mismo criterio que el celeste de Cloud
+  // y el lima de Colaboración: materialesDeColor() lo descarta y manda el color del catálogo.
+  const colorNodo = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subPorAssetKey.nodo.subproductoId}'))`);
+  const mallaNodoBase = (()=>{ let m=null; iNodo.traverse(o=>{ if(!m && o.isMesh && o.userData.slot==='base') m=o; }); return m; })();
+  check('nodo: el menta del archivo NO llega a la escena, manda el color del catálogo',
+    !!mallaNodoBase && mallaNodoBase.material.color.clone().convertLinearToSRGB().getHex() === colorNodo,
+    mallaNodoBase && [mallaNodoBase.material.color.clone().convertLinearToSRGB().getHex(), colorNodo]);
 
   console.log('\nD. Firewall Virtual (assetKey propio, explícitamente fuera del lineup — LEEME.md)');
   const subFV = s2.find(s=>s.assetKey==='firewall_virtual');
@@ -155,7 +197,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   iCandado.traverse(o=>{ if(o.isMesh){ mallas++; if(o.layers.mask & (1 << capaBrillo)) algunaEnCapaBrillo = true; } });
   check('candado: al menos una malla (más de un slot de material en juego)', mallas > 0, mallas);
   check('los íconos de producto NO participan del bloom (mockup v17: "no brillan… íconos de producto")', !algunaEnCapaBrillo);
-  check('sin avisos de "material desconocido" para los 11 .glb integrados', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
+  check('sin avisos de "material desconocido" para los 14 .glb integrados', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
   // La tanda Cloud trae SOLO mat_base + mat_glow (la de Ciberseguridad ampliaba con translucido y
   // receso). Se valida que los dos slots lleguen como mallas separadas: si el proveedor hubiera
   // pintado el glow como máscara en vez de geometría propia, acá habría una sola malla.
@@ -202,7 +244,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   // número. Se mide sobre íconos ya instanciados, que es lo que llega a la escena.
   const objetivo = E(w, 'ICONOS_DIM_OBJETIVO');
   const medidas = {};
-  for(const ak of ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena']){
+  for(const ak of ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo']){
     medidas[ak] = E(w, `(function(){
       const o = IconLibrary.instanciar('${ak}', 0xffffff);
       const c = new THREE.Box3().setFromObject(o);
@@ -211,7 +253,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     })()`);
   }
   const fuera = Object.entries(medidas).filter(([,v])=> Math.abs(v - objetivo) > 0.005);
-  check(`los 11 íconos quedan en la misma dimensión mayor (${objetivo})`, fuera.length === 0, fuera);
+  check(`los 14 íconos quedan en la misma dimensión mayor (${objetivo})`, fuera.length === 0, fuera);
   // Y que siga cumpliendo la envolvente de v2 §3 después de normalizar.
   check('ninguno se pasa de la envolvente de 0.6 de v2 §3 al normalizar',
     Object.values(medidas).every(v=> v <= 0.6 + 1e-6), medidas);
@@ -257,11 +299,15 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
 
   console.log('\nI. Panel izquierdo (ICONS_SVG)');
   const svgs = E(w, 'ICONS_SVG');
-  const SVG_LINEUP = ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena'];
-  check('los 11 íconos del lineup aprobado tienen SVG del proveedor (viewBox 128)',
+  const SVG_LINEUP = ['escudo','candado','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo'];
+  check('los 14 íconos del lineup aprobado tienen SVG del proveedor (viewBox 128)',
     SVG_LINEUP.every(k=> svgs[k] && svgs[k].includes('viewBox="0 0 128 128"')), SVG_LINEUP.filter(k=>!(svgs[k]||'').includes('viewBox="0 0 128 128"')));
   check('el SVG no trae el atributo color= del proveedor (pisaría el currentColor heredado)',
     SVG_LINEUP.every(k=> !/\scolor="#/.test(svgs[k])), SVG_LINEUP.filter(k=>/\scolor="#/.test(svgs[k]||'')));
+  // v23: la tanda Conectividad trajo el menta como stroke="#00FFBA" en el <svg> raíz, no como
+  // color=. Es el mismo problema por otro atributo, así que se cubre aparte.
+  check('ningún SVG del lineup trae stroke de color fijo (v23: el menta #00FFBA del proveedor)',
+    SVG_LINEUP.every(k=> !/stroke="#|stroke:\s*#/i.test(svgs[k])), SVG_LINEUP.filter(k=>/stroke="#|stroke:\s*#/i.test(svgs[k]||'')));
   check('cada SVG del lineup usa currentColor (se tiñe desde el catálogo)',
     SVG_LINEUP.every(k=> svgs[k].includes('currentColor')), SVG_LINEUP.filter(k=>!(svgs[k]||'').includes('currentColor')));
   // v21: `pantalla` llegó como export de Illustrator con el color en un <style> interno

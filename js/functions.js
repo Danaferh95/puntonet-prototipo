@@ -1267,7 +1267,8 @@ const ModelLibrary = (()=>{
 })();
 
 /* =========================================================================
-   3D. ÍCONOS DE PRODUCTO (.glb) — v21 (tandas: Ciberseguridad v18 + Cloud v20 + Colaboración v21)
+   3D. ÍCONOS DE PRODUCTO (.glb) — v23 (tandas: Ciberseguridad v18 + Cloud v20 + Colaboración v21
+        + Conectividad v23)
    -------------------------------------------------------------------------
    Reemplaza, assetKey por assetKey, las primitivas de AssetRegistry (§5) por modelos reales, a
    medida que llegan tandas del proveedor. Mismo patrón que ModelLibrary (arriba), con una
@@ -1307,6 +1308,10 @@ const ICONOS_ESCALA = 1;
 
 // assetKey (mismo que en PRODUCTOS/SUBPRODUCTOS, §1) -> archivo (sin .glb). Va creciendo tanda a
 // tanda; los assetKeys que faltan acá siguen con su primitiva de AssetRegistry (§5).
+// Claves opcionales de cada entrada:
+//   escala   — multiplica la escala del ícono (se aplica DESPUÉS de ICONOS_DIM_OBJETIVO).
+//   repetir  — { copias, paso:[x,y,z] }: el .glb no es el ícono entero sino una pieza que se
+//              repite. Ver prepararPlantilla(). Hoy solo lo usa `enlace` (v23).
 const ICONOS_GLB = {
   escudo:              { archivo:'pn_ico_escudo' },             // Perimetral
   candado:             { archivo:'pn_ico_candado' },            // End Point
@@ -1321,6 +1326,12 @@ const ICONOS_GLB = {
   documento:           { archivo:'pn_ico_documento' },           // Ofimática
   puerta:              { archivo:'pn_ico_puerta' },              // Portal Cautivo
   antena:              { archivo:'pn_ico_antena' },              // Zona Wireless
+  // v23 — tanda Conectividad. Con esta tanda el catálogo queda sin primitivas visibles salvo
+  // firewall_virtual, que el proveedor excluyó del lineup a propósito (v2 §3, nota B8).
+  enlace:              { archivo:'pn_ico_enlace',                // Datos (Canal de Conexión, Cloud Interconnect)
+                         repetir:{ copias:3, paso:[0.26, 0.175, 0] } },
+  nodo:                { archivo:'pn_ico_nodo' },                // SD-WAN (Sdwan, Túnel IPsec)
+  globo:               { archivo:'pn_ico_globo' },               // Internet (Corporativo, Startup, Teleworking, Puntonet Space)
 };
 const ICONOS_RUTA = 'assets/glb-iconos/';
 const NOMBRES_SLOT_ICONO_TRANSLUCIDO = ['mat_translucido'];
@@ -1398,8 +1409,9 @@ const IconLibrary = (()=>{
      material propio todavía (eso se resuelve por color en instanciar/materialesDeColor). Guarda
      el slot de cada malla en userData para no tener que volver a mirar el nombre de material del
      proveedor en cada clonado. */
-  function prepararPlantilla(archivo, escala, gltf){
-    const raiz = gltf.scene;
+  function prepararPlantilla(archivo, def, gltf){
+    const escala = def.escala || ICONOS_ESCALA;
+    let raiz = gltf.scene;
     raiz.traverse(o=>{
       if(!o.isMesh) return;
       const nombre = (o.material && o.material.name) || '';
@@ -1411,12 +1423,34 @@ const IconLibrary = (()=>{
         o.userData.slot = 'base';
       }
     });
+    /* Composición por repetición (v23, Datos). El proveedor no entrega el ícono entero sino UNA
+       pieza — el cubito de 0.18 de `pn_ico_enlace` — con la indicación de repetirla para formar el
+       flujo; el ícono aprobado son tres paquetes sobre una diagonal ascendente, igual que el SVG
+       del menú. Se arma acá, ANTES de medir, para que la corrección de pivote y la normalización
+       de ICONOS_DIM_OBJETIVO trabajen sobre el conjunto: al revés, el cubito solo se inflaría
+       hasta 0.58 y Datos quedaría como un cubo suelto en vez de un flujo.
+       El `paso` está en unidades del archivo (metros, v2 §6.1), no en unidades ya normalizadas. */
+    if(def.repetir){
+      const copias = def.repetir.copias, paso = def.repetir.paso;
+      const conjunto = new THREE.Group();
+      conjunto.name = 'iconoRepetido';
+      const desde = -(copias - 1) / 2;
+      for(let i=0; i<copias; i++){
+        const copia = raiz.clone(true);   // clone(true) comparte geometría y arrastra userData.slot
+        copia.position.set(paso[0]*(desde+i), paso[1]*(desde+i), paso[2]*(desde+i));
+        conjunto.add(copia);
+      }
+      raiz = conjunto;
+    }
     // Pivote: la especificación pide base en Y=0 y centrado en X/Z (v2 §6.4), igual que las
-    // entidades — misma corrección defensiva si alguna entrega futura no cumple.
+    // entidades — misma corrección defensiva si alguna entrega futura no cumple. Con `repetir`
+    // se corrige el conjunto, no cada copia: la diagonal deja la pieza de abajo por debajo de Y=0.
     const caja = new THREE.Box3().setFromObject(raiz);
     const centro = caja.getCenter(new THREE.Vector3());
     if(Math.abs(caja.min.y) > 0.005 || Math.abs(centro.x) > 0.01 || Math.abs(centro.z) > 0.01){
-      console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
+      // Con `repetir` el desplazamiento lo introdujimos nosotros al armar la diagonal, así que no
+      // es un defecto de la entrega y no se avisa: el archivo del proveedor sí tiene su pivote bien.
+      if(!def.repetir) console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
       raiz.position.set(-centro.x, -caja.min.y, -centro.z);
     }
     // Normalización de tamaño entre tandas (ver ICONOS_DIM_OBJETIVO, arriba). Se mide DESPUÉS de
@@ -1447,7 +1481,7 @@ const IconLibrary = (()=>{
     const tareas = claves.map(archivo=>
       obtenerBytes(archivo)
         .then(parsear)
-        .then(gltf=> prepararPlantilla(archivo, archivos[archivo].escala || ICONOS_ESCALA, gltf))
+        .then(gltf=> prepararPlantilla(archivo, archivos[archivo], gltf))
         .catch(err=>{ errores[archivo] = String(err && err.message || err); console.warn('[iconos] ' + archivo + ' no cargó, se usa la primitiva:', err); })
     );
     return Promise.all(tareas).then(()=>{
@@ -2395,6 +2429,11 @@ const AssetRegistry = {
     return group;
   },
   enlace: (color)=>{
+    // v23: modelo .glb (Datos, tanda Conectividad) si está cargado; si no, la primitiva de siempre.
+    // El .glb es un solo cubito: los tres paquetes en diagonal los arma IconLibrary desde
+    // ICONOS_GLB.enlace.repetir (§3D), no este builder.
+    const modelo = IconLibrary.instanciar('enlace', color);
+    if(modelo) return modelo;
     const g = new THREE.CylinderGeometry(0.05,0.05,0.6,8);
     const mesh = wire(g, color);
     mesh.rotation.z = Math.PI/2.4;
@@ -2431,6 +2470,11 @@ const AssetRegistry = {
   },
   nodo: (color)=>{
     // Sdwan: nodo de red inteligente (octaedro)
+    // v23: modelo .glb (SD-WAN, tanda Conectividad) si está cargado; si no, la primitiva de siempre.
+    // El diseño aprobado ya no es un poliedro sino tres terminales en triángulo equilátero unidos
+    // por sus canales; el assetKey se conserva por compatibilidad con el catálogo.
+    const modelo = IconLibrary.instanciar('nodo', color);
+    if(modelo) return modelo;
     const g = new THREE.OctahedronGeometry(0.26, 0);
     const mesh = wire(g, color);
     mesh.position.y = 0.3;
@@ -2438,6 +2482,11 @@ const AssetRegistry = {
   },
   globo: (color)=>{
     // Internet: globo con anillos, como una red/wifi global
+    // v23: modelo .glb (Internet, tanda Conectividad) si está cargado; si no, la primitiva.
+    // Único de la tanda que llega solo con `mat_base`: no tiene rasgo emisivo propio y se tiñe
+    // entero como cuerpo (ver LEEME.md del paquete).
+    const modelo = IconLibrary.instanciar('globo', color);
+    if(modelo) return modelo;
     const group = new THREE.Group();
     const sphereGeo = new THREE.SphereGeometry(0.22, 10, 8);
     const sphere = wire(sphereGeo, color);
@@ -3700,9 +3749,16 @@ const iconosListos = IconLibrary.precargar().then(estado=>{
 /* Icono 2D simplificado por assetKey, para mostrar junto al nombre del Producto (N2) en el
    catálogo del panel izquierdo (el mismo assetKey que usa el ícono 3D de la escena). */
 const ICONS_SVG = {
-  enlace:    '<svg viewBox="0 0 24 24"><path d="M8 12h8M6 8a3 3 0 000 8M18 8a3 3 0 010 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  nodo:      '<svg viewBox="0 0 24 24"><path d="M12 3l8 5v8l-8 5-8-5V8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-  globo:     '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="12" cy="12" rx="3.2" ry="8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 12h16" stroke="currentColor" stroke-width="1.4"/></svg>',
+  // v23: tanda Conectividad. Reemplazan a los tres genéricos que venían del prototipo original —
+  // son los primeros que el proveedor dibuja como pareja exacta del .glb (el SVG del nodo repite
+  // los tres terminales del modelo; el de Datos, los tres paquetes en diagonal). Acá el atributo
+  // de presentación que hay que retirar no es `color=` como en v18/v20 sino `stroke="#00FFBA"` en
+  // el <svg> raíz y `fill="#00FFBA"` en los tres puntos del nodo: ambos son del propio elemento y
+  // le ganan al color heredado del contenedor, así que el ícono habría quedado menta fijo,
+  // ignorando el catálogo. Van como currentColor.
+  enlace:    '<svg viewBox="0 0 128 128" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" role="img"><title>Datos</title><path d="M37 83.7 L54 71.3"/><path d="M74 56.7 L91 44.3"/><rect x="17" y="81" width="20" height="20" rx="1"/><rect x="54" y="54" width="20" height="20" rx="1"/><rect x="91" y="27" width="20" height="20" rx="1"/></svg>',
+  nodo:      '<svg viewBox="0 0 128 128" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" role="img"><title>SD-WAN</title><path d="M64 68 L64 40.7"/><rect x="53.92" y="19.28" width="20.16" height="20.16" stroke-width="5.88"/><circle cx="64" cy="55.19" r="4.41" fill="currentColor" stroke="none"/><path d="M64 68 L40.36 81.65"/><rect x="20.46" y="77.24" width="20.16" height="20.16" stroke-width="5.88" transform="rotate(30 30.54 87.32)"/><circle cx="52.91" cy="74.41" r="4.41" fill="currentColor" stroke="none"/><path d="M64 68 L87.64 81.65"/><rect x="87.38" y="77.24" width="20.16" height="20.16" stroke-width="5.88" transform="rotate(-30 97.46 87.32)"/><circle cx="75.09" cy="74.41" r="4.41" fill="currentColor" stroke="none"/></svg>',
+  globo:     '<svg viewBox="0 0 128 128" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" role="img"><title>Internet</title><circle cx="64" cy="64" r="48"/><ellipse cx="64" cy="64" rx="24" ry="48"/><path d="M24.68 36.47 L103.32 36.47"/><path d="M16 64 L112 64"/><path d="M24.68 91.53 L103.32 91.53"/></svg>',
   // v18: lineup aprobado de Ciberseguridad (paquete del proveedor, ver LEEME.md) — mismo SVG que
   // acompaña a cada .glb de IconLibrary (§3D), color editable vía currentColor. Se retira el
   // atributo `color="#EC7069"` del archivo de origen: es solo el valor de vista previa del

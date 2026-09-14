@@ -1,4 +1,4 @@
-/* Smoke test v17 / prototipo v41 — bloom selectivo de los emisivos (§3C de functions.js).
+/* Smoke test v17 / prototipo v43 — bloom selectivo de los emisivos (§3C de functions.js).
    Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-brillo.js
    Carga index.html + three r128 + GLTFLoader + postproceso-r128 + modelos-glb + functions.js en
    jsdom. El WebGLRenderer es un doble que REGISTRA cada render (destino, capas de cámara, estado
@@ -158,7 +158,7 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   check('index.html: three → GLTFLoader → postproceso → modelos-glb → functions',
     i('three.min.js') > 0 && i('three.min.js') < i('js/vendor/GLTFLoader.js') && i('js/vendor/GLTFLoader.js') < i('js/vendor/postproceso-r128.js') &&
     i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/functions.js'));
-  check('index.html muestra Prototipo v41', (HTML.match(/Prototipo v41/g)||[]).length === 2);
+  check('index.html muestra Prototipo v44', (HTML.match(/Prototipo v44/g)||[]).length === 2);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);
