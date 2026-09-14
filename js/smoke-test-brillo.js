@@ -194,7 +194,7 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   check('index.html: three → GLTFLoader → postproceso → modelos-glb → functions',
     i('three.min.js') > 0 && i('three.min.js') < i('js/vendor/GLTFLoader.js') && i('js/vendor/GLTFLoader.js') < i('js/vendor/postproceso-r128.js') &&
     i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/functions.js'));
-  check('index.html muestra Prototipo v45', (HTML.match(/Prototipo v45/g)||[]).length === 2);
+  check('index.html muestra Prototipo v47', (HTML.match(/Prototipo v47/g)||[]).length === 2);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);

@@ -610,7 +610,7 @@ function generaConexionAutomatica(sub){
 function getOrCreateNubeInternetAuto(){
   const existente = state.nubes.find(n=>n.esAutoInternet);
   if(existente) return existente;
-  const {gx,gz} = nearestFreeCell(GRID_SPACING*6, DATACENTER_GZ*GRID_SPACING);
+  const {gx,gz} = nearestFreeCell(GRID_SPACING*6, DATACENTER_GZ*GRID_SPACING, null, huellaDeClave('nube'));
   const nube = createNube('Internet', gx, gz);
   nube.esAutoInternet = true;
   return nube;
@@ -1024,15 +1024,28 @@ function actualizarReflejosPiso(){
       `node tools/empaquetar-modelos.js` cada vez que cambia un .glb de assets/glb/.
    2. Si ese archivo no está, fetch('assets/glb/<archivo>.glb') — requiere servidor (http://).
 
-   Escala: el proveedor modeló todas las entidades más chicas que la envolvente de §2 (ver doc
-   v16). MODELOS_ESCALA las agranda a todas por IGUAL, así se conserva la proporción entre ellas
-   que diseñó el proveedor. 1.5 es el máximo que no hace chocar edificios en celdas vecinas de la
-   grilla (con 1.8 el Datacenter pisa a una Matriz puesta al lado). Si el cliente quiere agrandar
-   una sola entidad, cada entrada de MODELOS acepta `escala` propia, que pisa a la global.
-   El layout (halo, hitbox, puerto, anillo de productos, etiqueta) se calcula a partir de las
+   Escala (v47): el proveedor modeló todas las entidades más chicas que la envolvente de §2 (ver
+   doc v16). Hasta v46 una sola escala global las agrandaba a TODAS por igual, conservando la
+   proporción entre ellas que diseñó el proveedor. Ya no alcanza: el cliente pidió tamaños
+   concretos por entidad (Datacenter de dos celdas de ancho, Matriz por encima de la Sede Grande,
+   sedes al doble), y esas proporciones no son las del proveedor. Así que MODELOS_ESCALA queda
+   como la escala de SEDES Y NUBE, y Matriz y Datacenter llevan su propia `escala`.
+
+   Que los overrides sean NÚMEROS MÁS CHICOS que la global no es un error: cada uno multiplica su
+   propio modelo, y los modelos parten de tamaños muy distintos (el Datacenter mide 2.9 de ancho
+   sin escalar; la Sede Grande, 1.2). Lo que importa es el ancho resultante:
+
+     Sede Pequeña 3.04 · Sede Mediana 3.80 · Nube 3.42 · Sede Grande 4.56 · Matriz 5.60 ·
+     Datacenter 8.00 (= 2 celdas exactas de GRID_SPACING)
+
+   Con estos tamaños varias entidades son MÁS ANCHAS que su celda, así que la grilla ya no puede
+   razonar por celda suelta: `occupied()` compara huellas reales (ver §4). Es lo que permite subir
+   los tamaños sin tocar GRID_SPACING, que sigue en 4.
+
+   El layout (halo, hitbox, puerto, colocación de íconos, etiqueta) se calcula a partir de las
    medidas reales del modelo ya escalado (userData.dims), no de números fijos.
    ========================================================================= */
-const MODELOS_ESCALA = 1.5;
+const MODELOS_ESCALA = 3.8;
 
 // clave interna -> archivo (sin .glb) + familia de materiales (+ `escala` opcional, pisa a
 // MODELOS_ESCALA). Las claves de sede usan los mismos ids que TAMANOS_LOCAL ('pequeno' |
@@ -1041,9 +1054,9 @@ const MODELOS = {
   sede_pequeno: { archivo:'pn_ent_sede_pequena', look:'sede' },
   sede_mediano: { archivo:'pn_ent_sede_mediana', look:'sede' },
   sede_grande:  { archivo:'pn_ent_sede_grande',  look:'sede' },
-  matriz:       { archivo:'pn_ent_matriz',       look:'matriz' },
+  matriz:       { archivo:'pn_ent_matriz',       look:'matriz',     escala:2.80 }, // 2.0 × 2.80 = 5.60
   nube:         { archivo:'pn_ent_nube',         look:'nube' },
-  datacenter:   { archivo:'pn_ent_datacenter',   look:'datacenter' },
+  datacenter:   { archivo:'pn_ent_datacenter',   look:'datacenter', escala:2.76 }, // 2.9 × 2.76 = 8.00
 };
 const MODELOS_RUTA = 'assets/glb/';
 
@@ -1257,8 +1270,17 @@ const ModelLibrary = (()=>{
     return { objeto, dims: Object.assign({}, plantilla.dims) };
   }
 
+  /* Medidas del modelo ya escalado, SIN instanciarlo: la grilla (§4) necesita saber cuánto va a
+     medir una entidad antes de construirla, para elegir dónde cabe. Devuelve null si ese modelo
+     no está disponible (-> el que pregunta cae a las medidas de la primitiva). */
+  function dims(clave){
+    const def = MODELOS[clave];
+    const plantilla = def && plantillas[def.archivo];
+    return plantilla ? Object.assign({}, plantilla.dims) : null;
+  }
+
   return {
-    precargar, instanciar,
+    precargar, instanciar, dims,
     estado: ()=> estado,
     errores: ()=> Object.assign({}, errores),
     animables,
@@ -1821,11 +1843,14 @@ function buildMatrizMesh(){
   }
   const portX = modelo ? Math.max(2.0, modelo.dims.w/2 + 0.3) : 2.0;
 
-  const matrizHitbox = hitboxMesh(new THREE.CylinderGeometry(2.3, 2.3, coreY + 2.6, 16), 'matrizHitbox');
+  // v47: el radio sale de la planta del modelo. Eran 2.3/2.5 fijos, pensados para la Matriz de
+  // 3.0 de ancho; con 5.60 el halo quedaba DENTRO del edificio y la hitbox no lo cubría.
+  const rMatriz = modelo ? Math.hypot(modelo.dims.w/2, modelo.dims.d/2) : 2.3;
+  const matrizHitbox = hitboxMesh(new THREE.CylinderGeometry(rMatriz, rMatriz, coreY + 2.6, 16), 'matrizHitbox');
   matrizHitbox.position.y = (coreY + 2.6) / 2;
   group.add(matrizHitbox);
 
-  group.add(haloRing(2.5, 2.68, 0x22d3ee, 'matrizHalo', 0.03));
+  group.add(haloRing(rMatriz + 0.2, rMatriz + 0.38, 0x22d3ee, 'matrizHalo', 0.03));
 
   // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
   const matrizPort = makePortSprite();
@@ -1902,12 +1927,14 @@ function buildNubeMesh(){
   const portX = modelo ? modelo.dims.w/2 + 0.4 : 1.3;
 
   // mismo name que Matriz/Datacenter: hitTest/selección son genéricos por userData
-  const nubeHitbox = hitboxMesh(new THREE.CylinderGeometry(1.4, 1.4, coreY + 0.6, 16), 'matrizHitbox');
+  // v47: mismo criterio que la Matriz — radio derivado de la planta, no fijo.
+  const rNube = modelo ? Math.hypot(modelo.dims.w/2, modelo.dims.d/2) : 1.4;
+  const nubeHitbox = hitboxMesh(new THREE.CylinderGeometry(rNube, rNube, coreY + 0.6, 16), 'matrizHitbox');
   nubeHitbox.position.y = (coreY + 0.6) / 2;
   group.add(nubeHitbox);
 
   // mismo name que la Matriz: updateSelectionVisuals los trata igual
-  group.add(haloRing(1.55, 1.7, color, 'matrizHalo', 0.03));
+  group.add(haloRing(rNube + 0.15, rNube + 0.3, color, 'matrizHalo', 0.03));
 
   const nubePort = makePortSprite();
   nubePort.position.set(portX, coreY*0.5, 0);
@@ -2809,6 +2836,226 @@ function makePortSprite(){
   sprite.layers.enable(CAPA_PUERTOS); // v17: se redibuja DESPUÉS del halo del brillo, para que no lo lave (§3C)
   return sprite;
 }
+/* =========================================================================
+   3E. COLOCACIÓN DE LOS ÍCONOS SOBRE LA ENTIDAD — v46
+   -------------------------------------------------------------------------
+   Hasta v45 los íconos de producto se repartían en un anillo horizontal que flotaba POR ENCIMA
+   del edificio (radio `assetRadius` del tamaño, altura `dims.h + 0.35`). Se leían como objetos
+   sueltos al lado de la sede, no como parte de ella — que es justo lo que marcó el cliente.
+
+   La lámina de referencia del proveedor ("Revisión de protecciones") muestra que cada ícono tiene
+   una relación PROPIA con el edificio, y que esa relación es parte del significado del producto:
+   el escudo de Perimetral abraza la plataforma por donde entra el cable, el candado de End Point
+   envuelve el edificio con sus aros, el arco de Acceso se planta sobre la ruta de conexión como
+   una puerta que hay que cruzar, el panel de Aplicación se monta contra la fachada y el firewall
+   físico se apoya en la plataforma como el equipo que es.
+
+   De ahí que esto sea una TABLA por assetKey y no un solo layout: no hay una posición "correcta"
+   común a los 14. Cada modo se calcula contra las medidas reales del modelo ya escalado
+   (`dimsEntidad`), así que sigue funcionando si cambia MODELOS_ESCALA o si el proveedor entrega
+   un modelo con otra proporción.
+
+   Modos disponibles:
+     envolver    — centrado en el edificio, escalado para rodearlo (aros del candado).
+     abrazar     — a ras de piso, escalado a la huella de la plataforma (brackets del escudo).
+     portico     — plantado sobre la ruta del cable, del lado del puerto, como un arco a cruzar.
+     fachada     — montado contra una pared, semihundido en ella, a media altura del cuerpo.
+     plataforma  — apoyado en la plataforma, pegado a la pared, repartido por el perímetro.
+     cubierta    — sobre el techo (lo que "está en la nube" o irradia, no sobre el piso).
+
+   `envolver`, `abrazar` y `portico` son de ocupación única: si dos productos de la misma entidad
+   piden el mismo modo, el segundo cae a `plataforma`. `fachada` tiene 4 huecos (las 4 paredes) y
+   desborda igual. `plataforma` y `cubierta` no se agotan: reparten cuantos haga falta.
+   ========================================================================= */
+
+/* Proporciones del modelo de entidad que el .glb no declara y hay que estimar: cuánto de la
+   altura total es la plataforma iluminada, y cuánto de la huella total ocupa el cuerpo del
+   edificio sobre ella. Medidos a ojo contra los renders del proveedor; son los dos números a
+   tocar si una tanda futura cambia la proporción de las plataformas. */
+const PLATAFORMA_ALTO_REL = 0.16;
+const PLATAFORMA_CUERPO_REL = 0.72;
+
+const COLOCACION_ICONOS = {
+  // Ciberseguridad — las cinco de la lámina de referencia, cada una en su relación
+  escudo:             { modo:'abrazar',    factor:1.15 },  // Perimetral: brackets alrededor de la plataforma
+  candado:            { modo:'envolver',   factor:1.30 },  // End Point: aros que rodean el edificio
+  llave:              { modo:'portico',    factor:0.95 },  // Acceso: arco sobre la ruta de conexión
+  muro:               { modo:'fachada',    factor:0.74 },  // Aplicación: panel contra la pared
+  firewall_onpremise: { modo:'plataforma', factor:0.42 },  // equipo físico apoyado en la plataforma
+  // Firewall Virtual sigue sin modelo (el proveedor lo excluyó del lineup, v2 §3 B8): es la
+  // primitiva escudo+anillo. Va a la plataforma como cualquier equipo, no `abrazar`: la
+  // primitiva es un cono alto, no los brackets anchos del escudo real.
+  firewall_virtual:   { modo:'plataforma', factor:0.55 },
+  // Cloud
+  rack:               { modo:'plataforma', factor:0.62 },
+  nube:               { modo:'cubierta',   factor:0.52 },
+  // Colaboración
+  pantalla:           { modo:'fachada',    factor:0.76 },  // igual que el render de Conferencia
+  documento:          { modo:'fachada',    factor:0.58 },
+  puerta:             { modo:'plataforma', factor:0.50 },
+  antena:             { modo:'cubierta',   factor:0.55 },
+  // Conectividad
+  enlace:             { modo:'plataforma', factor:0.46 },
+  nodo:               { modo:'plataforma', factor:0.50 },
+  globo:              { modo:'cubierta',   factor:0.60 },
+};
+const COLOCACION_DEFECTO = { modo:'plataforma', factor:0.50 };
+const HUECOS_POR_MODO = { envolver:1, abrazar:1, portico:1, fachada:4 };
+
+/* Medidas derivadas que necesita la colocación: dónde termina la plataforma y qué huella tiene
+   el cuerpo del edificio sobre ella. */
+function geometriaEntidad(entity){
+  const d = dimsEntidad(entity);
+  const plintoY = d.h * PLATAFORMA_ALTO_REL;
+  return {
+    w: d.w, h: d.h, d: d.d,
+    plintoY,
+    cuerpoW: d.w * PLATAFORMA_CUERPO_REL,
+    cuerpoD: d.d * PLATAFORMA_CUERPO_REL,
+    cuerpoH: Math.max(0.1, d.h - plintoY),
+  };
+}
+
+/* Los íconos salen de IconLibrary con el pivote en el centro de su base (v18), así que basta la
+   envolvente para escalarlos: no hay que recentrar nada. Las primitivas de fallback no cumplen
+   esa promesa, y por eso se mide en vez de asumir el 0.58 de ICONOS_DIM_OBJETIVO. */
+function medidaAsset(asset){
+  // El ícono todavía no cuelga de la escena, así que hay que forzar las matrices: Box3 solo
+  // actualiza la del objeto, no la de sus hijos, y sin esto la medida ignora escala y rotación.
+  asset.updateMatrixWorld(true);
+  const caja = new THREE.Box3().setFromObject(asset);
+  const tam = caja.getSize(new THREE.Vector3());
+  return { alto: Math.max(tam.y, 0.001), huella: Math.max(tam.x, tam.z, 0.001), tam, caja };
+}
+function escalarPorAltura(asset, alto){
+  const m = medidaAsset(asset);
+  asset.scale.multiplyScalar(alto / m.alto);
+}
+function escalarPorHuella(asset, huella){
+  const m = medidaAsset(asset);
+  asset.scale.multiplyScalar(huella / m.huella);
+}
+
+/* Las 4 caras de la entidad, en el orden en que entran en cuadro con la cámara por defecto (que
+   mira desde +X/+Z): primero la frontal y la derecha, que son las dos visibles sin orbitar, y
+   después las dos de atrás. `n` es la normal hacia afuera; `rotY` gira el ícono para que la cara
+   que el proveedor modeló "de frente" (+Z) apunte en esa dirección. */
+const CARAS_ENTIDAD = [
+  { nx: 0, nz: 1, rotY: 0 },
+  { nx: 1, nz: 0, rotY: Math.PI/2 },
+  { nx: 0, nz:-1, rotY: Math.PI },
+  { nx:-1, nz: 0, rotY:-Math.PI/2 },
+];
+
+/* Reparte `total` íconos entre las 4 caras: uno por cara hasta agotarlas, y recién entonces un
+   segundo por cara, corridos lateralmente. Devuelve la cara, cuántos comparten esa cara y qué
+   lugar ocupa dentro de ella, que es lo que permite centrar el grupo sobre la pared. */
+function huecoPerimetral(turno, total){
+  const iCara = turno % CARAS_ENTIDAD.length;
+  const enCara = Math.floor(total / CARAS_ENTIDAD.length) + ((total % CARAS_ENTIDAD.length) > iCara ? 1 : 0);
+  return { cara: CARAS_ENTIDAD[iCara], indice: Math.floor(turno / CARAS_ENTIDAD.length), enCara: Math.max(enCara, 1) };
+}
+
+/* Medio ancho del cuerpo en la dirección de una normal, y su medida perpendicular (la que se usa
+   para correr lateralmente los íconos que comparten pared). */
+function medidasCara(g, cara){
+  return cara.nx !== 0
+    ? { normal: g.cuerpoW/2, lateral: g.cuerpoD, normalPlinto: g.w/2 }
+    : { normal: g.cuerpoD/2, lateral: g.cuerpoW, normalPlinto: g.d/2 };
+}
+
+/* Coloca UN ícono según su modo. `turno` es el índice dentro de los que comparten ese modo en
+   esta entidad (0 = el primero), y `totalModo` cuántos son, para poder repartirlos.
+
+   Los modos que apoyan el ícono contra una cara ROTAN PRIMERO y miden después: la medida que
+   importa es la profundidad del ícono ya girado, no la del .glb tal como vino. Medir antes deja
+   los íconos de las caras laterales hundidos o despegados de la pared. */
+function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
+  const huellaCuerpo = Math.max(g.cuerpoW, g.cuerpoD);
+  switch(modo){
+    case 'envolver': {
+      escalarPorHuella(asset, huellaCuerpo * factor);
+      // Centrado en ALTURA sobre el cuerpo, no apoyado en el plinto: los aros tienen que quedar
+      // a la altura del edificio, como en la lámina. Apoyarlos los deja flotando por encima.
+      const m = medidaAsset(asset);
+      asset.position.set(0, g.plintoY + (g.cuerpoH - m.alto)/2, 0);
+      break;
+    }
+    case 'abrazar': {
+      // Contra la huella del CUERPO, no la del plinto: escalado a la plataforma entera, los
+      // brackets del escudo suben más que el edificio y dejan de leerse como algo que lo abraza.
+      escalarPorHuella(asset, huellaCuerpo * factor);
+      asset.position.set(0, 0.01, 0);
+      break;
+    }
+    case 'portico': {
+      escalarPorAltura(asset, g.h * factor);
+      const m = medidaAsset(asset);
+      // Sobre la ruta del cable y POR FUERA del sprite del puerto (+), que vive en w/2 + 0.28:
+      // si el arco queda a esa misma distancia se superponen y ninguno de los dos se lee.
+      const radio = (ladoPuerto.x !== 0 ? g.w/2 : g.d/2) + 0.34 + m.huella*0.6;
+      asset.position.set(ladoPuerto.x * radio, 0.01, ladoPuerto.z * radio);
+      asset.rotation.y = ladoPuerto.x !== 0 ? Math.PI/2 : 0;
+      break;
+    }
+    case 'fachada': {
+      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo);
+      escalarPorAltura(asset, g.cuerpoH * factor);
+      asset.rotation.y = cara.rotY;
+      const m = medidaAsset(asset);
+      const c = medidasCara(g, cara);
+      // Semihundido: se mete en la pared el 45% de su fondo ya girado, para que se lea como
+      // parte del edificio y no como una calcomanía pegada por delante.
+      const fondo = Math.abs(cara.nx) ? m.tam.x : m.tam.z;
+      const dNormal = c.normal - fondo*0.45 + fondo/2;
+      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.15;
+      asset.position.set(
+        cara.nx * dNormal + (cara.nx ? 0 : lateral),
+        g.plintoY + (g.cuerpoH - m.alto)/2,
+        cara.nz * dNormal + (cara.nx ? lateral : 0)
+      );
+      break;
+    }
+    case 'cubierta': {
+      escalarPorAltura(asset, g.cuerpoH * factor);
+      const m = medidaAsset(asset);
+      const offset = (turno - (totalModo-1)/2) * m.huella * 1.15;
+      asset.position.set(offset, g.h, 0);
+      break;
+    }
+    default: { // 'plataforma'
+      escalarPorAltura(asset, g.cuerpoH * factor);
+      // La plataforma sobresale poco del cuerpo en los modelos del proveedor (~0.2 por lado en
+      // Z), así que un ícono escalado solo por altura se sale del plinto y queda flotando en el
+      // aire. Se acota la huella a una fracción del lado corto: apoyado y con un vuelo mínimo,
+      // que es como se ve el firewall físico de la lámina.
+      const huellaMax = Math.min(g.w, g.d) * 0.45;
+      const m0 = medidaAsset(asset);
+      if(m0.huella > huellaMax) asset.scale.multiplyScalar(huellaMax / m0.huella);
+      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo);
+      asset.rotation.y = cara.rotY;
+      const m = medidaAsset(asset);
+      const c = medidasCara(g, cara);
+      const fondo = Math.abs(cara.nx) ? m.tam.x : m.tam.z;
+      // Pegado a la pared, pero sin pasarse del plinto: en Z la plataforma sobra apenas ~0.19
+      // por lado, así que el ícono se recuesta contra el edificio en vez de quedar en el aire.
+      // El max() es el tope del tope: cuando el ícono es más ancho que ese sobrante, quedarse
+      // dentro del plinto significaría meterlo DENTRO del edificio. Entre volar un poco sobre el
+      // borde y atravesar la pared, vuela: solo se le permite solaparse un 15% de su fondo.
+      const dNormal = Math.max(
+        c.normal + fondo*0.15,
+        Math.min(c.normal + fondo/2 + 0.04, c.normalPlinto - fondo/2)
+      );
+      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.2;
+      asset.position.set(
+        cara.nx * dNormal + (cara.nx ? 0 : lateral),
+        g.plintoY,
+        cara.nz * dNormal + (cara.nx ? lateral : 0)
+      );
+      break;
+    }
+  }
+}
 
 function refreshSedeAssets(sede){
   // limpiar assets previos
@@ -2817,56 +3064,58 @@ function refreshSedeAssets(sede){
   const container = new THREE.Group();
   container.name = 'assetsContainer';
 
-  let radius, assetY;
-  if(sede.tipo==='matriz'){
-    radius = 2.6; assetY = sede.group.userData.coreY + 0.55; // anillo propio alrededor del hub
-  } else if(sede.tipo==='datacenter'){
-    radius = 3.4; assetY = dcY + 0.55; // anillo amplio, por fuera de los 3 tiers del edificio
-  } else if(sede.tipo==='nube'){
-    radius = 2.1; assetY = sede.group.userData.coreY + 0.45; // anillo alrededor del cúmulo de nube (v9 §5)
-  } else {
-    const tamano = getTamanoLocal(sede.tamano);
-    radius = tamano.assetRadius; assetY = dimsEntidad(sede).h + 0.35;
-  }
+  const g = geometriaEntidad(sede);
+  // Por dónde sale el cable de esta entidad: el Datacenter tiene el puerto en +Z, el resto en +X.
+  // Es lo que orienta el `portico` de Acceso, que solo se lee bien si está sobre la ruta.
+  const ladoPuerto = sede.tipo === 'datacenter' ? { x:0, z:1 } : { x:1, z:0 };
 
   const propias = sede.instancias;
   // Productos heredados de Matrices conectadas (solo aplica a sedes reales, no a las Matrices
   // mismas). Se filtran referencias huérfanas por si el producto ya no existe en ninguna Matriz.
   const heredadas = sede.tipo==='matriz' ? [] :
     (sede.herenciaIds||[]).map(hid=>findInstanciaEnMatrices(hid)).filter(Boolean);
-  const total = propias.length + heredadas.length;
-  let idx = 0;
 
-  function placeAsset(inst, isHeredado){
-    const sub = getSubproducto(inst.subproductoId);
-    const producto = getProducto(sub.productoNivel2Id);
+  // 1ª pasada: resolver el modo de cada instancia y repartir los huecos. Los modos de ocupación
+  // única se asignan por orden de llegada; el que no entra cae a 'plataforma', que no se agota.
+  const usados = {};
+  const planeadas = [...propias.map(i=>({inst:i, heredado:false})), ...heredadas.map(i=>({inst:i, heredado:true}))]
+    .map(entrada=>{
+      const sub = getSubproducto(entrada.inst.subproductoId);
+      const producto = getProducto(sub.productoNivel2Id);
+      const clave = sub.assetKey || producto.assetKey;
+      let col = COLOCACION_ICONOS[clave] || COLOCACION_DEFECTO;
+      const tope = HUECOS_POR_MODO[col.modo];
+      if(tope !== undefined && (usados[col.modo]||0) >= tope) col = COLOCACION_DEFECTO;
+      usados[col.modo] = (usados[col.modo]||0) + 1;
+      return { ...entrada, sub, producto, clave, modo: col.modo, factor: col.factor, turno: usados[col.modo]-1 };
+    });
+  const totalPorModo = planeadas.reduce((acc,p)=>{ acc[p.modo]=(acc[p.modo]||0)+1; return acc; }, {});
+
+  // 2ª pasada: construir, colocar y etiquetar
+  planeadas.forEach(p=>{
     // Un subproducto puede tener su propio `assetKey` (ago/2026: Firewall Virtual/On Premise,
     // ver AssetRegistry) para distinguirse de sus hermanos, que por defecto comparten el ícono
     // del Producto (N2) — ver comentario del §1 del catálogo.
-    const build = AssetRegistry[sub.assetKey || producto.assetKey] || AssetRegistry.pantalla;
-    const color = getSubproductoColor(sub);
-    const asset = build(color);
-    const angle = (idx / Math.max(total,1)) * Math.PI*2;
-    asset.position.set(Math.cos(angle)*radius, assetY, Math.sin(angle)*radius);
-    if(isHeredado){
+    const build = AssetRegistry[p.clave] || AssetRegistry.pantalla;
+    const asset = build(getSubproductoColor(p.sub));
+    colocarAsset(asset, p.modo, p.factor, g, p.turno, totalPorModo[p.modo], ladoPuerto);
+
+    if(p.heredado){
       // estilo "fantasma": mismo ícono/color, pero translúcido, y no editable desde la sede
       // (el producto pertenece a la Matriz; se edita/elimina desde allí).
       asset.traverse(o=>{
         if(o.material){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; }
       });
-      const ud = { sedeId: sede.id, matrizInstanciaId: inst.instanciaId, isHeredadoAsset:true };
+      const ud = { sedeId: sede.id, matrizInstanciaId: p.inst.instanciaId, isHeredadoAsset:true };
       asset.userData = ud;
       asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.matrizInstanciaId=ud.matrizInstanciaId; o.userData.isHeredadoAsset=true; });
     } else {
-      const ud = { sedeId: sede.id, instanciaId: inst.instanciaId, isAsset:true };
+      const ud = { sedeId: sede.id, instanciaId: p.inst.instanciaId, isAsset:true };
       asset.userData = ud;
       asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.instanciaId=ud.instanciaId; o.userData.isAsset=true; });
     }
     container.add(asset);
-    idx++;
-  }
-  propias.forEach(inst=>placeAsset(inst, false));
-  heredadas.forEach(inst=>placeAsset(inst, true));
+  });
 
   sede.group.add(container);
 }
@@ -2877,23 +3126,82 @@ function refreshSedeAssets(sede){
 
 function gridToWorld(gx,gz){ return { x: gx*GRID_SPACING, z: gz*GRID_SPACING }; }
 
-function occupied(gx,gz,excludeId){
-  if(state.datacenter.activo && gx===0 && gz===DATACENTER_GZ) return true; // celda del Datacenter Epicentro (libre si fue eliminado)
-  if(state.sedes.some(s=>s.gx===gx && s.gz===gz && s.id!==excludeId)) return true;
-  if(state.matrices.some(m=>m.gx===gx && m.gz===gz && m.id!==excludeId)) return true;
-  if(state.nubes.some(n=>n.gx===gx && n.gz===gz && n.id!==excludeId)) return true;
-  return false;
+/* --- Ocupación de la grilla POR HUELLA REAL (v47) ---------------------------------------------
+   Hasta v46 la grilla razonaba por celda suelta: una entidad ocupaba su celda y nada más. Eso
+   funcionaba mientras toda entidad entrara holgada en los 4 de GRID_SPACING. Con los tamaños de
+   v47 ya no entran: el Datacenter mide 8 (dos celdas exactas), la Matriz 5.60 y la Sede Grande
+   4.56. Con la regla vieja, dos Sedes Grandes vecinas se solapan medio metro y el Datacenter
+   invade las dos celdas de al lado, cada una "libre" según la grilla.
+
+   Así que `occupied` pasa a comparar RECTÁNGULOS: la huella que tendría lo que se quiere colocar
+   contra la huella real de todo lo ya colocado, con un aire mínimo entre plataformas. Esto es lo
+   que permite subir los tamaños sin tocar GRID_SPACING: las entidades siguen encajando en la
+   grilla, solo que las grandes reservan de hecho la celda vecina.
+
+   Consecuencia buscada: la grilla se llena más rápido. Una Matriz y una Sede Grande consumen dos
+   celdas de ancho cada una, así que colocar muchas entidades obliga a repartirse más en Z. */
+const HOLGURA_ENTIDADES = 0.35; // aire mínimo entre dos plataformas vecinas
+
+function huellaEnCelda(gx, gz, w, d){
+  const c = gridToWorld(gx, gz);
+  return { x0: c.x - w/2, x1: c.x + w/2, z0: c.z - d/2, z1: c.z + d/2 };
+}
+function huellaDeColocada(entity){
+  const d = dimsEntidad(entity);
+  return huellaEnCelda(entity.gx, entity.gz, d.w, d.d);
+}
+function seSolapan(a, b){
+  return a.x0 < b.x1 + HOLGURA_ENTIDADES && b.x0 < a.x1 + HOLGURA_ENTIDADES &&
+         a.z0 < b.z1 + HOLGURA_ENTIDADES && b.z0 < a.z1 + HOLGURA_ENTIDADES;
 }
 
-function nearestFreeCell(worldX, worldZ, excludeId){
-  let gx = Math.round(worldX/GRID_SPACING);
-  let gz = Math.round(worldZ/GRID_SPACING);
-  let radius=0;
-  while(occupied(gx,gz,excludeId) && radius<10){
-    radius++;
-    gx += (radius%2===0?1:-1);
+/* Cuánto va a medir una entidad ANTES de construirla. Si el .glb de esa clave no está cargado,
+   cae a la medida de su primitiva, que es lo que se va a dibujar en ese caso. */
+const HUELLA_PRIMITIVA = {
+  sede_pequeno:{ w:1.2, d:1.2 }, sede_mediano:{ w:1.7, d:1.7 }, sede_grande:{ w:2.4, d:2.4 },
+  matriz:{ w:2.0, d:2.0 }, nube:{ w:2.3, d:2.3 }, datacenter:{ w:3.0, d:2.2 },
+};
+function huellaDeClave(clave){
+  const d = ModelLibrary.dims(clave);
+  return d ? { w:d.w, d:d.d } : (HUELLA_PRIMITIVA[clave] || HUELLA_PRIMITIVA.sede_mediano);
+}
+function huellaDeSedePorEmpleados(empleados){
+  return huellaDeClave('sede_' + tamanoPorEmpleados(Math.max(1, Math.round(empleados || EMPLEADOS_DEFAULT))).id);
+}
+
+/* `huella` es el tamaño de lo que se quiere colocar (huellaDeClave / dimsEntidad). Sin ella se
+   asume una sede mediana, que es el tamaño con el que se arrastra por defecto. */
+function occupied(gx, gz, excludeId, huella){
+  const h = huella || huellaDeClave('sede_mediano');
+  const caja = huellaEnCelda(gx, gz, h.w, h.d);
+  if(state.datacenter.activo){
+    const dcDims = datacenterGroup.userData.dims || { w:3, d:2.2 };
+    if(seSolapan(caja, huellaEnCelda(0, DATACENTER_GZ, dcDims.w, dcDims.d))) return true;
   }
-  return {gx,gz};
+  return todasLasEntidades().some(e=>
+    e && e.id !== excludeId && e.id !== 'datacenter' && e.group && seSolapan(caja, huellaDeColocada(e)));
+}
+
+/* Busca la celda libre más cercana recorriendo anillos alrededor de la pedida. Hasta v46 el
+   barrido era solo en X (gx += ±1), que alcanzaba cuando cada entidad ocupaba una celda; ahora que
+   las grandes reservan dos, una fila se agota rápido y hay que poder bajar a la siguiente. */
+function nearestFreeCell(worldX, worldZ, excludeId, huella){
+  const gx0 = Math.round(worldX/GRID_SPACING);
+  const gz0 = Math.round(worldZ/GRID_SPACING);
+  if(!occupied(gx0, gz0, excludeId, huella)) return { gx:gx0, gz:gz0 };
+  for(let r=1; r<=8; r++){
+    const candidatos = [];
+    for(let dx=-r; dx<=r; dx++){
+      for(let dz=-r; dz<=r; dz++){
+        if(Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        candidatos.push({ gx:gx0+dx, gz:gz0+dz, dist: dx*dx + dz*dz });
+      }
+    }
+    candidatos.sort((a,b)=>a.dist-b.dist);
+    const libre = candidatos.find(c=>!occupied(c.gx, c.gz, excludeId, huella));
+    if(libre) return { gx:libre.gx, gz:libre.gz };
+  }
+  return { gx:gx0, gz:gz0 };
 }
 
 /* Las sedes ya NO se conectan automáticamente a nada al crearse: toda conexión (a la Matriz o
@@ -3052,7 +3360,7 @@ function showToast(text, duration=2600){
 function placeSedeAtClientPoint(clientX, clientY){
   const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
-  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  const {gx,gz} = nearestFreeCell(point.x, point.z, null, huellaDeSedePorEmpleados(EMPLEADOS_DEFAULT));
   createSede(EMPLEADOS_DEFAULT, gx, gz);
 }
 
@@ -3168,7 +3476,7 @@ function restoreDatacenter(){
 function placeMatrizAtClientPoint(clientX, clientY){
   const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
-  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  const {gx,gz} = nearestFreeCell(point.x, point.z, null, huellaDeClave('matriz'));
   createMatriz(gx, gz);
 }
 
@@ -3179,7 +3487,7 @@ function placeNubeAtClientPoint(clientX, clientY){
   const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
   const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
-  const {gx,gz} = nearestFreeCell(point.x, point.z);
+  const {gx,gz} = nearestFreeCell(point.x, point.z, null, huellaDeClave('nube'));
   createNube(nombre, gx, gz);
 }
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
@@ -3671,7 +3979,7 @@ function onPointerUp(e){
       connectingFromId = null;
       connectingHoverId = null;
     } else if(pointerMode==='moveSede' && movingSede){
-      const {gx,gz} = nearestFreeCell(movingSede.group.position.x, movingSede.group.position.z, movingSede.id);
+      const {gx,gz} = nearestFreeCell(movingSede.group.position.x, movingSede.group.position.z, movingSede.id, dimsEntidad(movingSede));
       movingSede.gx = gx; movingSede.gz = gz;
       const pos = gridToWorld(gx,gz);
       movingSede.group.position.set(pos.x, 0, pos.z);
@@ -4749,10 +5057,12 @@ popupConexionSelect.addEventListener('change', ()=>{
   let nueva;
   if(val===CONEXION_NUEVA_NUBE){
     const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
-    const {gx,gz} = nearestFreeCell(0,0);
+    const {gx,gz} = nearestFreeCell(0, 0, null, huellaDeClave('nube'));
     nueva = createNube(nombre, gx, gz);
   } else {
-    const {gx,gz} = nearestFreeCell(0,0);
+    const huellaNueva = val===CONEXION_NUEVA_SEDE
+      ? huellaDeSedePorEmpleados(EMPLEADOS_DEFAULT) : huellaDeClave('matriz');
+    const {gx,gz} = nearestFreeCell(0, 0, null, huellaNueva);
     nueva = val===CONEXION_NUEVA_SEDE ? createSede(EMPLEADOS_DEFAULT, gx, gz) : createMatriz(gx, gz);
   }
   showToast(`"${nueva.nombre}" agregada — ya puedes conectarte a ella.`);

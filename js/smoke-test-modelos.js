@@ -83,7 +83,11 @@ const E = (w, expr) => w.eval(expr);
   const dc = E(w,'datacenterGroup');
   const dcD = dc.userData.dims;
   check('Datacenter reemplazado por el modelo', dc.userData.modelo === true && !!dc.getObjectByName('modeloGLB'));
-  check('dcY = altura real del modelo escalado', cerca(E(w,'dcY'), 0.9057195 * E(w,'MODELOS_ESCALA')), [E(w,'dcY'), dcD]);
+  // v47: Datacenter y Matriz ya no usan la escala global, llevan su propia `escala` en MODELOS
+  // (ver §3D). La aserción tiene que leer la del modelo, no MODELOS_ESCALA.
+  const escalaDe = clave => E(w, `MODELOS['${clave}'].escala || MODELOS_ESCALA`);
+  check('dcY = altura real del modelo escalado', cerca(E(w,'dcY'), 0.9057195 * escalaDe('datacenter')), [E(w,'dcY'), dcD]);
+  check('el Datacenter mide 2 celdas de ancho (pedido del cliente, v47)', cerca(dcD.w, 2 * E(w,'GRID_SPACING'), 0.05), dcD.w);
   const nombres = dc.children.map(o=>o.name);
   check('tras reconstruir: 1 halo, 1 hitbox, 1 puerto (sin duplicados)',
     nombres.filter(n=>n==='matrizHalo').length===1 && nombres.filter(n=>n==='matrizHitbox').length===1 && nombres.filter(n=>n==='connPort').length===1, nombres);
@@ -112,7 +116,15 @@ const E = (w, expr) => w.eval(expr);
   check('etiqueta de la sede a altura del modelo + 0.85', cerca(E(w,'nameLabels').get(sM.id).localY, sM.group.userData.dims.h + 0.85));
   w.eval(`(function(){ const s=state.sedes.find(x=>x.id==='${sM.id}'); s.instancias.push({ instanciaId:'inst_t1', subproductoId:'edr', verticalId:'ciberseguridad', valores:{} }); refreshSedeAssets(s); })()`);
   const icono = sM.group.getObjectByName('assetsContainer').children[0];
-  check('anillo de productos a altura del modelo + 0.35', cerca(icono.position.y, sM.group.userData.dims.h + 0.35), icono.position.y);
+  // v46: los íconos ya NO viven en un anillo flotante sobre el techo. `edr` usa el candado, que
+  // se coloca en modo 'envolver': centrado en planta sobre el edificio y a la altura de su
+  // cuerpo, no por encima. Esta aserción es la que impide volver al anillo sin darse cuenta.
+  const gEnt = E(w, `geometriaEntidad(state.sedes.find(x=>x.id==='${sM.id}'))`);
+  check('End Point se coloca envolviendo el edificio, no en un anillo flotante',
+    icono.position.x === 0 && icono.position.z === 0 && icono.position.y < gEnt.h,
+    [icono.position.x, icono.position.y, icono.position.z, gEnt.h]);
+  check('ningún ícono queda por encima del techo del modelo',
+    sM.group.getObjectByName('assetsContainer').children.every(a=>a.position.y <= gEnt.h + 0.001));
   E(w,`setSedeEmpleados(state.sedes.find(x=>x.id==='${sM.id}'), 80)`);
   const sMr = E(w,`state.sedes.find(x=>x.id==='${sM.id}')`);
   check('cambiar a 80 empleados reconstruye con el modelo Grande y conserva productos', sMr.tamano==='grande' && sMr.group.userData.modelo && cerca(sMr.group.userData.dims.w, 1.2*k) && sMr.instancias.length===1);
@@ -122,7 +134,11 @@ const E = (w, expr) => w.eval(expr);
   const m = E(w,'createMatriz(0, 0)');
   check('Matriz usa el modelo, con sus 4 objetos nombrados', m.group.userData.modelo && ['nucleo','beam','shell_a','shell_b'].every(n=>!!m.group.getObjectByName(n)));
   check('Matriz: sin cascarones giratorios de v39 (hubShell)', !m.group.getObjectByName('hubShell') && !m.group.getObjectByName('hubShell2'));
-  check('Matriz: coreY = altura del modelo', cerca(m.group.userData.coreY, 1.0806451 * k));
+  check('Matriz: coreY = altura del modelo', cerca(m.group.userData.coreY, 1.0806451 * escalaDe('matriz')));
+  // La jerarquía de tamaños que pidió el cliente: Datacenter > Matriz > Sede Grande.
+  check('jerarquía de anchos: Datacenter > Matriz > Sede Grande',
+    dcD.w > m.group.userData.dims.w && m.group.userData.dims.w > E(w,'huellaDeClave("sede_grande")').w,
+    [dcD.w, m.group.userData.dims.w, E(w,'huellaDeClave("sede_grande")').w]);
   const n = E(w,"createNube('AWS', -1, -1)");
   check('Nube usa el modelo (puffs + base) y coreY = su altura', n.group.userData.modelo && !!n.group.getObjectByName('puffs') && !!n.group.getObjectByName('base') && cerca(n.group.userData.coreY, 0.6126316 * k));
 
@@ -162,6 +178,37 @@ const E = (w, expr) => w.eval(expr);
   check('al terminar la carga se actualizan al modelo', preR.group.userData.modelo === true && preMR.group.userData.modelo === true);
   check('conservan posición, id y la conexión entre ellas', preR.group.position.equals(posPre) && preMR.group.userData.sedeId === preM.id && E(w2,'state.conexiones').length === 1 && E(w2,'connectionAnims').length === 1);
   check('el group viejo ya no está en la escena', !E(w2,'scene').children.includes(grupoViejo) && E(w2,'scene').children.includes(preR.group));
+
+  console.log('\nH-bis. Ocupación de la grilla por huella real (v47)');
+  // Con los tamaños de v47 varias entidades son más anchas que su celda, así que la grilla ya no
+  // puede razonar por celda suelta. Esta sección es la que impide volver a la regla vieja sin
+  // darse cuenta: es un cambio invisible hasta que dos plataformas se funden en una sola losa.
+  const wG = ventana({});
+  await E(wG,'modelosListos');
+  const SEP = E(wG,'GRID_SPACING');
+  const gDC = E(wG,'datacenterGroup').userData.dims;
+  const gMat = E(wG,'huellaDeClave("matriz")'), gGran = E(wG,'huellaDeClave("sede_grande")');
+  const gPeq = E(wG,'huellaDeClave("sede_pequeno")');
+  check('hay entidades más anchas que una celda (si no, esta sección no prueba nada)',
+    gDC.w > SEP && gMat.w > SEP && gGran.w > SEP, [gDC.w, gMat.w, gGran.w, SEP]);
+  check('la celda pegada al Datacenter NO admite una Matriz',
+    E(wG, `occupied(1, DATACENTER_GZ, null, huellaDeClave('matriz'))`) === true);
+  check('…pero a dos celdas sí entra',
+    E(wG, `occupied(2, DATACENTER_GZ, null, huellaDeClave('matriz'))`) === false);
+  check('una Sede Pequeña tampoco entra pegada al Datacenter (la huella manda, no el tipo)',
+    E(wG, `occupied(1, DATACENTER_GZ, null, huellaDeClave('sede_pequeno'))`) === true, gPeq);
+  const gA = E(wG,'createSede(80, 5, 5)');
+  check('dos Sedes Grandes no caben en celdas contiguas',
+    E(wG, `occupied(6, 5, null, huellaDeClave('sede_grande'))`) === true);
+  // La separación no se mide en celdas: basta con que las dos huellas no se toquen, y el hueco
+  // puede aparecer tanto corriéndose en X como bajando en Z (el barrido de v47 recorre anillos).
+  const cLibre = E(wG, `nearestFreeCell(6*GRID_SPACING, 5*GRID_SPACING, null, huellaDeClave('sede_grande'))`);
+  check('…y nearestFreeCell devuelve una celda cuya huella no toca a la vecina',
+    E(wG, `seSolapan(huellaEnCelda(${cLibre.gx}, ${cLibre.gz}, ${gGran.w}, ${gGran.d}),
+                     huellaDeColocada(state.sedes.find(s=>s.id==='${gA.id}')))`) === false,
+    [cLibre, gA.gx, gA.gz]);
+  check('mover una entidad no la considera obstáculo de sí misma',
+    E(wG, `occupied(${gA.gx}, ${gA.gz}, '${gA.id}', dimsEntidad(state.sedes.find(s=>s.id==='${gA.id}')))`) === false);
 
   console.log('\nI. Fallbacks');
   const w3 = ventana({ datos:false });
