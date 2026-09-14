@@ -1,4 +1,4 @@
-/* Smoke test v17 / prototipo v43 — bloom selectivo de los emisivos (§3C de functions.js).
+/* Smoke test v17 / prototipo v45 — bloom selectivo de los emisivos (§3C de functions.js).
    Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-brillo.js
    Carga index.html + three r128 + GLTFLoader + postproceso-r128 + modelos-glb + functions.js en
    jsdom. El WebGLRenderer es un doble que REGISTRA cada render (destino, capas de cámara, estado
@@ -40,11 +40,17 @@ function ventana(op = {}){
   w.addEventListener('error', e=> errores.push(e.message));
   const run = code => { const s = w.document.createElement('script'); s.textContent = code; w.document.body.appendChild(s); };
   run(THREE_SRC);
+  // Capacidades de GPU simuladas: el doble las expone tal cual las pida functions.js. Por defecto
+  // WebGL1 pelado (que es lo que asumían las pruebas de v44); op.webgl2/op.extensiones las suben
+  // para ejercitar el camino de media precisión de §3C sin GPU.
+  run(`window.__webgl2 = ${!!op.webgl2}; window.__extensiones = ${JSON.stringify(op.extensiones || [])};`);
   // Doble del renderer: registra cada render en window.__renders.
   run(`window.__renders = []; window.__tam = { w:800, h:600 };
     THREE.WebGLRenderer = function(){
       const self = this; let destino = null, clearC = new THREE.Color(0,0,0), clearA = 0;
-      this.domElement = document.createElement('canvas'); this.autoClear = true; this.capabilities = { isWebGL2:false };
+      this.domElement = document.createElement('canvas'); this.autoClear = true;
+      this.capabilities = { isWebGL2: !!window.__webgl2 };
+      this.extensions = { has: n => (window.__extensiones || []).indexOf(n) !== -1 };
       this.setPixelRatio = ()=>{}; this.setSize = ()=>{}; this.getPixelRatio = ()=>1;
       this.getSize = v=>v.set(window.__tam.w, window.__tam.h);
       this.getClearColor = c=>c.copy(clearC); this.setClearColor = (c,a)=>{ clearC = new THREE.Color(c); if(a!==undefined) clearA = a; }; this.getClearAlpha = ()=>clearA;
@@ -115,6 +121,15 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   check('después del frame todo queda como estaba (colorWrite, capas, autoClear)', bases.every(b=>b.colorWrite) && E(w,'camera').layers.mask === 1 && E(w,'renderer').autoClear === true);
   check('el halo suma luz y no toca el alfa del canvas (fondo CSS intacto)', /blendSrcAlpha: THREE\.ZeroFactor, blendDstAlpha: THREE\.OneFactor/.test(FUNCS) && /gl_FragColor = vec4\(aSRGB\(texture2D\(tBrillo, vUv\)\.rgb\) \* nucleo, 0\.0\)/.test(FUNCS));
   check('el loop de animación dibuja con brillo', /renderizarFrame\(true\)/.test(FUNCS.slice(FUNCS.indexOf('function animate()'), FUNCS.indexOf('function animate()') + 3000)));
+  const FSH = E(w,'Brillo.material().fragmentShader');
+  check('el composite aplica dithering al final (el canvas sigue siendo de 8 bits)',
+    E(w,'Brillo.material().dithering') === true && /^#include <dithering_pars_fragment>$/m.test(FSH) && /^#include <dithering_fragment>$/m.test(FSH), FSH);
+  check('…con los #include al principio de línea del shader ARMADO (si no, resolveIncludes no los ve)',
+    /^#include <common>$/m.test(FSH), FSH);
+  check('…los chunks existen con ese nombre en r128 y definen dithering()',
+    /vec3 dithering\(/.test(E(w,'THREE.ShaderChunk.dithering_pars_fragment')) && /dithering\( gl_FragColor\.rgb \)/.test(E(w,'THREE.ShaderChunk.dithering_fragment')));
+  check('…y el dithering va DESPUÉS del sRGB y del núcleo, no antes',
+    FSH.indexOf('#include <dithering_fragment>') > FSH.indexOf('aSRGB(texture2D(tBrillo, vUv).rgb) * nucleo'));
 
   console.log('\nD. Tamaño');
   const antes = E(w,'Brillo.tamano()');
@@ -123,6 +138,27 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   const despues = E(w,'Brillo.tamano()');
   check('si el canvas cambia de tamaño, el render target lo sigue en el frame siguiente',
     antes.w === 800 && antes.h === 600 && despues.w === 1024 && despues.h === 512 && E(w,'Brillo.estado()') === 'activo', [antes, despues]);
+
+  console.log('\nD-bis. Precisión del halo (v45)');
+  check('sin soporte de media precisión la cadena queda en 8 bits y el brillo sigue activo',
+    E(w,'Brillo.precision()') === E(w,'THREE.UnsignedByteType') && E(w,'Brillo.estado()') === 'activo', E(w,'Brillo.precision()'));
+  const wHF = ventana({ webgl2:true, extensiones:['EXT_color_buffer_half_float', 'EXT_color_buffer_float'] });
+  await E(wHF,'modelosListos');
+  check('con soporte, los 12 render targets del halo van a media precisión (fuente + los 11 del pase)',
+    E(wHF,'Brillo.precision()') === E(wHF,'THREE.HalfFloatType'), E(wHF,'Brillo.precision()'));
+  check('…media precisión y multisample conviven: la fuente sigue siendo multisample',
+    E(wHF,'Brillo.estado()') === 'activo' && wHF.__erroresScript.length === 0 && wHF.__warns.filter(x=>x.includes('brillo')).length === 0,
+    [wHF.__erroresScript, wHF.__warns]);
+  check('…y el frame se sigue dibujando en el orden de siempre',
+    (()=>{ const rr = frame(wHF); return rr.some(x=>x.destino === 'brillo.fuente') && rr[rr.length-1].capas === (1 << E(wHF,'CAPA_PUERTOS')); })());
+  const wSolo2 = ventana({ webgl2:true });
+  await E(wSolo2,'modelosListos');
+  check('WebGL2 sin las extensiones de color buffer → 8 bits, no se fuerza RGBA16F',
+    E(wSolo2,'Brillo.precision()') === E(wSolo2,'THREE.UnsignedByteType'), E(wSolo2,'Brillo.precision()'));
+  check('BRILLO.precisionAlta = false devuelve el pipeline de v44 (primera guarda de tipoRenderTarget)',
+    /if\(!BRILLO\.precisionAlta\) return THREE\.UnsignedByteType;/.test(FUNCS) && E(w,'BRILLO.precisionAlta') === true);
+  check('el vendor sigue intacto: la precisión se aplica desde functions.js, no editando postproceso-r128.js',
+    !/HalfFloatType/.test(POST) && /rt\.texture\.type = tipoRT/.test(FUNCS));
 
   console.log('\nE. Interruptor y PDF');
   E(w,'Brillo.activar(false)');
@@ -158,7 +194,7 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   check('index.html: three → GLTFLoader → postproceso → modelos-glb → functions',
     i('three.min.js') > 0 && i('three.min.js') < i('js/vendor/GLTFLoader.js') && i('js/vendor/GLTFLoader.js') < i('js/vendor/postproceso-r128.js') &&
     i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/functions.js'));
-  check('index.html muestra Prototipo v44', (HTML.match(/Prototipo v44/g)||[]).length === 2);
+  check('index.html muestra Prototipo v45', (HTML.match(/Prototipo v45/g)||[]).length === 2);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);

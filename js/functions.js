@@ -1581,18 +1581,76 @@ const BRILLO = {
   radio: 0.30,       // cuánto se abre (UnrealBloomPass.radius, 0..1). Más de ~0.6 ya es neblina, no neón
   nucleo: 0.60,      // cuánto se suma la línea emisiva sobre sí misma: da el centro casi blanco del neón
   resolucion: 1,     // tamaño del render target respecto del canvas en px CSS (bajar a 0.5 si la tablet no da)
+  // v45: media precisión (RGBA16F) en TODOS los render targets del halo. Ver "PRECISIÓN" abajo.
+  // Ponerlo en false devuelve el pipeline exacto de v44 (8 bits), por si hay que recuperar VRAM.
+  precisionAlta: true,
 };
+
+/* -------------------------------------------------------------------------
+   PRECISIÓN DEL HALO (v45) — por qué media precisión y no solo "más resolución"
+   -------------------------------------------------------------------------
+   El halo salía con anillos concéntricos y bordes escalonados. No eran dos defectos: eran uno.
+
+   La cola del halo se guardaba en 8 bits y en LINEAL, y recién al componer se codificaba a sRGB
+   (ver el fragment shader de `quad`). Esa codificación ESTIRA la zona oscura: el código lineal
+   1/255 aterriza cerca de 0.08 en sRGB, el 2/255 cerca de 0.11. O sea que dos pasos consecutivos
+   de 8 bits, justo donde el halo se apaga, quedaban a una distancia perceptual enorme → anillos.
+   Y esos anillos, al dibujar cada curva de nivel, hacían VISIBLE la malla del upsample bilineal de
+   los mips (UnrealBloomPass arranca en resolución/2), que es lo que se leía como "pixelado".
+   Por eso se ataca la precisión y no la resolución: sin curvas de nivel no hay malla que mostrar,
+   y subir la resolución del pase costaba llenado en cada frame (el dial `resolucion` sigue ahí).
+
+   Se toca la cadena ENTERA, no solo los mips: UnrealBloomPass compone los 5 niveles y después
+   suma el resultado de vuelta sobre `fuente` (su readBuffer). Si `fuente` quedaba en 8 bits, el
+   halo se recuantizaba en el último paso, justo antes del sRGB, y media precisión en los mips no
+   se notaba. Los 11 targets internos suman ~3 MB; `fuente` es el caro, porque es multisample
+   (~+24 MB en un canvas de 1400×850). De ahí el interruptor `precisionAlta`.
+
+   Si la GPU no puede renderizar a media precisión, `tipoRenderTarget()` devuelve 8 bits y todo
+   sigue exactamente como en v44 — el dithering del composite (abajo) tapa buena parte del banding
+   igual, y no cuesta nada.
+   ------------------------------------------------------------------------- */
 const BRILLO_EN_PDF = false;
 
 const Brillo = (()=>{
   let estado = 'pendiente'; // 'activo' | 'apagado' | 'sin_soporte' | 'error'
   let fuente = null, pase = null, quad = null;
+  let tipoRT = THREE.UnsignedByteType; // tipo real con el que quedaron los render targets del halo
   const tam = new THREE.Vector2();
   const clearPrevio = new THREE.Color();
 
   function medidas(){
     renderer.getSize(tam);
     return { w: Math.max(2, Math.round(tam.x * BRILLO.resolucion)), h: Math.max(2, Math.round(tam.y * BRILLO.resolucion)) };
+  }
+
+  /* ¿Se puede renderizar a media precisión? Hacen falta tres cosas, y las tres se consultan antes
+     de crear nada: poder DIBUJAR a RGBA16F, poder FILTRARLO en lineal (los mips se muestrean con
+     LinearFilter) y, en WebGL1, tener el tipo de textura. Si falta alguna, 8 bits y a otra cosa:
+     pedir media precisión sin soporte no tira excepción, deja el framebuffer incompleto y el halo
+     se vería negro, que es peor que el banding. */
+  function tipoRenderTarget(){
+    if(!BRILLO.precisionAlta) return THREE.UnsignedByteType;
+    const ext = renderer.extensions;
+    if(!ext || typeof ext.has !== 'function') return THREE.UnsignedByteType;
+    const esWebGL2 = !!(renderer.capabilities && renderer.capabilities.isWebGL2);
+    const dibuja = ext.has('EXT_color_buffer_half_float') || (esWebGL2 && ext.has('EXT_color_buffer_float'));
+    const filtra = esWebGL2 || ext.has('OES_texture_half_float_linear');
+    const tipo   = esWebGL2 || ext.has('OES_texture_half_float');
+    return (dibuja && filtra && tipo) ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  }
+
+  /* Todos los render targets por los que pasa el halo: `fuente` + los 11 internos del pase
+     (bright + 5 horizontales + 5 verticales). UnrealBloomPass los crea en su constructor con el
+     tipo por defecto y no admite configurarlo; como todavía no se subió ninguna textura a la GPU,
+     reasignar `texture.type` antes del primer frame alcanza — three los crea con ese tipo, y
+     `setSize()` lo respeta al recrearlos en cada resize. Se hace desde acá, y NO editando
+     js/vendor/postproceso-r128.js, para que el vendor siga siendo una copia limpia de upstream. */
+  function objetivosPrecision(){
+    if(!fuente || !pase) return [];
+    return [fuente, pase.renderTargetBright]
+      .concat(pase.renderTargetsHorizontal || [], pase.renderTargetsVertical || [])
+      .filter(rt => rt && rt.texture);
   }
 
   function crear(){
@@ -1604,9 +1662,10 @@ const Brillo = (()=>{
     if(!BRILLO.activo){ estado = 'apagado'; return; }
     try{
       const { w, h } = medidas();
+      tipoRT = tipoRenderTarget();
       // Multisample (WebGL2): las líneas emisivas miden ~1 px en pantalla; sin antialiasing el
       // contorno de la Nube salía punteado. En WebGL1 cae a un render target común.
-      const opciones = { minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, format:THREE.RGBAFormat };
+      const opciones = { minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter, format:THREE.RGBAFormat, type:tipoRT };
       if(renderer.capabilities && renderer.capabilities.isWebGL2 && typeof THREE.WebGLMultisampleRenderTarget === 'function'){
         fuente = new THREE.WebGLMultisampleRenderTarget(w, h, opciones);
         fuente.samples = 4;
@@ -1615,6 +1674,7 @@ const Brillo = (()=>{
       }
       fuente.texture.name = 'brillo.fuente';
       pase = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), BRILLO.intensidad, BRILLO.radio, 0);
+      objetivosPrecision().forEach(rt=>{ rt.texture.type = tipoRT; }); // ver "PRECISIÓN DEL HALO"
       quad = new THREE.FullScreenQuad(new THREE.ShaderMaterial({
         uniforms: { tBrillo:{ value:fuente.texture }, nucleo:{ value:BRILLO.nucleo } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -1627,9 +1687,23 @@ const Brillo = (()=>{
         // §3A-ter. Sumar lineal sobre sRGB mezcla dos espacios y el halo sale apagado y sucio, así
         // que acá se codifica a sRGB antes de sumar. `nucleo` multiplica después de codificar, para
         // que siga siendo una fuerza de pantalla directa de afinar.
-        fragmentShader: 'uniform sampler2D tBrillo; uniform float nucleo; varying vec2 vUv;' +
-          'vec3 aSRGB(vec3 c){ return mix(c*12.92, 1.055*pow(max(c, vec3(0.0)), vec3(0.41666))-0.055, step(vec3(0.0031308), c)); }' +
-          'void main(){ gl_FragColor = vec4(aSRGB(texture2D(tBrillo, vUv).rgb) * nucleo, 0.0); }',
+        // El dithering va al FINAL, después del sRGB y del `nucleo`: el canvas sigue siendo de 8
+        // bits por canal, así que aunque el halo llegue en media precisión, la cuantización final
+        // ocurre igual acá. Media precisión arregla los pasos intermedios; el dithering, el último.
+        // Son los chunks de three (`dithering: true` define DITHERING y habilita el par/fragment),
+        // y `<common>` entra porque ahí vive el rand() que usan. Los #include tienen que arrancar
+        // la línea — por eso el shader se arma como lista y no como concatenación suelta.
+        fragmentShader: [
+          '#include <common>',
+          '#include <dithering_pars_fragment>',
+          'uniform sampler2D tBrillo; uniform float nucleo; varying vec2 vUv;',
+          'vec3 aSRGB(vec3 c){ return mix(c*12.92, 1.055*pow(max(c, vec3(0.0)), vec3(0.41666))-0.055, step(vec3(0.0031308), c)); }',
+          'void main(){',
+          '  gl_FragColor = vec4(aSRGB(texture2D(tBrillo, vUv).rgb) * nucleo, 0.0);',
+          '#include <dithering_fragment>',
+          '}',
+        ].join('\n'),
+        dithering: true, // entra en la clave del programa: sin esto los chunks de arriba no hacen nada
         blending: THREE.CustomBlending,
         blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
         blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor, // el alfa del canvas no cambia
@@ -1703,8 +1777,24 @@ const Brillo = (()=>{
     return estado;
   }
 
+  /* Tipo con el que quedó la cadena del halo, leído de los render targets REALES y no de la
+     intención: devuelve null si alguno quedó distinto del resto, así el smoke test verifica los 12
+     y no solo que `tipoRT` se haya calculado bien. */
+  function precision(){
+    const tipos = objetivosPrecision().map(rt => rt.texture.type);
+    if(!tipos.length) return null;
+    return tipos.every(t => t === tipos[0]) ? tipos[0] : null;
+  }
+
   crear();
-  return { renderizar, activar, estado: ()=> estado, tamano: ()=> fuente ? { w:fuente.width, h:fuente.height } : null };
+  return {
+    renderizar, activar, precision,
+    estado: ()=> estado,
+    tamano: ()=> fuente ? { w:fuente.width, h:fuente.height } : null,
+    // El material del composite, para que el smoke test verifique el shader ARMADO (los #include
+    // tienen que quedar al principio de línea) y no el texto indentado del archivo fuente.
+    material: ()=> quad ? quad.material : null,
+  };
 })();
 
 function renderizarFrame(conBrillo){ Brillo.renderizar(conBrillo); }
