@@ -1,3 +1,79 @@
+/* Inter (design system Puntonet · Atomic v1). @import debe ir primero en el archivo. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap');
+
+/* =====================================================================
+   DESIGN SYSTEM PUNTONET · ATOMIC v1 — TOKENS (fase 0 del rediseño)
+   Fuente: artefacto "Punto Net" (tokens.json / bundle.css).
+   Los componentes usan los semánticos --pn-color-*; las --pn-palette-*
+   solo alimentan a los semánticos.
+   ===================================================================== */
+:root{
+  /* Paleta (primitivos) */
+  --pn-palette-navy:#021027; --pn-palette-deep:#041027; --pn-palette-panel:#061c43;
+  --pn-palette-blue:#123ffc; --pn-palette-royal:#243bba; --pn-palette-cyan:#00d7ff;
+  --pn-palette-mint:#00ffc1; --pn-palette-coral:#ff675b; --pn-palette-lime:#e5f933;
+  --pn-palette-white:#f8fcff; --pn-palette-muted:#a9c9ed; --pn-palette-subtle:#7fa8d8;
+  --pn-palette-border:#3063a4; --pn-palette-focus:#54dfff; --pn-palette-disabled:#18314b;
+  --pn-palette-danger:#f3b7cb;
+  --pn-palette-capsuleTop:#234bbd; --pn-palette-capsuleDark:#071a49; --pn-palette-capsuleMid:#062557;
+  --pn-palette-capsuleLight:#387af0; --pn-palette-ctaTop:#1bdfff; --pn-palette-ctaDark:#007daa;
+  --pn-palette-silverLight:#faffff; --pn-palette-silverDark:#374a62;
+
+  /* Semánticos (modo Aprobado) */
+  --pn-color-navy:var(--pn-palette-navy); --pn-color-deep:var(--pn-palette-deep); --pn-color-panel:var(--pn-palette-panel);
+  --pn-color-blue:var(--pn-palette-blue); --pn-color-royal:var(--pn-palette-royal); --pn-color-cyan:var(--pn-palette-cyan);
+  --pn-color-mint:var(--pn-palette-mint); --pn-color-coral:var(--pn-palette-coral); --pn-color-lime:var(--pn-palette-lime);
+  --pn-color-white:var(--pn-palette-white); --pn-color-muted:var(--pn-palette-muted); --pn-color-subtle:var(--pn-palette-subtle);
+  --pn-color-border:var(--pn-palette-border); --pn-color-focus:var(--pn-palette-focus); --pn-color-disabled:var(--pn-palette-disabled);
+  --pn-color-danger:var(--pn-palette-danger);
+  --pn-color-capsuleTop:var(--pn-palette-capsuleTop); --pn-color-capsuleDark:var(--pn-palette-capsuleDark);
+  --pn-color-capsuleMid:var(--pn-palette-capsuleMid); --pn-color-capsuleLight:var(--pn-palette-capsuleLight);
+  --pn-color-ctaTop:var(--pn-palette-ctaTop); --pn-color-ctaDark:var(--pn-palette-ctaDark);
+  --pn-color-silverLight:var(--pn-palette-silverLight); --pn-color-silverDark:var(--pn-palette-silverDark);
+
+  /* Tipografía */
+  --font-sans:"Inter", system-ui, sans-serif;
+
+  /* Espaciado, alturas, radios */
+  --pn-layout-space4:4px; --pn-layout-space8:8px; --pn-layout-space12:12px; --pn-layout-space16:16px;
+  --pn-layout-space24:24px; --pn-layout-space32:32px; --pn-layout-space48:48px;
+  --pn-layout-height48:48px; --pn-layout-height60:60px; --pn-layout-height64:64px;
+  --pn-layout-radius12:12px; --pn-layout-radius18:18px; --pn-layout-radius24:24px; --pn-layout-pill:999px;
+
+  /* Glows (la luz va detrás del elemento) */
+  --pn-glow-blue:0 2px 14px 0 rgba(18,64,255,.28);
+  --pn-glow-focus:0 2px 14px 0 rgba(0,217,255,.28);
+  --pn-glow-mint:0 2px 14px 0 rgba(0,255,194,.28);
+  --pn-glow-coral:0 2px 14px 0 rgba(255,102,92,.28);
+  --pn-glow-lime:0 2px 14px 0 rgba(230,250,51,.28);
+
+  /* Degradados de marca (de arriba hacia abajo) */
+  --pn-gradient-primary:linear-gradient(180deg,var(--pn-color-ctaTop) 0%,var(--pn-color-ctaDark) 70%,var(--pn-color-cyan) 100%);
+  --pn-gradient-capsule:linear-gradient(180deg,var(--pn-color-capsuleTop) 0%,var(--pn-color-capsuleDark) 13%,var(--pn-color-capsuleMid) 55%,var(--pn-color-blue) 87%,var(--pn-color-capsuleLight) 100%);
+  --pn-gradient-control:linear-gradient(180deg,var(--pn-color-deep) 0%,var(--pn-color-panel) 100%);
+  --pn-gradient-shell:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-navy) 100%);
+  --pn-gradient-detail:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-panel) 35%,var(--pn-color-deep) 100%);
+
+  /* Assets del design system (rutas relativas a css/) */
+  --pn-img-background:url("../assets/ui/renders/background.png");
+  --pn-img-rail:url("../assets/ui/renders/rail.png");
+  --pn-img-panel:url("../assets/ui/renders/panel.png");
+  --pn-img-halo-off:url("../assets/ui/renders/halo_off.png");
+  --pn-img-halo-on:url("../assets/ui/renders/halo_on.png");
+}
+
+/* Estilos de texto del design system (9 estilos) */
+.pn-display-light{font:300 45px/54px var(--font-sans);letter-spacing:.1px;}
+.pn-display-strong{font:700 60px/66px var(--font-sans);letter-spacing:-1.2px;}
+.pn-heading-panel{font:700 32px/40px var(--font-sans);letter-spacing:-.6px;}
+.pn-heading-section{font:500 24px/32px var(--font-sans);letter-spacing:-.25px;}
+.pn-body-large{font:400 19px/28px var(--font-sans);letter-spacing:-.15px;}
+.pn-body-default{font:400 16px/24px var(--font-sans);letter-spacing:0;}
+.pn-body-small{font:400 13px/20px var(--font-sans);letter-spacing:0;}
+.pn-label-action{font:500 18px/24px var(--font-sans);letter-spacing:0;}
+.pn-label-overline{font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+/* ===================== FIN TOKENS DESIGN SYSTEM ===================== */
+
 :root{
     --bg: #0a0e14;
     --panel: #10151d;
