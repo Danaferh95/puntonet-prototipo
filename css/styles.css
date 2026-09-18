@@ -151,6 +151,36 @@
   .btn:disabled{opacity:.35;cursor:not-allowed;}
   .btn:disabled:hover{border-color:var(--border);color:var(--text);}
 
+  /* ---------- Header · design system (fase 2) ----------
+     Cabecera de 80 px: logo oficial 144×37 · divisor · subtítulo muted ·
+     acciones a la derecha (cliente, + logo, Generar Reporte con degradado primario).
+     Scoped a #header para no alterar los .btn del resto de la interfaz todavía. */
+  #header{gap:12px;padding:4px 28px 0;}
+  #header .header-logo{flex:none;display:block;width:144px;height:37px;}
+  #header .header-divider{flex:none;width:1px;height:32px;margin:0 6px 0 18px;background:var(--pn-color-border);}
+  #header .header-title{margin:0;color:var(--pn-color-muted);font:400 16px/24px var(--font-sans);letter-spacing:0;white-space:nowrap;}
+  #header #clienteInput{flex:none;width:226px;max-width:none;height:var(--pn-layout-height48);padding:0 16px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  #header #clienteInput::placeholder{color:var(--pn-color-muted);opacity:1;}
+  #header #clienteInput:focus{outline:none;border:2px solid var(--pn-color-focus);padding:0 15px;box-shadow:var(--pn-glow-focus);}
+  #header #logoUploadBtn{width:100px;height:var(--pn-layout-height48);border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+    background:var(--pn-gradient-control);color:var(--pn-color-white);font:500 18px/24px var(--font-sans);}
+  #header #logoUploadBtn:hover{border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+  #header #logoUploadBtn.has-logo{padding:4px 12px;}
+  #header #logoUploadBtn img{border-radius:var(--pn-layout-pill);}
+  #header .btn{height:var(--pn-layout-height48);padding:0 24px;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+    background:var(--pn-gradient-control);color:var(--pn-color-white);font:500 18px/24px var(--font-sans);}
+  #header .btn:hover{border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+  #header .btn:active,#header #logoUploadBtn:active{opacity:.8;}
+  #header .btn:focus-visible,#header #logoUploadBtn:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+  #header .btn.ghost{background:var(--pn-gradient-control);}
+  #header .btn.primary{display:inline-flex;align-items:center;justify-content:space-between;gap:16px;width:242px;margin-left:-2px;
+    background:var(--pn-gradient-primary);box-shadow:var(--pn-glow-focus);color:var(--pn-color-white);}
+  #header .btn.primary:hover{background:var(--pn-gradient-primary);color:var(--pn-color-white);border-color:var(--pn-color-focus);}
+  #header .btn-arrow{font-size:22px;line-height:1;}
+  #header .btn:disabled{opacity:.4;}
+
   /* ---------- Left panel ---------- */
   #left{grid-column:1;grid-row:2;background:var(--panel);border-right:1px solid var(--border);
     padding:14px 12px;overflow-y:auto;}
