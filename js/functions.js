@@ -871,7 +871,9 @@ function getLabelScreenNDC(entry, outVec){
 }
 function updateNameLabelPositions(){
   const w = wrap.clientWidth, h = wrap.clientHeight;
-  nameLabels.forEach(entry=>{
+  nameLabels.forEach((entry, id)=>{
+    // EntityLabel del design system: borde cian más marcado en la entidad seleccionada.
+    entry.el.classList.toggle('is-selected', state.selectedSedeIds.includes(id));
     getLabelScreenNDC(entry, tmpLabelVec);
     if(tmpLabelVec.z < -1 || tmpLabelVec.z > 1){ entry.el.style.display = 'none'; return; }
     entry.el.style.display = '';
@@ -2465,11 +2467,42 @@ let panModeActive = false;
 const panToggleBtn = byId('panToggle');
 function setPanModeActive(active){
   panModeActive = active;
-  panToggleBtn.style.background = active ? 'var(--cian)' : '';
-  panToggleBtn.style.color = active ? '#04121a' : '';
-  panToggleBtn.style.borderColor = active ? 'var(--cian)' : '';
+  // Apariencia del estado activo en styles.css (.zoom-btn.is-active) — antes eran estilos inline.
+  panToggleBtn.classList.toggle('is-active', active);
+  panToggleBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
 panToggleBtn.addEventListener('click', ()=> setPanModeActive(!panModeActive));
+
+/* --- Pantalla completa (fase 6 del rediseño): alterna toda la app a pantalla completa con la
+   Fullscreen API (con prefijo webkit para Safari). Si el navegador no la soporta (p.ej. Safari
+   en iPhone), el botón se oculta. El canvas se reajusta solo con el evento 'resize'. --- */
+const fullscreenBtn = byId('fullscreenToggle');
+function fullscreenElement(){
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+function toggleFullscreen(){
+  const root = document.documentElement;
+  if(fullscreenElement()){
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else {
+    const req = root.requestFullscreen || root.webkitRequestFullscreen;
+    const res = req && req.call(root);
+    if(res && res.catch) res.catch(()=> showToast('El navegador no permitió la pantalla completa'));
+  }
+}
+function syncFullscreenButton(){
+  const on = !!fullscreenElement();
+  fullscreenBtn.classList.toggle('is-active', on);
+  fullscreenBtn.title = on ? 'Salir de pantalla completa' : 'Pantalla completa';
+  setTimeout(handleViewportResize, 60);
+}
+if(document.fullscreenEnabled || document.webkitFullscreenEnabled){
+  fullscreenBtn.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', syncFullscreenButton);
+  document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+} else {
+  fullscreenBtn.hidden = true;
+}
 
 /* --- Redimensionar (incluye rotación de pantalla / bloqueo de orientación vía CSS) --- */
 function handleViewportResize(){
