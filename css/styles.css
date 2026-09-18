@@ -348,7 +348,7 @@
   #right h2{margin:0;color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
   #rightTitle{padding-bottom:12px;border-bottom:1px solid var(--pn-color-border);}
   #navContent{display:none;}
-  #instanceSection{display:none;padding-top:16px;border-top:1px solid var(--pn-color-border);}
+  #instanceSection{display:none;}
   #navEmpty{color:var(--pn-color-muted);font:400 16px/24px var(--font-sans);}
   .detail-asset{display:none;width:245px;max-width:100%;height:163px;margin:-4px auto 4px;background:center / contain no-repeat;}
   .detail-asset--sede{display:block;background-image:url("../assets/ui/renders-sm/sede.webp");}
@@ -377,60 +377,95 @@
      separador inferior que functions.js muestra (display:flex) u oculta (display:none) según lo
      que esté seleccionado. Antes cada uno repetía las mismas 5 declaraciones con su propio #id;
      ahora comparten .editBox y solo declaran lo que de verdad los diferencia (el gap). */
-  .editBox{display:none;flex-direction:column;padding:10px 0 12px;margin-bottom:6px;
-    border-bottom:1px solid var(--border);}
+  .editBox{display:none;flex-direction:column;padding:0 0 16px;margin-bottom:16px;
+    border-bottom:1px solid var(--pn-color-border);}
   #sedeEditBox{gap:2px;}
   #datacenterEditBox, #herenciaBox, #connectionsBox{gap:8px;}
-  #datacenterEditBox .hint{font-size:10.5px;color:var(--muted);line-height:1.5;}
-  #sedeEditBox .field, #matrizEditBox .field{margin-bottom:10px;}
-  #sedeEditBox .field:last-child, #matrizEditBox .field:last-child{margin-bottom:0;}
-  #herenciaBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
-  #herenciaBox .herenciaGroup{font-size:10.5px;color:var(--muted);margin:8px 0 4px;}
-  #herenciaBox .herenciaEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
-  #herenciaBox .herenciaList{display:flex;flex-direction:column;gap:5px;}
-  #herenciaBox .herenciaRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
-    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;}
-  #herenciaBox .herenciaRow:hover{border-color:var(--cian);}
-  #herenciaBox .herenciaCheck{accent-color:var(--cian);width:14px;height:14px;cursor:pointer;flex-shrink:0;}
-  #herenciaBox .herenciaName{flex:1;}
-  #herenciaBox .herenciaRemove{color:var(--danger);font-weight:700;cursor:pointer;padding:0 3px;flex-shrink:0;}
-  #herenciaBox .herenciaRemove:hover{color:#fca5a5;}
   /* --- Concentrador (sep/2026): campo de SOLO LECTURA del bloque de Matriz. No lleva input ni
      borde de campo editable justamente para que se lea como un dato calculado y no como algo que
      el vendedor pueda escribir: total en grande, desglose canal por canal debajo. --- */
-  .concentradorTotal{font-size:19px;font-weight:700;color:var(--cian);line-height:1.15;}
-  .concentradorEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
-  .concentradorList{display:flex;flex-direction:column;gap:3px;margin-top:6px;}
-  .concentradorRow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text);
-    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:4px 7px;}
-  .concentradorOrigen{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .concentradorMbps{color:var(--muted);flex-shrink:0;}
-  .concentradorBackupTag{flex-shrink:0;font-size:9px;letter-spacing:.03em;color:var(--indigo);
-    border:1px solid var(--indigo);border-radius:3px;padding:0 4px;line-height:1.5;}
-  .concentradorHint{font-size:10px;color:var(--muted);line-height:1.45;margin-top:6px;}
   #matrizHint{display:none;margin:0 0 12px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
   #popupBackupField{display:none;}
   #popupBackupField .toggleRow{margin-bottom:0;} /* el hint va debajo, no hace falta separación extra */
   #popupBackupField .toggleHint{margin-top:3px;}
   .btn.danger-outline{color:var(--danger);border-color:var(--danger);}
   .btn.block{width:100%;} /* botones "Eliminar ..." de los bloques del panel derecho */
-  #connectionsBox label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;}
-  #connectionsBox .connEmpty{font-size:11px;color:var(--muted);line-height:1.5;}
-  #connectionsBox .connList{display:flex;flex-direction:column;gap:6px;}
-  /* --- Conexión: fila única, clic abre el popup de la instancia que representa (mismo
-     formulario que "Servicios asignados"; ya no hay un editor propio con acordeón). --- */
-  .connItem{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--panel-2);}
-  .connItem:hover{border-color:var(--cian);}
-  .connItem.open{border-color:var(--cian);}
-  .connRow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;
-    padding:8px 9px;}
-  .connDot{width:8px;height:8px;border-radius:50%;background:var(--cian);flex-shrink:0;}
-  .connName{flex:1;}
-  .connDetalle{color:var(--muted);font-weight:400;font-size:10.5px;}
-  .connArrow{color:var(--muted);font-size:11px;flex-shrink:0;}
-  .connItem.open .connArrow{color:var(--cian);}
-  .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
-  .connDelete:hover{color:#fca5a5;}
+
+
+  /* ---------- Panel de detalle · formularios y bloques (fase 4b) ----------
+     Campos (label Body/Small muted + Input 48 px radio 12), slider del design system,
+     Concentrador calculado en cian (Heading/Panel), Conexiones y Herencia con pictograma,
+     IconButtons de 48 px y el botón "Eliminar …" (danger) al pie del panel. */
+  #right .field{display:flex;flex-direction:column;gap:8px;margin:0 0 16px;}
+  #right .field:last-child{margin-bottom:0;}
+  #right .field label, #right .editBox > label{display:block;margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  #right .field input[type="text"], #right .field input[type="number"]{width:100%;height:var(--pn-layout-height48);padding:0 16px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius12);background:var(--pn-gradient-control);
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  #right .field input::placeholder{color:var(--pn-color-muted);opacity:1;}
+  #right .field input:focus{outline:none;border:2px solid var(--pn-color-focus);padding:0 15px;}
+  #right .field .locked{opacity:.45;}
+  #right .empRow{gap:12px;}
+  /* el slider no lleva caja de campo (la regla genérica .field input le ponía fondo y borde) */
+  .field input[type="range"], #right .field input[type="range"]{height:48px;padding:0;border:0;border-radius:0;background:transparent;}
+  #right .empRow input[type="number"]{width:76px;padding:0 10px;text-align:center;}
+  #right .empRow input[type="number"]:focus{padding:0 9px;}
+  #right .tamanoInfo{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  #right .toggleHint, #datacenterEditBox .hint{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  #datacenterEditBox .hint{margin-bottom:0;}
+
+  /* Concentrador (solo lectura): total grande en cian, desglose y nota */
+  .concentradorTotal{color:var(--pn-color-cyan);font:700 32px/40px var(--font-sans);letter-spacing:-.6px;}
+  .concentradorEmpty{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .concentradorList{display:flex;flex-direction:column;gap:4px;}
+  .concentradorRow{display:flex;align-items:center;gap:8px;color:var(--pn-color-white);font:400 13px/20px var(--font-sans);}
+  .concentradorOrigen{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .concentradorMbps{flex:none;color:var(--pn-color-cyan);}
+  .concentradorBackupTag{flex:none;padding:0 6px;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+    color:var(--pn-color-muted);font:400 11px/16px var(--font-sans);}
+  .concentradorHint{color:var(--pn-color-subtle);font:400 12px/18px var(--font-sans);}
+
+  /* Conexiones y Herencia: título como overline */
+  #connectionsBox, #herenciaBox{gap:12px;}
+  #connectionsBox > label, #herenciaBox > label{color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+  #connectionsBox .connEmpty, #herenciaBox .herenciaEmpty{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  #connectionsBox .connList{display:flex;flex-direction:column;gap:16px;}
+  .connRow{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:16px;row-gap:8px;cursor:pointer;}
+  .connIcon{width:30px;height:30px;}
+  .connBody{display:flex;flex-direction:column;min-width:0;}
+  .connName{color:var(--pn-color-white);font:400 16px/24px var(--font-sans);overflow-wrap:anywhere;}
+  .connRow:hover .connName{color:var(--pn-color-cyan);}
+  .connTipo{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .connValor{color:var(--pn-color-cyan);font:500 13px/20px var(--font-sans);overflow-wrap:anywhere;}
+  .connSdwan{color:var(--pn-color-mint);font:400 13px/20px var(--font-sans);}
+  .connActions{grid-column:2;justify-self:end;display:flex;gap:8px;}
+  .connArrow, .connDelete, #herenciaBox .herenciaRemove{display:inline-flex;align-items:center;justify-content:center;
+    width:var(--pn-layout-height48);height:var(--pn-layout-height48);padding:0;border:1px solid var(--pn-color-border);border-radius:14px;
+    background:var(--pn-gradient-control);color:var(--pn-color-muted);font:400 24px/1 var(--font-sans);cursor:pointer;}
+  .connArrow svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;}
+  .connArrow:hover, .connDelete:hover, #herenciaBox .herenciaRemove:hover{border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+  .connArrow:active, .connDelete:active{opacity:.8;}
+  .connArrow:focus-visible, .connDelete:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+  .connItem.open .connArrow{border:2px solid var(--pn-color-focus);color:var(--pn-color-cyan);}
+
+  #herenciaBox .herenciaGroup{color:var(--pn-color-subtle);font:400 12px/18px var(--font-sans);}
+  #herenciaBox .herenciaList{display:flex;flex-direction:column;gap:8px;}
+  #herenciaBox .herenciaRow{display:flex;align-items:center;gap:12px;min-height:var(--pn-layout-height48);cursor:pointer;
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  #herenciaBox .herenciaRow:hover .herenciaName{color:var(--pn-color-cyan);}
+  #herenciaBox .herenciaCheck{flex:none;width:20px;height:20px;accent-color:var(--pn-color-cyan);cursor:pointer;}
+  #herenciaBox .herenciaIcon{flex:none;width:30px;height:30px;}
+  #herenciaBox .herenciaName{flex:1;min-width:0;overflow-wrap:anywhere;}
+  #herenciaBox .herenciaRemove{flex:none;font-size:20px;}
+
+  /* Botón "Eliminar …" al pie del panel (Button danger, alto 44 dentro del detalle) */
+  #navActions{display:flex;flex-direction:column;gap:12px;margin-top:4px;}
+  #navActions:empty{display:none;}
+  #navActions .btn{width:100%;height:44px;padding:0 24px;border:1px solid var(--pn-color-danger);border-radius:var(--pn-layout-pill);
+    background:var(--pn-gradient-control);color:var(--pn-color-danger);font:500 18px/24px var(--font-sans);}
+  #navActions .btn:hover{border-color:var(--pn-color-danger);color:var(--pn-color-white);}
+  #navActions .btn:active{opacity:.8;}
+  #navActions .btn:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
 
   /* ---------- Modal genérico ---------- */
   .modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.72);display:none;
@@ -497,35 +532,38 @@
      Usuarios de Matriz, Ancho de banda). */
   input[type="range"]{
     -webkit-appearance:none;appearance:none;
-    width:100%;height:15px;background:transparent;cursor:pointer;
+    width:100%;height:48px;background:transparent;cursor:pointer;
     --fill:0%;
   }
+  /* Slider del design system: riel de 4 px en --pn-color-disabled, valor en cian, thumb de 22 px */
   input[type="range"]::-webkit-slider-runnable-track{
-    height:6px;border-radius:3px;border:1px solid var(--border);
+    height:4px;border-radius:2px;border:0;
     background:linear-gradient(to right,
-      var(--cian) 0%, var(--cian) var(--fill),
-      var(--panel-2) var(--fill), var(--panel-2) 100%);
+      var(--pn-color-cyan) 0%, var(--pn-color-cyan) var(--fill),
+      var(--pn-color-disabled) var(--fill), var(--pn-color-disabled) 100%);
   }
   input[type="range"]::-moz-range-track{
-    height:6px;border-radius:3px;border:1px solid var(--border);
-    background:var(--panel-2);
+    height:4px;border-radius:2px;border:0;
+    background:var(--pn-color-disabled);
   }
   input[type="range"]::-moz-range-progress{
-    height:6px;border-radius:3px 0 0 3px;
-    background:var(--cian);
+    height:4px;border-radius:2px 0 0 2px;
+    background:var(--pn-color-cyan);
   }
   input[type="range"]::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;
-    width:15px;height:15px;border-radius:50%;
-    background:var(--cian);cursor:pointer;
-    box-shadow:0 1px 4px rgba(0,0,0,.4);
-    margin-top:-4.5px; /* centra el thumb de 15px sobre el track de 6px: webkit no lo hace solo al estilar el runnable-track */
+    width:22px;height:22px;border-radius:50%;
+    background:var(--pn-color-cyan);cursor:pointer;
+    box-shadow:var(--pn-glow-focus);
+    margin-top:-9px; /* centra el thumb de 22 px sobre el riel de 4 px */
   }
   input[type="range"]::-moz-range-thumb{
-    width:15px;height:15px;border-radius:50%;
-    background:var(--cian);border:none;cursor:pointer;
-    box-shadow:0 1px 4px rgba(0,0,0,.4);
+    width:22px;height:22px;border-radius:50%;
+    background:var(--pn-color-cyan);border:none;cursor:pointer;
+    box-shadow:var(--pn-glow-focus);
   }
+  input[type="range"]:focus-visible{outline:none;}
+  input[type="range"]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--pn-color-focus);}
   .modal-foot{padding:12px 18px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);}
   /* Eliminar: sólo aparece al editar una instancia existente, y empujado al extremo opuesto de
      Cancelar/Guardar para que no se confunda con ellos. */

@@ -4196,6 +4196,7 @@ const navContent = byId('navContent');
 const navSedeLabel = byId('navSedeLabel');
 const navSedeSub = byId('navSedeSub');   // tipo de entidad bajo el nombre (design system)
 const navAsset = byId('navAsset');       // render de la entidad seleccionada (design system)
+const navActions = byId('navActions');   // botón "Eliminar …" al pie del panel (design system)
 const matrizHintEl = byId('matrizHint');
 const matrizEditBoxEl = byId('matrizEditBox');
 const instanceSection = byId('instanceSection');
@@ -4528,6 +4529,7 @@ renderCatalogPanel();
 function renderRightPanel(){
   renderSaludPanel();
   const ids = state.selectedSedeIds;
+  navActions.innerHTML = '';
 
   if(ids.length===0){
     navEmpty.style.display='block';
@@ -4575,6 +4577,9 @@ function renderRightPanel(){
   renderDatacenterEditBox(isDatacenter ? state.datacenter : null);
   renderConnectionsBox(singleId);
   renderHerenciaBox(isSedeSingle ? getSedeById(singleId) : null);
+  // Design system (fase 4b): el botón "Eliminar …" de cada bloque va al pie del panel, después
+  // de conexiones y productos. Se mueve el mismo nodo, así que conserva su listener.
+  navContent.querySelectorAll('.editBox > .btn.danger-outline').forEach(btn=>navActions.appendChild(btn));
 
   if(ids.length===1){
     const entity = getSedeById(ids[0]);
@@ -4692,10 +4697,10 @@ function renderConnectionsBox(entityId){
   conexiones.forEach(c=>{
     const otro = otroExtremo(c, entityId);
     const tipoSub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
-    const dotColor = tipoSub ? colorHex(getSubproductoColor(tipoSub)) : 'var(--cian)';
+    const iconSrc = tipoSub ? iconoUiSubproducto(tipoSub) : 'assets/ui/icons/categoria_networking.svg';
     const tipoLabel = tipoSub ? tipoSub.nombre + (c.esBackup ? ' (Backup)' : '') : (c.esBackup ? 'Backup' : '');
     const sdwanAplicado = buscarSdwanQueApuntaA(c.id);
-    const sdwanTag = sdwanAplicado ? ` <span class="connDetalle" title="Sdwan balanceando este canal">⚡ Sdwan</span>` : '';
+    const sdwanTag = sdwanAplicado ? `<span class="connSdwan" title="Sdwan balanceando este canal">⚡ Sdwan</span>` : '';
     const inst = getInstanciaLigada(c);
     // El detalle mostrado sale de las propiedades reales de la instancia (Ancho de banda,
     // Ubicaciones, Nube, etc. — lo que sea que tenga ese subproducto), no de un campo aparte.
@@ -4710,10 +4715,17 @@ function renderConnectionsBox(entityId){
     const row = document.createElement('div');
     row.className = 'connRow';
     row.innerHTML = `
-      <span class="connDot" style="background:${dotColor};"></span>
-      <span class="connName">${escapeHtml(nombreEntidad(otro))}${tipoLabel ? ` <span class="connDetalle">· ${tipoLabel}</span>` : ''}${detalle ? ` <span class="connDetalle">(${detalle})</span>` : ''}${sdwanTag}</span>
-      <span class="connArrow" title="Editar">✎</span>
-      <span class="connDelete" title="${c.esBackup ? 'Quitar este enlace de backup' : 'Eliminar conexión (y el servicio asignado que representa)'}">−</span>`;
+      <img class="connIcon" src="${iconSrc}" alt="">
+      <span class="connBody">
+        <span class="connName">${escapeHtml(nombreEntidad(otro))}</span>
+        ${tipoLabel ? `<span class="connTipo">${tipoLabel}</span>` : ''}
+        ${detalle ? `<span class="connValor">${detalle}</span>` : ''}
+        ${sdwanTag}
+      </span>
+      <span class="connActions">
+        <button type="button" class="connArrow" title="Editar" aria-label="Editar conexión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg></button>
+        <button type="button" class="connDelete" title="${c.esBackup ? 'Quitar este enlace de backup' : 'Eliminar conexión (y el servicio asignado que representa)'}">−</button>
+      </span>`;
     row.addEventListener('click', (e)=>{
       if(e.target.classList.contains('connDelete')) return;
       abrirConexion(c);
@@ -4826,11 +4838,10 @@ function renderHerenciaBox(sede){
   const blocks = conProductos.map(m=>{
     const rows = m.instancias.map(inst=>{
       const sub = getSubproducto(inst.subproductoId);
-      const shade = colorHex(getSubproductoColor(sub));
       const checked = sede.herenciaIds.includes(inst.instanciaId);
       return `<label class="herenciaRow">
         <input type="checkbox" class="herenciaCheck" data-inst="${inst.instanciaId}" ${checked?'checked':''}>
-        <span class="inst-dot" style="background:${shade};"></span>
+        <img class="herenciaIcon" src="${iconoUiSubproducto(sub)}" alt="">
         <span class="herenciaName">${inst.nombreSubproducto}</span>
         ${checked ? `<span class="herenciaRemove" data-inst="${inst.instanciaId}" title="Quitar herencia">×</span>` : ''}
       </label>`;
