@@ -4194,6 +4194,8 @@ const ICONS_SVG = {
 const navEmpty = byId('navEmpty');
 const navContent = byId('navContent');
 const navSedeLabel = byId('navSedeLabel');
+const navSedeSub = byId('navSedeSub');   // tipo de entidad bajo el nombre (design system)
+const navAsset = byId('navAsset');       // render de la entidad seleccionada (design system)
 const matrizHintEl = byId('matrizHint');
 const matrizEditBoxEl = byId('matrizEditBox');
 const instanceSection = byId('instanceSection');
@@ -4257,7 +4259,7 @@ function renderMatrizEditBox(matriz){
   byId('matrizNombreInput').addEventListener('input', (e)=>{
     matriz.nombre = e.target.value;
     updateSedeNameSprite(matriz);
-    navSedeLabel.textContent = `Matriz: ${matriz.nombre || '(sin nombre)'}`;
+    navSedeLabel.textContent = matriz.nombre || '(sin nombre)';
   });
 
   bindSliderNumber(
@@ -4306,7 +4308,7 @@ function renderNubeEditBox(nube){
     byId('nubeNombreInput').addEventListener('input', (e)=>{
       nube.nombre = e.target.value;
       updateSedeNameSprite(nube);
-      navSedeLabel.textContent = `Nube: ${nube.nombre || '(sin nombre)'}`;
+      navSedeLabel.textContent = nube.nombre || '(sin nombre)';
     });
   }
   byId('btnDeleteNube').addEventListener('click', ()=>{
@@ -4543,10 +4545,20 @@ function renderRightPanel(){
   const isSedeSingle = !!singleId && !isMatriz && !isNube && !isDatacenter;
 
   const nombres = ids.map(id=>getSedeById(id).nombre);
-  navSedeLabel.textContent = isMatriz ? `Matriz: ${nombres[0]}`
-    : isNube ? `Nube: ${nombres[0]}${getNubeById(singleId) && getNubeById(singleId).esAutoInternet ? ' (automática de Internet)' : ''}`
-    : isDatacenter ? 'Datacenter Epicentro'
-    : (ids.length===1 ? `Sede: ${nombres[0]}` : `${ids.length} entidades seleccionadas: ${nombres.join(', ')}`);
+  // Design system (fase 4a): el nombre va solo, grande; el tipo de entidad pasa a la línea de
+  // abajo y el render de la entidad se muestra arriba (clase detail-asset--<tipo>).
+  const esNubeAuto = isNube && getNubeById(singleId) && getNubeById(singleId).esAutoInternet;
+  navSedeLabel.textContent = isDatacenter ? 'Datacenter Epicentro'
+    : ids.length===1 ? (nombres[0] || '(sin nombre)')
+    : `${ids.length} entidades seleccionadas`;
+  navSedeLabel.classList.toggle('is-multi', ids.length>1);
+  navSedeSub.textContent = isMatriz ? 'Matriz'
+    : isNube ? (esNubeAuto ? 'Nube · automática de Internet' : 'Nube')
+    : isDatacenter ? 'Datacenter Puntonet'
+    : ids.length===1 ? 'Sede'
+    : nombres.join(' · ');
+  const assetTipo = isMatriz ? 'matriz' : isNube ? 'nube' : isDatacenter ? 'epicentro' : isSedeSingle ? 'sede' : '';
+  navAsset.className = 'detail-asset' + (assetTipo ? ' detail-asset--' + assetTipo : '');
 
   matrizHintEl.style.display = (isMatriz || isNube || isDatacenter) ? 'block' : 'none';
   matrizHintEl.textContent = isMatriz
@@ -4566,9 +4578,9 @@ function renderRightPanel(){
 
   if(ids.length===1){
     const entity = getSedeById(ids[0]);
-    instanceSectionTitle.textContent = isMatriz ? 'Productos propios de la Matriz'
-      : isNube ? 'Productos propios de la Nube'
-      : isDatacenter ? 'Productos propios del Datacenter'
+    instanceSectionTitle.textContent = isMatriz ? 'Productos de la Matriz'
+      : isNube ? 'Productos de la Nube'
+      : isDatacenter ? 'Productos del Datacenter'
       : 'Servicios asignados';
     // Los productos `ocultaEnServiciosAsignados` (Canal de Conexión, Cloud Interconnect) viven únicamente
     // en el panel "Conexiones": ahí sí se ve a qué sede/Matriz están conectados, mientras que acá
@@ -4592,10 +4604,12 @@ function renderRightPanel(){
         }
         const row = document.createElement('div');
         row.className='inst-row';
-        row.innerHTML = `<span class="inst-dot" style="background:${colorHex(getSubproductoColor(sub))};"></span>
-          <span class="inst-name">${nombreMostrado}</span>
-          <span class="inst-vertical">${vertical.nombre}</span>
-          <span class="inst-delete" title="Eliminar">−</span>`;
+        row.innerHTML = `<img class="inst-icon" src="${iconoUiSubproducto(sub)}" alt="">
+          <span class="inst-body">
+            <span class="inst-name">${nombreMostrado}</span>
+            <span class="inst-vertical">${vertical.nombre}</span>
+          </span>
+          <button type="button" class="inst-delete" title="Quitar producto" aria-label="Quitar ${escapeHtml(sub.nombre)}">−</button>`;
         row.addEventListener('click', ()=>openPopupForEdit(entity.id, inst.instanciaId));
         row.querySelector('.inst-delete').addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -4764,7 +4778,7 @@ function renderSedeEditBox(sede){
   byId('sedeNombreInput').addEventListener('input', (e)=>{
     sede.nombre = e.target.value;
     updateSedeNameSprite(sede);
-    navSedeLabel.textContent = `Sede: ${sede.nombre || '(sin nombre)'}`;
+    navSedeLabel.textContent = sede.nombre || '(sin nombre)';
   });
 
   const infoEl = byId('sedeTamanoInfo');

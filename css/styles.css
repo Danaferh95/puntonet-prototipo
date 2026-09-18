@@ -338,13 +338,40 @@
   #left .infra-tile--restore .infra-tile__label{font-size:13px;}
 
   /* ---------- Right panel (navegador de niveles) ---------- */
-  #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
-    padding:14px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
-  #right h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;}
+  /* ---------- Panel de detalle · design system (fase 4a) ----------
+     Organism "Detalle de selección": render "panel" (281×823) de fondo, overline, render de la
+     entidad, nombre grande (Heading/Panel), tipo en muted y lista de productos con IconButton. */
+  #right{grid-column:3;grid-row:2;background:var(--pn-img-panel) 0 0 / 100% 100% no-repeat;border-left:0;
+    padding:20px 20px 20px 21px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+    color:var(--pn-color-white);scrollbar-width:none;}
+  #right::-webkit-scrollbar{display:none;}
+  #right h2{margin:0;color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+  #rightTitle{padding-bottom:12px;border-bottom:1px solid var(--pn-color-border);}
   #navContent{display:none;}
-  #instanceSection{display:none;}
-  #navEmpty{font-size:12px;color:var(--muted);line-height:1.6;padding-top:6px;}
-  #navSedeLabel{font-size:12px;font-weight:600;color:var(--text);}
+  #instanceSection{display:none;padding-top:16px;border-top:1px solid var(--pn-color-border);}
+  #navEmpty{color:var(--pn-color-muted);font:400 16px/24px var(--font-sans);}
+  .detail-asset{display:none;width:245px;max-width:100%;height:163px;margin:-4px auto 4px;background:center / contain no-repeat;}
+  .detail-asset--sede{display:block;background-image:url("../assets/ui/renders-sm/sede.webp");}
+  .detail-asset--matriz{display:block;background-image:url("../assets/ui/renders-sm/matriz.webp");}
+  .detail-asset--nube{display:block;background-image:url("../assets/ui/renders-sm/nube.webp");}
+  .detail-asset--epicentro{display:block;background-image:url("../assets/ui/renders-sm/epicentro.webp");}
+  #navSedeLabel{color:var(--pn-color-white);font:700 32px/40px var(--font-sans);letter-spacing:-.6px;overflow-wrap:anywhere;}
+  #navSedeLabel.is-multi{font:500 24px/32px var(--font-sans);letter-spacing:-.25px;}
+  #navSedeSub{margin:2px 0 12px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  #instanceSection h2{margin-bottom:12px;}
+  #instanceList{display:flex;flex-direction:column;gap:8px;}
+  .inst-row{display:flex;align-items:center;gap:16px;cursor:pointer;}
+  .inst-icon{flex:none;width:30px;height:30px;}
+  .inst-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .inst-name{color:var(--pn-color-white);font:400 16px/24px var(--font-sans);overflow-wrap:anywhere;}
+  .inst-row:hover .inst-name{color:var(--pn-color-cyan);}
+  .inst-vertical{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .inst-delete{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--pn-layout-height48);
+    height:var(--pn-layout-height48);padding:0;border:1px solid var(--pn-color-border);border-radius:14px;
+    background:var(--pn-gradient-control);color:var(--pn-color-muted);font:400 24px/1 var(--font-sans);cursor:pointer;}
+  .inst-delete:hover{border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+  .inst-delete:active{opacity:.8;}
+  .inst-delete:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
   /* --- Bloques del panel derecho ---
      Sede, Matriz, Nube, Datacenter, Conexiones y Herencia son la misma pieza: una columna con
      separador inferior que functions.js muestra (display:flex) u oculta (display:none) según lo
@@ -381,7 +408,7 @@
   .concentradorBackupTag{flex-shrink:0;font-size:9px;letter-spacing:.03em;color:var(--indigo);
     border:1px solid var(--indigo);border-radius:3px;padding:0 4px;line-height:1.5;}
   .concentradorHint{font-size:10px;color:var(--muted);line-height:1.45;margin-top:6px;}
-  #matrizHint{display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 0;}
+  #matrizHint{display:none;margin:0 0 12px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
   #popupBackupField{display:none;}
   #popupBackupField .toggleRow{margin-bottom:0;} /* el hint va debajo, no hace falta separación extra */
   #popupBackupField .toggleHint{margin-top:3px;}
@@ -404,16 +431,6 @@
   .connItem.open .connArrow{color:var(--cian);}
   .connDelete{color:var(--danger);font-weight:700;padding:0 3px;flex-shrink:0;}
   .connDelete:hover{color:#fca5a5;}
-  #instanceList{display:flex;flex-direction:column;gap:6px;}
-  .inst-row{display:flex;align-items:center;gap:8px;background:var(--panel-2);
-    border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:pointer;}
-  .inst-row:hover{border-color:var(--cian);}
-  .inst-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-  .inst-name{font-size:11.5px;flex:1;}
-  .inst-vertical{font-size:9.5px;color:var(--muted);}
-  .inst-delete{color:var(--danger);font-weight:700;font-size:14px;line-height:1;padding:3px 7px;
-    border-radius:4px;flex-shrink:0;}
-  .inst-delete:hover{background:rgba(248,113,113,.15);}
 
   /* ---------- Modal genérico ---------- */
   .modal-overlay{position:fixed;inset:0;background:rgba(4,6,10,.72);display:none;
@@ -576,8 +593,6 @@
     #app{ grid-template-columns: 116px 1fr 178px; }
     #header h1{ display:none; }
     .btn{ padding:5px 7px; font-size:10px; }
-    .inst-name{ font-size:10.5px; }
-    .inst-vertical{ display:none; } /* poco espacio: se prioriza el nombre del producto */
   }
   @media (max-height: 440px){
     #app{ grid-template-rows: 42px 1fr 40px; }
