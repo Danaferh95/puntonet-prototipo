@@ -5778,7 +5778,9 @@ function openReport(){
   function renderInstRow(inst, container, heredadoDe){
     const sub = getSubproducto(inst.subproductoId);
     const producto = getProducto(sub.productoNivel2Id);
-    const shade = colorHex(getSubproductoColor(sub));
+    // Categoría con su color del design system (clase .rcat--<vertical>, antes color inline).
+    const catHtml = `<span class="rcat rcat--${inst.verticalId}">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span>`;
+    const iconHtml = `<img class="ricon" src="${iconoUiSubproducto(sub)}" alt="">`;
     const row = document.createElement('div');
     row.className='report-inst';
     const propsHtml = Object.entries(inst.propiedades||{})
@@ -5800,7 +5802,7 @@ function openReport(){
             return t ? ` <span class="muted-inline">→ ${escapeHtml(nombreEntidad(t.aId))} ↔ ${escapeHtml(nombreEntidad(t.bId))}</span>` : ''; })()
         : '';
     row.innerHTML = `
-      <div class="rline1"><span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span class="muted-inline">(heredado de '+escapeHtml(heredadoDe)+')</span>':''}</span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
+      <div class="rline1"><span class="rname">${iconHtml}<span>${inst.nombreSubproducto}${destinoTxt}${heredadoDe?' <span class="muted-inline">(heredado de '+escapeHtml(heredadoDe)+')</span>':''}</span></span>${catHtml}</div>
       <div class="rmeta">${inst.marca ? 'Marca: '+escapeHtml(inst.marca) : 'Marca: —'}</div>
       ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
       ${inst.notas ? `<div class="rnotes">"${escapeHtml(inst.notas)}"</div>` : ''}
@@ -5822,7 +5824,7 @@ function openReport(){
       const notaConcentrador = sub.sumaConcentrador
         ? ' No suma al concentrador: es el respaldo del mismo canal, no capacidad adicional.' : '';
       backupRow.innerHTML = `
-        <div class="rline1"><span>${inst.nombreSubproducto} (Backup) <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId)))}</span></span><span style="color:${shade};font-size:11px;">${getVertical(inst.verticalId).nombre} · ${producto.nombre}</span></div>
+        <div class="rline1"><span class="rname">${iconHtml}<span>${inst.nombreSubproducto} (Backup) <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId)))}</span></span></span>${catHtml}</div>
         <div class="rmeta">Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${inst.nombreSubproducto}).${notaConcentrador}</div>
         ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
       `;
@@ -5863,7 +5865,7 @@ function openReport(){
       }
       if(matriz.instancias.length===0){
         const empty = document.createElement('div');
-        empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+        empty.className='report-inst report-inst--empty';
         empty.textContent='Sin productos propios asignados.';
         matrizBox.appendChild(empty);
       } else {
@@ -5885,7 +5887,7 @@ function openReport(){
       nubeBox.appendChild(nh3);
       if(nube.instancias.length===0){
         const empty = document.createElement('div');
-        empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+        empty.className='report-inst report-inst--empty';
         empty.textContent='Sin productos propios asignados.';
         nubeBox.appendChild(empty);
       } else {
@@ -5904,7 +5906,7 @@ function openReport(){
   dcBox.appendChild(dch3);
   if(config.datacenter.instancias.length===0){
     const empty = document.createElement('div');
-    empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+    empty.className='report-inst report-inst--empty';
     empty.textContent='Sin productos propios asignados.';
     dcBox.appendChild(empty);
   } else {
@@ -5928,7 +5930,7 @@ function openReport(){
       const heredadas = heredadasConNombreMatriz(sede, config.matrices);
       if(sede.instancias.length===0 && heredadas.length===0){
         const empty = document.createElement('div');
-        empty.className='report-inst'; empty.style.color='var(--muted)'; empty.style.fontSize='11.5px';
+        empty.className='report-inst report-inst--empty';
         empty.textContent='Sin servicios asignados.';
         box.appendChild(empty);
       } else {

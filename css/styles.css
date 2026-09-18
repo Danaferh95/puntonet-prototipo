@@ -637,21 +637,37 @@
   .muted-small{font-size:11px;color:var(--muted);} /* hereda el peso de la línea (p.ej. .rline1) */
 
   /* ---------- Reporte ---------- */
-  .report-sede{margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
-  .report-sede h3{margin:0;padding:10px 14px;background:var(--panel-2);font-size:13px;
-    display:flex;align-items:center;gap:8px;}
-  .report-inst{padding:10px 14px;border-top:1px solid var(--border);}
-  .report-inst .rline1{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;}
-  .report-inst .rmeta{font-size:11px;color:var(--muted);margin-top:3px;}
-  .report-inst .rprops{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
-  .report-inst .rprop{font-size:10.5px;background:var(--panel-2);border:1px solid var(--border);
-    padding:2px 7px;border-radius:4px;}
-  .report-inst .rnotes{font-size:11px;color:var(--muted);margin-top:6px;font-style:italic;}
-  /* Concentrador (sep/2026): usa el mismo renglón que un producto, pero con un borde izquierdo
-     cian y el total resaltado, porque NO es un producto contratado — es capacidad agregada. */
-  .report-concentrador{border-left:3px solid var(--cian);}
-  .report-concentrador .muted-small{color:var(--cian);font-weight:700;font-size:12.5px;}
-  .report-empty{font-size:12px;color:var(--muted);padding:14px;text-align:center;}
+  /* ---------- Reporte · design system (fase 7b) ----------
+     Cada entidad es una tarjeta deep (radio 18) con cabecera panel; cada producto lleva su
+     pictograma, la categoría en su color (mint / cyan / coral / lime) y sus propiedades como chips. */
+  .report-sede{margin:0 0 16px;overflow:hidden;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius18);
+    background:var(--pn-color-deep);}
+  .report-sede h3{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0;padding:16px 20px;
+    background:var(--pn-color-panel);color:var(--pn-color-white);font:500 19px/28px var(--font-sans);letter-spacing:-.15px;}
+  .report-sede h3 .muted-meta{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);letter-spacing:0;}
+  .report-inst{padding:14px 20px;border-top:1px solid rgba(48,99,164,.45);}
+  .report-inst .rline1{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 16px;
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  .report-inst .rname{display:inline-flex;align-items:center;gap:12px;min-width:0;}
+  .report-inst .ricon{flex:none;width:24px;height:24px;}
+  .report-inst .rcat{color:var(--pn-color-cyan);font:400 13px/20px var(--font-sans);}
+  .report-inst .rcat--conectividad{color:var(--pn-color-mint);}
+  .report-inst .rcat--cloud{color:var(--pn-color-cyan);}
+  .report-inst .rcat--ciberseguridad{color:var(--pn-color-coral);}
+  .report-inst .rcat--colaboracion{color:var(--pn-color-lime);}
+  .report-inst .muted-small{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .report-inst .rmeta{margin-top:4px;padding-left:36px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .report-inst .rprops{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;padding-left:36px;}
+  .report-inst .rprop{padding:2px 12px;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+    background:var(--pn-gradient-control);color:var(--pn-color-white);font:400 13px/20px var(--font-sans);}
+  .report-inst .rnotes{margin-top:8px;padding-left:36px;color:var(--pn-color-subtle);font:italic 400 13px/20px var(--font-sans);}
+  .report-inst--empty{color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  /* Concentrador: no es un producto contratado sino capacidad agregada → borde izquierdo cian */
+  .report-concentrador{border-left:3px solid var(--pn-color-cyan);}
+  .report-concentrador .rmeta, .report-concentrador .rprops{padding-left:0;}
+  .report-concentrador .muted-small{color:var(--pn-color-cyan);font:700 19px/28px var(--font-sans);}
+  .report-empty{padding:16px;text-align:center;color:var(--pn-color-muted);font:400 16px/24px var(--font-sans);}
+  #reportOverlay .modal-head .desc{font-size:13px;}
 
   /* ---------- Responsive: se adapta el TAMAÑO, la orientación siempre queda horizontal ----------
      Los breakpoints están pensados en ancho de pantalla en landscape: de una tablet grande
