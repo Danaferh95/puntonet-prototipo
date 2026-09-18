@@ -198,43 +198,65 @@
   .site-icon.violeta{color:var(--violeta);border-color:var(--violeta);}
   .site-card .lbl{font-size:12px;}
   .site-card .sub{font-size:10px;color:var(--muted);}
-  #left .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
-  #left .legend{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
-  #left .legend h2{margin-bottom:8px;}
   #datacenterRestoreWrap{display:none;} /* solo visible si se eliminó el Datacenter (ver syncDatacenterRestoreUI) */
   #zoomControls{position:absolute;bottom:12px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:15;}
   .zoom-btn{width:34px;height:34px;padding:0;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
     background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);cursor:pointer;transition:.15s;}
   .zoom-btn:hover{border-color:var(--cian);color:var(--cian);}
   .zoom-btn.reset{font-size:14px;}
-  .catalog-vertical{margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
-  .catalog-vertical-header{display:flex;align-items:center;justify-content:space-between;gap:8px;
-    padding:9px 10px;font-size:11px;color:var(--text);text-transform:uppercase;letter-spacing:.05em;
-    cursor:pointer;background:var(--panel-2);transition:.15s;}
-  .catalog-vertical-header:hover{color:var(--cian);}
-  .catalog-vertical-arrow{color:var(--muted);font-size:11px;transition:transform .15s;flex-shrink:0;}
-  .catalog-vertical.open .catalog-vertical-arrow{transform:rotate(90deg);}
-  .catalog-vertical-body{display:none;padding:10px;}
-  .catalog-vertical.open .catalog-vertical-body{display:block;}
-  .catalog-producto{margin-bottom:12px;}
-  .catalog-producto:last-child{margin-bottom:0;}
-  .catalog-producto-label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text);margin-bottom:6px;}
-  .catalog-producto-icon{width:15px;height:15px;flex-shrink:0;}
-  .catalog-producto-icon svg{width:100%;height:100%;display:block;}
-  .catalog-chips{display:flex;flex-wrap:wrap;gap:8px;}
-  .catalog-chip-item{display:flex;flex-direction:column;align-items:center;width:54px;gap:4px;}
-  .catalog-chip{width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;
-    font-size:9.5px;font-weight:700;color:#04121a;cursor:grab;user-select:none;transition:.15s;
-    box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);}
-  .catalog-chip:hover{transform:translateY(-2px);box-shadow:0 3px 9px rgba(0,0,0,.4);}
-  .catalog-chip:active{cursor:grabbing;}
-  .catalog-chip-label{font-size:9px;color:var(--muted);text-align:center;line-height:1.25;word-break:break-word;}
+  /* ---------- Catálogo de productos · design system (fase 3b) ----------
+     Category: cápsula de 64 px con medallón metálico y halo (render halo_off / halo_on al 65%).
+     Desplegable deep, radio 18, con encabezados de familia y Product: cápsulas arrastrables de
+     60 px (pictograma 30 px · nombre · agarre). Las badges DC / NUBE van en la esquina. */
+  #left .legend{margin-top:4px;}
+  #productLegend{display:flex;flex-direction:column;gap:8px;padding-bottom:8px;}
+  .catalog-vertical{position:relative;}
+  .catalog-vertical-header{position:relative;display:flex;align-items:center;width:100%;height:var(--pn-layout-height64);
+    margin:0;padding:0 21px 0 0;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+    background:var(--pn-gradient-capsule);color:var(--pn-color-white);font:400 19px/28px var(--font-sans);letter-spacing:-.15px;
+    text-align:left;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent;}
+  .catalog-vertical-header::before{content:"";position:absolute;left:-19px;top:-19px;right:-19px;bottom:-19px;opacity:.65;
+    pointer-events:none;background:var(--pn-img-halo-off) center / 100% 100% no-repeat;}
+  .catalog-vertical.open .catalog-vertical-header{border:2px solid var(--pn-color-focus);padding-right:20px;}
+  .catalog-vertical.open .catalog-vertical-header::before{left:-20px;top:-20px;right:-20px;bottom:-20px;background-image:var(--pn-img-halo-on);}
+  .catalog-vertical-header:hover{border-color:var(--pn-color-focus);}
+  .catalog-vertical-header:active{opacity:.8;}
+  .catalog-vertical-header:focus-visible{border:2px solid var(--pn-color-focus);}
+  .catalog-medallion{position:relative;flex:none;width:54px;height:54px;margin:0 14px 0 4px;background:center / 54px 54px no-repeat;}
+  .catalog-vertical.open .catalog-medallion{margin-left:3px;}
+  .catalog-medallion--conectividad{background-image:url("../assets/ui/medallions/medallion-conectividad.svg");}
+  .catalog-medallion--cloud{background-image:url("../assets/ui/medallions/medallion-cloud.svg");}
+  .catalog-medallion--ciberseguridad{background-image:url("../assets/ui/medallions/medallion-ciberseguridad.svg");}
+  .catalog-medallion--colaboracion{background-image:url("../assets/ui/medallions/medallion-colaboracion.svg");}
+  .catalog-vertical-name{position:relative;flex:1;min-width:0;}
+  .catalog-vertical-arrow{position:relative;flex:none;color:var(--pn-color-muted);font-size:22px;line-height:1;}
+  .catalog-vertical.open .catalog-vertical-arrow{margin-top:-10px;}
+
+  .catalog-vertical-body{display:none;}
+  .catalog-vertical.open .catalog-vertical-body{display:flex;flex-direction:column;gap:12px;max-height:321px;
+    margin:12px 0 8px 3px;padding:12px 10px;overflow-y:auto;background:var(--pn-color-deep);border-radius:var(--pn-layout-radius18);
+    scrollbar-width:thin;scrollbar-color:var(--pn-color-subtle) var(--pn-color-disabled);}
+  .catalog-producto{display:flex;flex-direction:column;gap:8px;}
+  .catalog-producto-label{margin:0 0 0 4px;color:var(--pn-color-subtle);font:400 10px/20px var(--font-sans);
+    letter-spacing:.5px;text-transform:uppercase;}
+  .catalog-chips{display:flex;flex-direction:column;gap:8px;}
   .catalog-chip-item{position:relative;}
-  .chip-dc-badge{position:absolute;top:-5px;right:2px;background:var(--indigo);color:#0c1020;font-size:7px;
-    font-weight:700;line-height:1;padding:2px 3px;border-radius:3px;letter-spacing:.02em;pointer-events:none;}
-  /* Un mismo producto puede tener ahora las 2 badges a la vez (ej. WAF, Hosting: Datacenter + Nube,
-     ago/2026) — .badge-nube se corre a la izquierda de la badge "DC" para que no se superpongan. */
-  .chip-dc-badge.badge-nube{right:24px;}
+  .catalog-chip{display:flex;align-items:center;gap:12px;width:100%;height:var(--pn-layout-height60);padding:0 15px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-capsule);
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);cursor:grab;user-select:none;-webkit-user-select:none;
+    transition:border-color .15s, box-shadow .15s;}
+  .catalog-chip:hover{border-color:var(--pn-color-focus);box-shadow:var(--pn-glow-focus);}
+  .catalog-chip:active{cursor:grabbing;opacity:.8;}
+  .catalog-chip-icon{flex:none;display:block;width:30px;height:30px;pointer-events:none;}
+  .catalog-chip-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* Agarre ⋮⋮ dibujado con puntos (2 columnas × 3 filas) */
+  .catalog-chip-grip{flex:none;width:8px;height:14px;opacity:.6;pointer-events:none;
+    background:radial-gradient(circle, var(--pn-color-muted) 1.2px, transparent 1.6px) 0 0 / 4px 5px;}
+  /* Mini badges: a qué entidades especiales se puede arrastrar el producto */
+  .chip-badges{position:absolute;top:-6px;right:14px;display:flex;gap:4px;pointer-events:none;}
+  .chip-dc-badge{padding:1px 6px;border-radius:var(--pn-layout-pill);background:var(--pn-color-cyan);color:var(--pn-color-navy);
+    font:700 9px/13px var(--font-sans);letter-spacing:.5px;box-shadow:var(--pn-glow-focus);}
+  .chip-dc-badge.badge-nube{background:var(--pn-color-white);}
 
   /* ---------- Salud de infraestructura ----------
      Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
@@ -536,8 +558,6 @@
     .btn{ padding:6px 9px; font-size:11px; }
     #left, #right{ padding:10px 8px; }
     #left h2, #right h2{ font-size:10px; margin-bottom:8px; }
-    .catalog-chip-item{ width:46px; }
-    .catalog-chip{ width:27px; height:27px; font-size:8.5px; }
     .site-card{ padding:8px; gap:8px; }
     .modal{ width:380px; }
     .modal.wide{ width:560px; }
@@ -550,18 +570,12 @@
     #app{ grid-template-columns: 140px 1fr 208px; }
     #header .tag{ display:none; } /* ahorrar espacio: la etiqueta de versión no es crítica */
     #clienteInput{ max-width:100px; }
-    #left .hint{ display:none; } /* el texto largo de ayuda no cabe cómodo en pantallas chicas */
-    .catalog-vertical-header{ padding:7px 8px; font-size:10px; }
-    .catalog-chip-item{ width:42px; }
     .empRow input[type="number"]{ width:62px; }
   }
   @media (max-width: 580px){
     #app{ grid-template-columns: 116px 1fr 178px; }
     #header h1{ display:none; }
     .btn{ padding:5px 7px; font-size:10px; }
-    .catalog-producto-label{ font-size:10px; }
-    .catalog-chip-item{ width:38px; }
-    .catalog-chip{ width:24px; height:24px; }
     .inst-name{ font-size:10.5px; }
     .inst-vertical{ display:none; } /* poco espacio: se prioriza el nombre del producto */
   }

@@ -4407,11 +4407,36 @@ function renderSaludPanel(){
   });
 }
 
-/* Catálogo del panel izquierdo: acordeón por Vertical (solo una abierta a la vez, para ocupar
-   menos espacio), con el ícono del Producto (N2) junto a su nombre, y cada Subproducto (N3) como
-   un "cuadradito" arrastrable con su nombre visible debajo. Al soltarse sobre una sede o una
-   Matriz en el canvas, abre el popup de asignación (ver §5, drop handler). */
+/* Catálogo del panel izquierdo (design system, fase 3b): acordeón por Vertical (solo una abierta
+   a la vez). Cada Vertical es una cápsula con su medallón metálico; al abrirse muestra un
+   desplegable con los Productos (N2) como encabezados de familia y cada Subproducto (N3) como
+   una cápsula arrastrable con su pictograma, nombre y agarre. Las badges DC / NUBE siguen
+   indicando sobre qué entidades se puede soltar. Al soltarse sobre una sede o una Matriz en el
+   canvas, abre el popup de asignación (ver §5, drop handler). */
 let catalogOpenVerticalId = VERTICALES[0].id;
+
+/* Pictograma del design system (assets/ui/icons) para cada Subproducto. Asignación provisional
+   hasta tener el catalog.json del paquete de entrega; si falta una clave se usa el símbolo de la
+   categoría. */
+const ICONO_UI_SUBPRODUCTO = {
+  canal_conexion:'cliente_datos', cloud_interconnect:'cloud_interconnect', sdwan:'sdwan',
+  tunel_ipsec:'red_cloud', internet_corporativo:'internet', internet_startup:'router',
+  internet_teleworking:'portatil', puntonet_space:'wifi_equipo',
+  collocation:'housing', crossconexion:'ethernet', iaas:'hosting', baas:'guardar', draas:'cloud_descarga',
+  firewall_on_premise:'firewall', firewall_iaas:'cloud_seguro', internet_seguro:'navegador',
+  edr:'endpoint', xdr:'inspeccion', seguridad_movil:'movil_cloud', correo_electronico:'correo_cloud',
+  mfa:'credencial', waf:'app_segura', dns_ddos:'internet_cloud',
+  conferencia:'conferencia', ofimatica:'ofimatica', portal_cautivo:'ventana', zona_wireless:'antena',
+};
+const ICONO_UI_VERTICAL = {
+  conectividad:'categoria_conectividad', cloud:'categoria_cloud',
+  ciberseguridad:'categoria_seguridad', colaboracion:'cliente_personas',
+};
+function iconoUiSubproducto(s){
+  const p = PRODUCTOS.find(x=>x.id===s.productoNivel2Id);
+  const key = ICONO_UI_SUBPRODUCTO[s.id] || (p && ICONO_UI_VERTICAL[p.verticalId]) || 'categoria_networking';
+  return `assets/ui/icons/${key}.svg`;
+}
 
 function renderCatalogPanel(){
   const container = byId('productLegend');
@@ -4421,9 +4446,13 @@ function renderCatalogPanel(){
     const vBlock = document.createElement('div');
     vBlock.className = 'catalog-vertical' + (isOpen ? ' open' : '');
 
-    const vHeader = document.createElement('div');
+    const vHeader = document.createElement('button');
+    vHeader.type = 'button';
     vHeader.className = 'catalog-vertical-header';
-    vHeader.innerHTML = `<span>${v.nombre}</span><span class="catalog-vertical-arrow">›</span>`;
+    vHeader.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    vHeader.innerHTML = `<span class="catalog-medallion catalog-medallion--${v.id}" aria-hidden="true"></span>`
+      + `<span class="catalog-vertical-name">${v.nombre}</span>`
+      + `<span class="catalog-vertical-arrow" aria-hidden="true">${isOpen ? '⌄' : '›'}</span>`;
     vHeader.addEventListener('click', ()=>{
       catalogOpenVerticalId = isOpen ? null : v.id; // clic en la ya abierta la cierra; otra la reemplaza
       renderCatalogPanel();
@@ -4437,7 +4466,7 @@ function renderCatalogPanel(){
       pRow.className = 'catalog-producto';
       const pLabel = document.createElement('div');
       pLabel.className = 'catalog-producto-label';
-      pLabel.innerHTML = `<span class="catalog-producto-icon" style="color:${colorHex(getProductoColor(p))}">${ICONS_SVG[p.assetKey]||''}</span><span>${p.nombre}</span>`;
+      pLabel.textContent = p.nombre;
       pRow.appendChild(pLabel);
       const chipsWrap = document.createElement('div');
       chipsWrap.className = 'catalog-chips';
@@ -4449,8 +4478,10 @@ function renderCatalogPanel(){
         chip.draggable = true;
         chip.title = `${s.nombre} — arrastra a ${nombreDestinos(s)}`;
         chip.dataset.subproductoId = s.id;
-        chip.style.background = colorHex(getSubproductoColor(s));
-        chip.textContent = initials(s.nombre);
+        chip.innerHTML = `<img class="catalog-chip-icon" src="${iconoUiSubproducto(s)}" alt="" draggable="false">`
+          + `<span class="catalog-chip-label"></span>`
+          + `<span class="catalog-chip-grip" aria-hidden="true"></span>`;
+        chip.querySelector('.catalog-chip-label').textContent = s.nombre;
         chip.addEventListener('dragstart', (e)=>{
           draggingSubproductoId = s.id;
           e.dataTransfer.setData('text/plain', 'subproducto:'+s.id);
@@ -4463,24 +4494,24 @@ function renderCatalogPanel(){
         });
         makeTouchDraggable(chip, (x,y)=>assignSubproductoAtClientPoint(s.id,x,y), s.nombre, colorHex(getSubproductoColor(s)),
           id=>destinoValidoParaEntidad(s, id));
-        const chipLabel = document.createElement('div');
-        chipLabel.className = 'catalog-chip-label';
-        chipLabel.textContent = s.nombre;
         chipItem.appendChild(chip);
+        // Mini badges: sobre qué entidades especiales se puede soltar este producto.
         const destinos = destinosPermitidos(s);
+        const badges = document.createElement('div');
+        badges.className = 'chip-badges';
         if(destinos.includes('datacenter')){
           const badge = document.createElement('span');
           badge.className = 'chip-dc-badge';
           badge.textContent = 'DC';
-          chipItem.appendChild(badge);
+          badges.appendChild(badge);
         }
         if(destinos.includes('nube')){
           const badge = document.createElement('span');
           badge.className = 'chip-dc-badge badge-nube';
           badge.textContent = 'NUBE';
-          chipItem.appendChild(badge);
+          badges.appendChild(badge);
         }
-        chipItem.appendChild(chipLabel);
+        if(badges.childElementCount) chipItem.appendChild(badges);
         chipsWrap.appendChild(chipItem);
       });
       pRow.appendChild(chipsWrap);
