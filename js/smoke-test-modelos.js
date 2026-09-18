@@ -227,11 +227,11 @@ const E = (w, expr) => w.eval(expr);
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que la doc de v13–v15: líneas con `.style.` (son 64 ocurrencias en 59 líneas, igual que v39)
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js sigue con 59 líneas con .style. (ningún estilo inline nuevo)', inline === 59, inline);
+  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
   const iGL = HTML.indexOf('js/vendor/GLTFLoader.js'), iDat = HTML.indexOf('js/modelos-glb.js'), iFn = HTML.indexOf('js/functions.js'), iThree = HTML.indexOf('three.min.js');
   check('index.html: three → GLTFLoader → modelos-glb → functions', iThree>0 && iThree < iGL && iGL < iDat && iDat < iFn);
   const versiones = HTML.match(/Prototipo v\d+/g) || [];
-  check('index.html muestra la misma versión en título y etiqueta (' + versiones[0] + ')', versiones.length === 2 && versiones[0] === versiones[1] && parseInt(versiones[0].slice(11)) >= 40, versiones);
+  check('index.html muestra la versión en el título (' + versiones[0] + '; la etiqueta salió del header en el rediseño)', versiones.length === 1 && parseInt(versiones[0].slice(11)) >= 40, versiones);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);

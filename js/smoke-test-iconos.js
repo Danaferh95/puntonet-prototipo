@@ -324,7 +324,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que smoke-test-modelos.js: líneas (no ocurrencias) que contienen '.style.'
   const nEstilos = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js sigue con 59 líneas con .style. (ningún estilo inline nuevo)', nEstilos === 59, nEstilos);
+  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', nEstilos <= 51, nEstilos);
   const idxGLTF = HTML.indexOf('GLTFLoader.js'), idxModelos = HTML.indexOf('modelos-glb.js'),
         idxIconos = HTML.indexOf('iconos-glb.js'), idxFuncs = HTML.indexOf('functions.js');
   check('index.html: GLTFLoader → modelos-glb → iconos-glb → functions',

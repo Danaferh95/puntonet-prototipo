@@ -3732,7 +3732,7 @@ function makeTouchDraggable(el, payloadFn, ghostLabel, ghostColor, isValidTarget
       dragging = true;
       ghost = document.createElement('div');
       ghost.className = 'touch-drag-ghost';
-      ghost.style.background = ghostColor || 'var(--cian)';
+      ghost.style.background = ghostColor || 'var(--pn-color-cyan)';
       ghost.textContent = ghostLabel;
       document.body.appendChild(ghost);
     }
@@ -3784,11 +3784,11 @@ function setupPanelDragCard({ elementId, tipo, hint, place, ghostLabel, ghostCol
 
 [
   { elementId:'sedeDragCard',   tipo:'sede',   hint:'Toca el canvas para colocar la sede',
-    place:placeSedeAtClientPoint,   ghostLabel:'Sede',   ghostColor:'var(--cian)' },
+    place:placeSedeAtClientPoint,   ghostLabel:'Sede',   ghostColor:'var(--pn-color-cyan)' },
   { elementId:'matrizDragCard', tipo:'matriz', hint:'Toca el canvas para colocar la Matriz',
-    place:placeMatrizAtClientPoint, ghostLabel:'Matriz', ghostColor:'var(--indigo)' },
+    place:placeMatrizAtClientPoint, ghostLabel:'Matriz', ghostColor:'var(--pn-color-focus)' },
   { elementId:'nubeDragCard',   tipo:'nube',   hint:'Toca el canvas para colocar la Nube',
-    place:placeNubeAtClientPoint,   ghostLabel:'Nube',   ghostColor:'var(--violeta)' },
+    place:placeNubeAtClientPoint,   ghostLabel:'Nube',   ghostColor:'var(--pn-color-white)' },
 ].forEach(setupPanelDragCard);
 
 
@@ -5418,7 +5418,7 @@ byId('btnSavePopup').addEventListener('click', ()=>{
     const sinResolver = !val || val===CONEXION_NUEVA_SEDE || val===CONEXION_NUEVA_MATRIZ || val===CONEXION_NUEVA_NUBE;
     if(sinResolver){
       showToast('Elegí a quién conectar antes de guardar — este producto siempre necesita un destino.');
-      popupConexionSelect.style.borderColor = 'var(--danger)';
+      popupConexionSelect.style.borderColor = 'var(--pn-color-coral)';
       popupConexionSelect.focus();
       return;
     }

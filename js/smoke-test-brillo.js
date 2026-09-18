@@ -189,12 +189,12 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
 
   console.log('\nG. Reglas del proyecto');
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js sigue con 59 líneas con .style. (ningún estilo inline nuevo)', inline === 59, inline);
+  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
   const i = f=>HTML.indexOf(f);
   check('index.html: three → GLTFLoader → postproceso → modelos-glb → functions',
     i('three.min.js') > 0 && i('three.min.js') < i('js/vendor/GLTFLoader.js') && i('js/vendor/GLTFLoader.js') < i('js/vendor/postproceso-r128.js') &&
     i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/functions.js'));
-  check('index.html muestra Prototipo v47', (HTML.match(/Prototipo v47/g)||[]).length === 2);
+  check('index.html muestra Prototipo v47 en el título (la etiqueta de versión salió del header en el rediseño)', (HTML.match(/Prototipo v47/g)||[]).length === 1);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);
