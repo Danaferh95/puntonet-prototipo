@@ -4391,7 +4391,8 @@ function saludGlobal(){
   if(porVertical.length===0) return 0;
   return Math.round(porVertical.reduce((s,v)=>s+v.pct,0)/porVertical.length);
 }
-const VERTICAL_BAR_COLOR = { conectividad:'var(--cian)', cloud:'var(--indigo)', ciberseguridad:'var(--rosa)', colaboracion:'var(--verde)' };
+/* El color, el símbolo y el glow de cada categoría viven en styles.css (.salud-row--<vertical>),
+   según el design system: Conectividad mint, Cloud cyan, Ciberseguridad coral, Colaboración lime. */
 
 const saludBarsEl = byId('saludBars');
 const saludGlobalBadgeEl = byId('saludGlobalBadge');
@@ -4401,11 +4402,18 @@ function renderSaludPanel(){
   saludBarsEl.innerHTML = '';
   porVertical.forEach(v=>{
     const row = document.createElement('div');
-    row.className = 'salud-row';
+    row.className = 'salud-row salud-row--' + v.vertical.id;
+    row.title = `${v.vertical.nombre}: ${v.asignados} de ${v.total} productos (${v.pct}%)`;
+    // El ancho de la barra es el único valor que se calcula en tiempo de ejecución (inline, como antes).
     row.innerHTML = `
-      <span class="salud-label">${v.vertical.nombre}</span>
-      <span class="salud-bar-track"><span class="salud-bar-fill" style="width:${v.pct}%;background:${VERTICAL_BAR_COLOR[v.vertical.id]||'var(--cian)'};"></span></span>
-      <span class="salud-count">${v.asignados}/${v.total}</span>`;
+      <span class="salud-icon" aria-hidden="true"></span>
+      <span class="salud-main">
+        <span class="salud-head">
+          <span class="salud-label">${v.vertical.nombre}</span>
+          <span class="salud-count">${v.asignados}/${v.total}</span>
+        </span>
+        <span class="salud-bar-track"><span class="salud-bar-fill" style="width:${v.pct}%;"></span></span>
+      </span>`;
     saludBarsEl.appendChild(row);
   });
 }

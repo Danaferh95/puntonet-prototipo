@@ -262,19 +262,41 @@
      Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
      así queda visible sin importar qué sede/Matriz esté seleccionada ni qué tan largo sea el
      catálogo, y las 4 verticales se leen en una sola fila horizontal. */
+  /* Design system (fase 5) · Organism "Salud de infraestructura": overline + % global en
+     pequeño, 4 indicadores Health en columnas (símbolo 48 px teñido con el color de su
+     categoría, título Body/Large, contador pequeño, riel de 24 px con progreso degradado y glow). */
   #saludFooter{grid-column:1/4;grid-row:3;background:transparent;
-    display:flex;align-items:center;gap:22px;padding:0 20px;overflow-x:auto;}
-  #saludGlobalWrap{display:flex;align-items:center;gap:9px;flex-shrink:0;padding-right:20px;
-    border-right:1px solid var(--border);white-space:nowrap;}
-  #saludGlobalLabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
-  #saludGlobalBadge{font-size:16px;font-weight:700;color:var(--cian);}
-  #saludBars{display:flex;align-items:center;gap:22px;flex:1;min-width:0;}
-  .salud-row{display:flex;align-items:center;gap:8px;flex:1;min-width:130px;}
-  .salud-label{flex-shrink:0;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
-  .salud-bar-track{flex:1;height:8px;border-radius:5px;background:var(--panel-2);border:1px solid var(--border);
-    overflow:hidden;min-width:50px;}
-  .salud-bar-fill{display:block;height:100%;border-radius:5px;transition:width .25s ease;}
-  .salud-count{width:34px;flex-shrink:0;text-align:right;font-size:9.5px;color:var(--muted);}
+    display:flex;flex-direction:column;justify-content:flex-start;gap:14px;padding:18px 32px 23px;overflow:hidden;}
+  #saludGlobalWrap{display:flex;align-items:baseline;gap:10px;flex-shrink:0;white-space:nowrap;}
+  #saludGlobalLabel{color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+  #saludGlobalBadge{color:var(--pn-color-cyan);font:500 13px/18px var(--font-sans);}
+  #saludBars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:33px;flex:1;min-height:0;}
+  .salud-row{--salud-accent:var(--pn-color-cyan);--salud-icon:url("../assets/ui/icons/categoria_cloud.svg");
+    position:relative;display:flex;align-items:center;gap:18px;min-width:0;}
+  .salud-row + .salud-row::before{content:"";position:absolute;left:-17px;top:4px;bottom:4px;width:1px;background:var(--pn-color-border);opacity:.6;}
+  .salud-icon{flex:none;width:48px;height:48px;background:var(--salud-accent);
+    -webkit-mask:var(--salud-icon) center / contain no-repeat;mask:var(--salud-icon) center / contain no-repeat;}
+  .salud-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+  .salud-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
+  .salud-label{color:var(--pn-color-white);font:400 19px/28px var(--font-sans);letter-spacing:-.15px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  .salud-count{flex:none;color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);}
+  .salud-bar-track{display:block;height:24px;padding:2px;border:1px solid var(--pn-color-border);border-radius:12px;
+    background:var(--pn-color-deep);overflow:hidden;}
+  .salud-bar-fill{display:block;height:100%;border-radius:10px;transition:width .25s ease;
+    background:var(--salud-fill);box-shadow:0 0 12px var(--salud-glow);}
+  .salud-row--conectividad{--salud-accent:var(--pn-color-mint);--salud-icon:url("../assets/ui/icons/categoria_conectividad.svg");
+    --salud-fill:linear-gradient(180deg,#6bffdb 0%,var(--pn-color-mint) 25%,var(--pn-color-mint) 58%,#007a5d 88%,var(--pn-color-mint) 100%);
+    --salud-glow:rgba(0,255,193,.25);}
+  .salud-row--cloud{--salud-accent:var(--pn-color-cyan);--salud-icon:url("../assets/ui/icons/categoria_cloud.svg");
+    --salud-fill:linear-gradient(180deg,#6be8ff 0%,var(--pn-color-cyan) 25%,var(--pn-color-cyan) 58%,#00677a 88%,var(--pn-color-cyan) 100%);
+    --salud-glow:rgba(0,215,255,.25);}
+  .salud-row--ciberseguridad{--salud-accent:var(--pn-color-coral);--salud-icon:url("../assets/ui/icons/categoria_seguridad.svg");
+    --salud-fill:linear-gradient(180deg,#ffa7a0 0%,var(--pn-color-coral) 25%,var(--pn-color-coral) 58%,#7a312c 88%,var(--pn-color-coral) 100%);
+    --salud-glow:rgba(255,103,91,.25);}
+  .salud-row--colaboracion{--salud-accent:var(--pn-color-lime);--salud-icon:url("../assets/ui/icons/cliente_personas.svg");
+    --salud-fill:linear-gradient(180deg,#f0fc89 0%,var(--pn-color-lime) 25%,var(--pn-color-lime) 58%,#6e7818 88%,var(--pn-color-lime) 100%);
+    --salud-glow:rgba(229,249,51,.25);}
 
   /* ---------- Canvas ---------- */
   #canvasWrap{grid-column:2;grid-row:2;position:relative;background:transparent;touch-action:none;}
@@ -616,10 +638,6 @@
     .site-card{ padding:8px; gap:8px; }
     .modal{ width:380px; }
     .modal.wide{ width:560px; }
-    #saludFooter{ gap:14px; padding:0 12px; }
-    #saludGlobalWrap{ padding-right:14px; gap:6px; }
-    #saludBars{ gap:14px; }
-    .salud-row{ min-width:96px; }
   }
   @media (max-width: 720px){
     #app{ grid-template-columns: 140px 1fr 208px; }
@@ -642,10 +660,4 @@
     #zoomControls{ bottom:8px; right:8px; gap:5px; }
     .zoom-btn{ width:28px; height:28px; font-size:13px; }
     .modal{ max-height:94vh; }
-    #saludFooter{ gap:10px; padding:0 10px; }
-    #saludGlobalWrap{ padding-right:10px; gap:4px; }
-    #saludGlobalLabel{ display:none; }
-    #saludBars{ gap:10px; }
-    .salud-row{ min-width:70px; gap:5px; }
-    .salud-label{ display:none; }
   }
