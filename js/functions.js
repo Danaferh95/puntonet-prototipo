@@ -3390,6 +3390,66 @@ function showToast(text, duration=2600){
   }, duration);
 }
 
+/* --- Diálogo propio (Dialog del design system, fase 7a del rediseño) ---
+   Reemplaza confirm() y prompt() del navegador, que no se pueden diseñar. showDialog devuelve
+   una promesa con { ok, value }: ok=true si se confirmó, value = texto del campo (si lo hay).
+   Escape o clic fuera cancelan; Enter en el campo confirma. */
+const dialogOverlay = byId('dialogOverlay');
+const dialogTitleEl = byId('dialogTitle');
+const dialogBodyEl = byId('dialogBody');
+const dialogFieldEl = byId('dialogField');
+const dialogFieldLabelEl = byId('dialogFieldLabel');
+const dialogInputEl = byId('dialogInput');
+const dialogCancelBtn = byId('dialogCancel');
+const dialogConfirmBtn = byId('dialogConfirm');
+let dialogResolve = null;
+function showDialog({ title, body='', confirmText='Aceptar', cancelText='Cancelar', danger=false, input=null }){
+  if(dialogResolve) closeDialog(false);
+  dialogTitleEl.textContent = title;
+  dialogBodyEl.textContent = body;
+  dialogBodyEl.hidden = !body;
+  dialogFieldEl.hidden = !input;
+  dialogInputEl.value = input && input.value ? input.value : '';
+  dialogInputEl.placeholder = input && input.placeholder ? input.placeholder : '';
+  dialogFieldLabelEl.textContent = input && input.label ? input.label : '';
+  dialogConfirmBtn.textContent = confirmText;
+  dialogCancelBtn.textContent = cancelText;
+  dialogConfirmBtn.classList.toggle('danger-outline', danger);
+  dialogConfirmBtn.classList.toggle('primary', !danger);
+  dialogOverlay.classList.add('show');
+  (input ? dialogInputEl : (danger ? dialogCancelBtn : dialogConfirmBtn)).focus();
+  return new Promise(resolve=>{ dialogResolve = resolve; });
+}
+function closeDialog(ok){
+  if(!dialogResolve) return;
+  const resolve = dialogResolve;
+  dialogResolve = null;
+  dialogOverlay.classList.remove('show');
+  resolve({ ok, value: dialogInputEl.value });
+}
+dialogConfirmBtn.addEventListener('click', ()=>closeDialog(true));
+dialogCancelBtn.addEventListener('click', ()=>closeDialog(false));
+dialogOverlay.addEventListener('click', (e)=>{ if(e.target===dialogOverlay) closeDialog(false); });
+document.addEventListener('keydown', (e)=>{
+  if(!dialogResolve) return;
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeDialog(false); }
+  else if(e.key==='Enter' && document.activeElement===dialogInputEl){ e.preventDefault(); e.stopPropagation(); closeDialog(true); }
+}, true);
+/* Confirmación de borrado: título corto + el mismo texto que antes usaba confirm(). */
+function confirmDialog(opts){
+  return showDialog(Object.assign({ confirmText:'Eliminar', danger:true }, opts)).then(r=>r.ok);
+}
+/* Proveedor de una Nube nueva (antes prompt()). "Omitir" deja el nombre vacío, igual que
+   cancelar el prompt: createNube le pone un nombre genérico numerado. */
+function pedirProveedorNube(){
+  return showDialog({
+    title:'Nueva Nube',
+    body:'¿Con qué proveedor es este Hosting/Nube?',
+    input:{ label:'Proveedor', placeholder:'Ej. AWS, Azure, GCP…' },
+    confirmText:'Crear Nube', cancelText:'Omitir',
+  }).then(r=> r.ok ? (r.value || '').trim() : '');
+}
+
 function placeSedeAtClientPoint(clientX, clientY){
   const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
@@ -3519,9 +3579,10 @@ function placeMatrizAtClientPoint(clientX, clientY){
 function placeNubeAtClientPoint(clientX, clientY){
   const point = pickGroundPoint({ clientX, clientY });
   if(!point) return;
-  const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
-  const {gx,gz} = nearestFreeCell(point.x, point.z, null, huellaDeClave('nube'));
-  createNube(nombre, gx, gz);
+  pedirProveedorNube().then(nombre=>{
+    const {gx,gz} = nearestFreeCell(point.x, point.z, null, huellaDeClave('nube'));
+    createNube(nombre, gx, gz);
+  });
 }
 /* Efecto "recubrimiento": al soltar un producto sobre una sede/Matriz/Datacenter, antes de abrir
    el popup se ve brevemente cómo el edificio se cubre con el color del producto (como si lo
@@ -4304,8 +4365,9 @@ function renderMatrizEditBox(matriz){
   );
 
   byId('btnDeleteMatriz').addEventListener('click', ()=>{
-    const ok = confirm(`¿Eliminar "${matriz.nombre}" y todo lo que tiene asignado (productos propios y conexiones)? Esta acción no se puede deshacer.`);
-    if(ok) deleteMatriz(matriz);
+    confirmDialog({ title:'Eliminar Matriz',
+      body:`¿Eliminar "${matriz.nombre}" y todo lo que tiene asignado (productos propios y conexiones)? Esta acción no se puede deshacer.` })
+      .then(ok=>{ if(ok) deleteMatriz(matriz); });
   });
 }
 
@@ -4346,10 +4408,11 @@ function renderNubeEditBox(nube){
     });
   }
   byId('btnDeleteNube').addEventListener('click', ()=>{
-    const ok = nube.esAutoInternet
-      ? confirm(`"${nube.nombre}" es la Nube automática de Internet: TODOS los productos de Internet (Corporativo/Startup/Teleworking) de cualquier sede que apunten a ella se eliminarán también. Si luego se agrega otro producto de Internet, se creará una Nube nueva. ¿Eliminar de todos modos?`)
-      : confirm(`¿Eliminar "${nube.nombre}" y las conexiones (Cloud Interconnect) que apuntan a ella? Esta acción no se puede deshacer.`);
-    if(ok) deleteNube(nube);
+    const mensaje = nube.esAutoInternet
+      ? (`"${nube.nombre}" es la Nube automática de Internet: TODOS los productos de Internet (Corporativo/Startup/Teleworking) de cualquier sede que apunten a ella se eliminarán también. Si luego se agrega otro producto de Internet, se creará una Nube nueva. ¿Eliminar de todos modos?`)
+      : (`¿Eliminar "${nube.nombre}" y las conexiones (Cloud Interconnect) que apuntan a ella? Esta acción no se puede deshacer.`);
+    confirmDialog({ title:'Eliminar Nube', body:mensaje })
+      .then(ok=>{ if(ok) deleteNube(nube); });
   });
 }
 
@@ -4367,8 +4430,9 @@ function renderDatacenterEditBox(datacenter){
     <button class="btn danger-outline block" id="btnDeleteDatacenter">Eliminar Datacenter</button>
   `);
   byId('btnDeleteDatacenter').addEventListener('click', ()=>{
-    const ok = confirm(`¿Eliminar el Datacenter Epicentro? Se eliminarán sus productos propios (Collocation, Crossconexión, Hosting, etc.) y cualquier conexión que apunte a él (Cloud Interconnect, Zona Wireless). Podrás restaurarlo luego desde el panel izquierdo.`);
-    if(ok) deleteDatacenter();
+    confirmDialog({ title:'Eliminar Datacenter',
+      body:`¿Eliminar el Datacenter Epicentro? Se eliminarán sus productos propios (Collocation, Crossconexión, Hosting, etc.) y cualquier conexión que apunte a él (Cloud Interconnect, Zona Wireless). Podrás restaurarlo luego desde el panel izquierdo.` })
+      .then(ok=>{ if(ok) deleteDatacenter(); });
   });
 }
 
@@ -4846,8 +4910,9 @@ function renderSedeEditBox(sede){
   );
 
   byId('btnDeleteSede').addEventListener('click', ()=>{
-    const ok = confirm(`¿Eliminar "${sede.nombre}" y todo lo que tiene asignado (productos y conexiones)? Esta acción no se puede deshacer.`);
-    if(ok) deleteSede(sede);
+    confirmDialog({ title:'Eliminar sede',
+      body:`¿Eliminar "${sede.nombre}" y todo lo que tiene asignado (productos y conexiones)? Esta acción no se puede deshacer.` })
+      .then(ok=>{ if(ok) deleteSede(sede); });
   });
 }
 
@@ -5153,9 +5218,16 @@ popupConexionSelect.addEventListener('change', ()=>{
   if(val!==CONEXION_NUEVA_SEDE && val!==CONEXION_NUEVA_MATRIZ && val!==CONEXION_NUEVA_NUBE) return;
   let nueva;
   if(val===CONEXION_NUEVA_NUBE){
-    const nombre = (prompt('¿Con qué proveedor es este Hosting/Nube? (ej. AWS, Azure, GCP)') || '').trim();
-    const {gx,gz} = nearestFreeCell(0, 0, null, huellaDeClave('nube'));
-    nueva = createNube(nombre, gx, gz);
+    // El proveedor se pide con el diálogo propio (asíncrono): la Nube se crea al responder.
+    popupConexionSelect.value = '';
+    pedirProveedorNube().then(nombre=>{
+      const {gx,gz} = nearestFreeCell(0, 0, null, huellaDeClave('nube'));
+      const nube = createNube(nombre, gx, gz);
+      showToast(`"${nube.nombre}" agregada — ya puedes conectarte a ella.`);
+      renderPopupConexionOptions(popupConexionEntityId, popupConexionSub);
+      popupConexionSelect.value = nube.id;
+    });
+    return;
   } else {
     const huellaNueva = val===CONEXION_NUEVA_SEDE
       ? huellaDeSedePorEmpleados(EMPLEADOS_DEFAULT) : huellaDeClave('matriz');

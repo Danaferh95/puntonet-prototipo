@@ -659,6 +659,75 @@
      un breakpoint de ALTURA para cuando el landscape es muy bajo (~ celulares chicos, <420px
      de alto). Los paneles laterales se angostan primero; el canvas 3D siempre se queda con el
      espacio central disponible. */
+  /* ---------- Botones, modales y diálogo · design system (fase 7a) ----------
+     Button (cápsula 48 px, Label/Action), ServiceForm (formulario de producto) y Dialog
+     (confirmaciones propias): cáscara panel→navy, radio 24, padding 32, campos de 48 px. */
+  [hidden]{display:none !important;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:12px;height:var(--pn-layout-height48);padding:0 24px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);
+    color:var(--pn-color-white);font:500 18px/24px var(--font-sans);letter-spacing:0;cursor:pointer;white-space:nowrap;
+    transition:border-color .15s, box-shadow .15s;}
+  .btn:hover{border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+  .btn:active{opacity:.8;}
+  .btn:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+  .btn.ghost{background:var(--pn-gradient-control);}
+  .btn.primary{background:var(--pn-gradient-primary);color:var(--pn-color-white);font-weight:500;box-shadow:var(--pn-glow-focus);}
+  .btn.primary:hover{background:var(--pn-gradient-primary);color:var(--pn-color-white);}
+  .btn.danger-outline{border-color:var(--pn-color-danger);color:var(--pn-color-danger);}
+  .btn.danger-outline:hover{border-color:var(--pn-color-danger);color:var(--pn-color-white);}
+  .btn:disabled{opacity:.4;cursor:default;}
+  .btn:disabled:hover{border-color:var(--pn-color-border);color:var(--pn-color-white);}
+
+  .modal-overlay{padding:24px;background:rgba(2,16,39,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}
+  .modal{display:flex;flex-direction:column;width:620px;max-width:100%;max-height:calc(100vh - 48px);overflow:hidden;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius24);background:var(--pn-gradient-shell);
+    color:var(--pn-color-white);box-shadow:var(--pn-glow-blue);}
+  .modal.wide{width:820px;}
+  .modal-head{display:flex;flex-direction:column;gap:4px;padding:32px 32px 16px;border-bottom:0;}
+  .modal-head .path{margin:0 0 4px;color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+  .modal-head .title{color:var(--pn-color-white);font:700 32px/40px var(--font-sans);letter-spacing:-.6px;}
+  .modal-head .eslogan{margin-top:8px;color:var(--pn-color-cyan);font:500 19px/28px var(--font-sans);letter-spacing:-.15px;}
+  .modal-head .desc{margin-top:4px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .modal-body{flex:1;min-height:0;overflow-y:auto;padding:8px 32px 16px;scrollbar-width:thin;
+    scrollbar-color:var(--pn-color-subtle) var(--pn-color-disabled);}
+  .modal-foot{display:flex;justify-content:flex-end;gap:12px;padding:16px 32px 32px;border-top:0;}
+  .modal .field{display:flex;flex-direction:column;gap:8px;margin:0 0 16px;}
+  .modal .field label{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .modal .field input[type="text"], .modal .field input[type="number"], .modal .field select,
+  .pn-dialog .field input[type="text"]{width:100%;height:var(--pn-layout-height48);padding:0 16px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius12);background:var(--pn-gradient-control);
+    color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  .modal .field select{-webkit-appearance:none;appearance:none;padding-right:44px;cursor:pointer;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a9c9ed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") right 16px center / 18px no-repeat, var(--pn-gradient-control);}
+  .modal .field select option{background:var(--pn-color-panel);color:var(--pn-color-white);}
+  .modal .field textarea{width:100%;min-height:120px;padding:16px;resize:vertical;border:1px solid var(--pn-color-border);
+    border-radius:var(--pn-layout-radius12);background:var(--pn-gradient-control);color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  .modal .field input::placeholder, .modal .field textarea::placeholder, .pn-dialog .field input::placeholder{color:var(--pn-color-muted);opacity:1;}
+  .modal .field input:not([type="range"]):not([type="checkbox"]):focus, .modal .field select:focus, .modal .field textarea:focus, .pn-dialog .field input:focus{
+    outline:none;border:2px solid var(--pn-color-focus);}
+  .modal .field .muted-inline{color:var(--pn-color-subtle);}
+  .modal .empRow{gap:12px;}
+  .modal .empRow input[type="number"]{width:110px;text-align:center;}
+  .modal .tamanoInfo{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .modal .fieldHint{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .modal .toggleRow{gap:12px;margin:0;color:var(--pn-color-white);font:400 16px/24px var(--font-sans);}
+  .modal .toggleRow input[type="checkbox"]{width:20px;height:20px;accent-color:var(--pn-color-cyan);}
+  .modal .toggleHint{margin:0 0 0 32px;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .modal .field-narrow{max-width:360px;margin-top:16px;}
+  .multi-tag{display:inline-block;margin:8px 8px 0 0;padding:2px 12px;border:1px solid var(--pn-color-cyan);border-radius:var(--pn-layout-pill);
+    background:transparent;color:var(--pn-color-cyan);font:400 13px/20px var(--font-sans);}
+
+  .dialog-overlay{z-index:120;}
+  .pn-dialog{display:flex;flex-direction:column;gap:16px;width:620px;max-width:100%;padding:32px;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius24);background:var(--pn-gradient-shell);
+    color:var(--pn-color-white);box-shadow:var(--pn-glow-blue);}
+  .pn-dialog__title{margin:0;color:var(--pn-color-white);font:700 32px/40px var(--font-sans);letter-spacing:-.6px;}
+  .pn-dialog__body{margin:0;color:var(--pn-color-muted);font:400 16px/24px var(--font-sans);}
+  .pn-dialog .field{display:flex;flex-direction:column;gap:8px;margin:0;}
+  .pn-dialog .field label{margin:0;color:var(--pn-color-muted);font:400 13px/20px var(--font-sans);}
+  .pn-dialog__actions{display:flex;gap:12px;margin-top:8px;}
+  .pn-dialog__actions .btn{flex:1;}
+
   @media (max-width: 1024px){
     #app{ grid-template-columns: 196px 1fr 264px; }
   }
