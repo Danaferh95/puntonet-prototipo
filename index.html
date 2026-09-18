@@ -22,44 +22,35 @@
   </div>
 
   <div id="left">
-    <h2>Agregar Sede</h2>
-    <div class="site-card" draggable="true" id="sedeDragCard">
-      <div class="site-icon size-m">▢</div>
-      <div>
-        <div class="lbl">Sede</div>
-        <div class="sub">Tamaño se ajusta según empleados</div>
+    <h2>Infraestructura</h2>
+    <div class="infra-tiles">
+      <div class="infra-tile" draggable="true" id="sedeDragCard"
+           title="Sede · el tamaño se ajusta según la cantidad de empleados">
+        <span class="infra-tile__img infra-tile__img--sede" aria-hidden="true"></span>
+        <span class="infra-tile__label">Sede</span>
       </div>
-    </div>
 
-    <div id="matrizDragWrap">
-      <h2>Agregar Matriz</h2>
-      <div class="site-card" draggable="true" id="matrizDragCard">
-        <div class="site-icon size-m indigo">◆</div>
-        <div>
-          <div class="lbl">Matriz</div>
-          <div class="sub">Puede haber varias · va donde la sueltes</div>
+      <div id="matrizDragWrap">
+        <div class="infra-tile" draggable="true" id="matrizDragCard"
+             title="Matriz · puede haber varias y va donde la sueltes">
+          <span class="infra-tile__img infra-tile__img--matriz" aria-hidden="true"></span>
+          <span class="infra-tile__label">Matriz</span>
         </div>
       </div>
-    </div>
 
-    <div id="nubeDragWrap">
-      <h2>Agregar Nube</h2>
-      <div class="site-card" draggable="true" id="nubeDragCard">
-        <div class="site-icon size-m violeta">☁</div>
-        <div>
-          <div class="lbl">Nube</div>
-          <div class="sub">Hosting (AWS/Azure/GCP) · destino de Cloud Interconnect</div>
+      <div id="nubeDragWrap">
+        <div class="infra-tile" draggable="true" id="nubeDragCard"
+             title="Nube · hosting (AWS/Azure/GCP) y destino de Cloud Interconnect">
+          <span class="infra-tile__img infra-tile__img--nube" aria-hidden="true"></span>
+          <span class="infra-tile__label">Nube</span>
         </div>
       </div>
-    </div>
 
-    <div id="datacenterRestoreWrap">
-      <h2>Datacenter Epicentro</h2>
-      <div class="site-card" id="datacenterRestoreCard">
-        <div class="site-icon size-m">▣</div>
-        <div>
-          <div class="lbl">Restaurar Datacenter</div>
-          <div class="sub">Se eliminó de este proyecto · clic para volver a agregarlo</div>
+      <div id="datacenterRestoreWrap">
+        <div class="infra-tile infra-tile--restore" id="datacenterRestoreCard"
+             title="Restaurar Datacenter Epicentro · se eliminó de este proyecto, clic para volver a agregarlo">
+          <span class="infra-tile__img infra-tile__img--epicentro" aria-hidden="true"></span>
+          <span class="infra-tile__label">Restaurar</span>
         </div>
       </div>
     </div>

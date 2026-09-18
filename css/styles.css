@@ -290,6 +290,31 @@
     color:#04121a;font-weight:700;font-size:11.5px;padding:8px 13px;border-radius:8px;
     box-shadow:0 10px 26px rgba(0,0,0,.55);white-space:nowrap;opacity:.96;}
 
+  /* ---------- Catálogo · design system (fase 3a: panel + tiles de infraestructura) ----------
+     El panel usa el render "rail" (316×830) estirado al alto disponible.
+     Tiles InfrastructureTile 90×108: render arriba, etiqueta abajo. La descripción larga
+     de cada tile quedó en su tooltip (atributo title). */
+  #left{background:var(--pn-img-rail) 0 0 / 100% 100% no-repeat;border-right:0;padding:20px 12px 20px 23px;
+    scrollbar-width:none;}
+  #left::-webkit-scrollbar{display:none;}
+  #left h2{margin:0 0 12px 5px;color:var(--pn-color-muted);font:400 12px/18px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+  #left .infra-tiles{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px;}
+  #left .infra-tile{position:relative;display:block;width:90px;height:108px;padding:0;
+    border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius24);background:var(--pn-gradient-control);
+    color:var(--pn-color-white);cursor:grab;overflow:hidden;user-select:none;-webkit-user-select:none;
+    transition:border-color .15s, box-shadow .15s;}
+  #left .infra-tile:hover{border-color:var(--pn-color-focus);box-shadow:var(--pn-glow-focus);}
+  #left .infra-tile:active{cursor:grabbing;opacity:.8;}
+  #left .infra-tile--restore{cursor:pointer;}
+  #left .infra-tile__img{position:absolute;left:0;top:4px;width:90px;height:72px;background:center / contain no-repeat;pointer-events:none;}
+  #left .infra-tile__img--sede{background-image:url("../assets/ui/renders-sm/sede.webp");}
+  #left .infra-tile__img--matriz{background-image:url("../assets/ui/renders-sm/matriz.webp");}
+  #left .infra-tile__img--nube{background-image:url("../assets/ui/renders-sm/nube.webp");}
+  #left .infra-tile__img--epicentro{background-image:url("../assets/ui/renders-sm/epicentro.webp");}
+  #left .infra-tile__label{position:absolute;left:0;right:0;top:80px;text-align:center;
+    font:400 16px/24px var(--font-sans);white-space:nowrap;pointer-events:none;}
+  #left .infra-tile--restore .infra-tile__label{font-size:13px;}
+
   /* ---------- Right panel (navegador de niveles) ---------- */
   #right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--border);
     padding:14px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
