@@ -90,7 +90,7 @@
     --radius: 6px;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+  html,body{margin:0;padding:0;height:100%;background:var(--pn-color-navy);color:var(--text);
     font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;overflow:hidden;}
 
   /* ---------- Forzar horizontal en móvil ----------
@@ -120,11 +120,14 @@
   *::-webkit-scrollbar-thumb:hover{ background:var(--cian); border-color:var(--panel); }
   *::-webkit-scrollbar-corner{ background:transparent; }
 
-  #app{display:grid;grid-template-columns:220px 1fr 300px;grid-template-rows:52px 1fr 60px;height:100vh;}
+  /* Layout del design system (pantalla 1920×1080): header 80 · catálogo 316 · detalle 281 · salud 142.
+     El visor 3D (columna central) absorbe el ancho sobrante. Fondo de pantalla = render "background". */
+  #app{display:grid;grid-template-columns:316px minmax(0,1fr) 281px;grid-template-rows:80px minmax(0,1fr) 142px;height:100vh;
+    background:var(--pn-color-navy) var(--pn-img-background) center / cover no-repeat;}
 
   /* ---------- Header ---------- */
   #header{grid-column:1/4;grid-row:1;display:flex;align-items:center;gap:14px;
-    padding:0 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+    padding:0 16px;background:transparent;}
   #header h1{font-size:14px;font-weight:600;letter-spacing:.02em;color:var(--text);margin:0;white-space:nowrap;}
   #header .tag{font-size:10px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);
     padding:2px 6px;border-radius:4px;}
@@ -207,7 +210,7 @@
      Barra inferior de ancho completo (grid-row:3), en vez de tarjeta en el panel izquierdo:
      así queda visible sin importar qué sede/Matriz esté seleccionada ni qué tan largo sea el
      catálogo, y las 4 verticales se leen en una sola fila horizontal. */
-  #saludFooter{grid-column:1/4;grid-row:3;background:var(--panel);border-top:1px solid var(--border);
+  #saludFooter{grid-column:1/4;grid-row:3;background:transparent;
     display:flex;align-items:center;gap:22px;padding:0 20px;overflow-x:auto;}
   #saludGlobalWrap{display:flex;align-items:center;gap:9px;flex-shrink:0;padding-right:20px;
     border-right:1px solid var(--border);white-space:nowrap;}
@@ -222,7 +225,7 @@
   .salud-count{width:34px;flex-shrink:0;text-align:right;font-size:9.5px;color:var(--muted);}
 
   /* ---------- Canvas ---------- */
-  #canvasWrap{grid-column:2;grid-row:2;position:relative;background:radial-gradient(ellipse at 50% 30%,#131a24 0%,#0a0e14 70%);touch-action:none;}
+  #canvasWrap{grid-column:2;grid-row:2;position:relative;background:transparent;touch-action:none;}
   #canvasWrap canvas{display:block;width:100%;height:100%;}
   /* Etiquetas de nombre (Sede/Matriz/Datacenter) como overlay HTML sobre el canvas 3D en vez de
      texturas dentro de la escena: así el tamaño de letra es el mismo font-size en px que el
