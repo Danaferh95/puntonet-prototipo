@@ -1071,7 +1071,13 @@ const MODELOS_RUTA = 'assets/glb/';
    grisáceo medio que competía con el reflejo y aplanaba la pieza — con el env map ya armado
    (crearEntornoMetal) el motor para el acabado estaba, y el color base lo estaba contradiciendo.
    Con `metalness` alto el albedo casi no aporta difuso: tiñe el reflejo, que es justo lo buscado. */
-const MODELO_METAL = { color:0x536fa8, metalness:0.90, roughness:0.22, envMapIntensity:1.6 };
+/* v48: el cliente pidió edificios en ALUMINIO SATINADO CLARO (referencias: plata fría con leve
+   tinte azul, caras superiores casi blancas, laterales gris azulado que nunca llegan a negro, y el
+   azul del fondo reflejado en las caras bajas). Reemplaza el cuerpo oscuro de v43-v47. El color
+   base ahora es plata clara y el entorno que refleja es otro, propio de las entidades
+   (ENTORNO_ENTIDADES, más abajo): uno neutro y luminoso arriba y azul abajo. `roughness` sube a
+   satinado para que el reflejo sea suave y no un espejo. Los íconos de producto NO cambian. */
+const MODELO_METAL = { color:0xd3dae6, metalness:0.85, roughness:0.34, envMapIntensity:0.45 };
 /* glowIntensidad por encima de 1 es lo que el comentario de v39 dejaba anunciado y el pipeline de
    color (§3A-ter) recién ahora hace posible: bajo ACES un emisivo de 1.0 sale a ~0.8 y se lee como
    color plano. Hace falta entrar bien arriba de 1 para que el centro de la línea sature a blanco y
@@ -1092,13 +1098,22 @@ const NOMBRES_SLOT_GLOW = ['emissive', 'mat_glow'];
    una tira de contraluz y un filo angosto y casi blanco que da el highlight nítido sobre los
    biseles — procesada una sola vez con PMREMGenerator. Si el renderer no puede generarlo (p. ej.
    en el smoke test), el metal queda sin reflejos pero la escena no se rompe. */
-function crearEntornoMetal(){
+const ENTORNO_ICONOS = {
+  arriba:0x3a5a8c, horizonte:0x101a2e, abajo:0x020409,
+  cenital:[0x6f9bff, 3.2], lateral:[0x4a7dff, 1.8], contraluz:[0x5f8fff, 2.4], filo:[0xc3daff, 9.0],
+};
+const ENTORNO_ENTIDADES = {
+  arriba:0xb3bdcc, horizonte:0x46536d, abajo:0x122a66,
+  cenital:[0xf2f6ff, 1.8], lateral:[0xc4d3ee, 1.0], contraluz:[0x4d86ff, 2.0], filo:[0xffffff, 3.5],
+};
+function crearEntornoMetal(cfg){
+  cfg = Object.assign({}, ENTORNO_ICONOS, cfg || {});
   try{
     const envScene = new THREE.Scene();
     const domoGeo = new THREE.SphereGeometry(10, 32, 16);
     const colores = [];
     const pos = domoGeo.attributes.position;
-    const arriba = new THREE.Color(0x3a5a8c), horizonte = new THREE.Color(0x101a2e), abajo = new THREE.Color(0x020409);
+    const arriba = new THREE.Color(cfg.arriba), horizonte = new THREE.Color(cfg.horizonte), abajo = new THREE.Color(cfg.abajo);
     const c = new THREE.Color();
     for(let i=0;i<pos.count;i++){
       const y = pos.getY(i) / 10; // -1..1
@@ -1125,10 +1140,10 @@ function crearEntornoMetal(){
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m);
     };
-    panel(9, 4, 0x6f9bff, 3.2, 0, 8.5, 2);    // cenital: el grueso de la luz
-    panel(3, 6, 0x4a7dff, 1.8, 8, 3, 4);      // lateral frío
-    panel(10, 0.8, 0x5f8fff, 2.4, -3, 2, -8); // contraluz: despega la silueta del fondo
-    panel(0.6, 5, 0xc3daff, 9.0, 6, 4, -6);   // filo caliente: el highlight nítido del bisel
+    panel(9, 4, cfg.cenital[0], cfg.cenital[1], 0, 8.5, 2);       // cenital: el grueso de la luz
+    panel(3, 6, cfg.lateral[0], cfg.lateral[1], 8, 3, 4);         // lateral frío
+    panel(10, 0.8, cfg.contraluz[0], cfg.contraluz[1], -3, 2, -8);// contraluz: despega la silueta del fondo
+    panel(0.6, 5, cfg.filo[0], cfg.filo[1], 6, 4, -6);            // filo caliente: el highlight nítido del bisel
     const pmrem = new THREE.PMREMGenerator(renderer);
     const rt = pmrem.fromScene(envScene, 0.03);
     pmrem.dispose();
@@ -1149,6 +1164,17 @@ function obtenerEntornoMetal(){
   return entornoMetalCache || null;
 }
 
+/* v48: entorno propio de las entidades (edificios, Datacenter, Nube). Los íconos siguen con
+   ENTORNO_ICONOS; estos dos objetos definen la "sala" que refleja cada familia:
+   colores de la cúpula (arriba / horizonte / abajo) y [color, intensidad HDR] de cada panel.
+   El de entidades es neutro y claro arriba (lo que da la plata casi blanca en las caras
+   superiores) y azul abajo (el tinte azul de los laterales y la base, como en las referencias). */
+let entornoEntidadesCache = null;
+function obtenerEntornoEntidades(){
+  if(entornoEntidadesCache === null) entornoEntidadesCache = crearEntornoMetal(ENTORNO_ENTIDADES) || false;
+  return entornoEntidadesCache || null;
+}
+
 const ModelLibrary = (()=>{
   const plantillas = {};   // archivo -> { objeto:THREE.Group (escalado y con materiales propios), dims:{w,h,d} }
   const materiales = {};   // look -> { base, glow } — compartidos por todas las instancias de ese tipo
@@ -1159,7 +1185,7 @@ const ModelLibrary = (()=>{
   function materialesDe(look){
     if(materiales[look]) return materiales[look];
     const L = MODELO_LOOKS[look];
-    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: obtenerEntornoMetal() }));
+    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: obtenerEntornoEntidades() }));
     const glow = new THREE.MeshStandardMaterial({
       color:0x000000, emissive:L.glow, emissiveIntensity:L.glowIntensidad, metalness:0, roughness:1,
     });
