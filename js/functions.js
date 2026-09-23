@@ -4515,26 +4515,25 @@ function saludGlobal(){
   return Math.round(porVertical.reduce((s,v)=>s+v.pct,0)/porVertical.length);
 }
 /* El color, el símbolo y el glow de cada categoría viven en styles.css (.salud-row--<vertical>),
-   según el design system: Conectividad mint, Cloud cyan, Ciberseguridad coral, Colaboración lime. */
+   según el design system: Conectividad mint, Cloud cyan, Ciberseguridad coral, Colaboración lime.
+
+   T03 (reunión 22/09): el panel en pantalla no muestra ningún número. Se quitaron el contador
+   "2/8" de cada categoría, el tooltip "Conectividad: 2 de 8 productos (25%)" y el % global del
+   título: quedan el símbolo, el nombre y la barra. Los números siguen calculándose
+   (saludPorVertical / saludGlobal) porque los usan el reporte y el JSON exportado. */
 
 const saludBarsEl = byId('saludBars');
-const saludGlobalBadgeEl = byId('saludGlobalBadge');
 function renderSaludPanel(){
   const porVertical = saludPorVertical();
-  saludGlobalBadgeEl.textContent = saludGlobal() + '%';
   saludBarsEl.innerHTML = '';
   porVertical.forEach(v=>{
     const row = document.createElement('div');
     row.className = 'salud-row salud-row--' + v.vertical.id;
-    row.title = `${v.vertical.nombre}: ${v.asignados} de ${v.total} productos (${v.pct}%)`;
     // El ancho de la barra es el único valor que se calcula en tiempo de ejecución (inline, como antes).
     row.innerHTML = `
       <span class="salud-icon" aria-hidden="true"></span>
       <span class="salud-main">
-        <span class="salud-head">
-          <span class="salud-label">${v.vertical.nombre}</span>
-          <span class="salud-count">${v.asignados}/${v.total}</span>
-        </span>
+        <span class="salud-label">${v.vertical.nombre}</span>
         <span class="salud-bar-track"><span class="salud-bar-fill" style="width:${v.pct}%;"></span></span>
       </span>`;
     saludBarsEl.appendChild(row);
