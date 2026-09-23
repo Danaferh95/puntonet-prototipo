@@ -158,8 +158,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--pn-col
 #logoUploadBtn img{width:100%;height:100%;object-fit:contain;background:#fff;border-radius:var(--pn-layout-pill);}
 #btnReport{justify-content:space-between;gap:1rem;width:15.125rem;margin-left:-2px;}
 #header .btn-arrow{font-size:1.375rem;line-height:1;}
-/* T06: Guardar estructura inicial / actual. Más compactos que el Button base para que el header
-   entre en 1366×768; al guardar se marcan en cian y muestran la hora de la foto. */
+/* T06: Guardar estado actual. Más compacto que el Button base para que el header entre en
+   1366×768; al guardar se marca en cian y muestra la hora de la foto. */
 .btn-estructura{flex:none;gap:0.5rem;padding:0 1.125rem;font-size:0.9375rem;}
 .btn-estructura.is-saved{border-color:var(--pn-color-cyan);}
 .btn-estructura__hora{color:var(--pn-color-cyan);font-size:0.8125rem;font-weight:400;}

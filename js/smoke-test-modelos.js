@@ -347,40 +347,43 @@ const E = (w, expr) => w.eval(expr);
   const n5 = E(w5,"createNube('X', 1, 1)"), m5 = E(w5,'createMatriz(0,0)');
   check('si falta un solo .glb → "parcial": esa entidad con primitiva, el resto con modelo', e5 === 'parcial' && !n5.group.userData.modelo && m5.group.userData.modelo, e5);
 
-  console.log('\nI-bis. Estructura inicial vs actual (T06)');
+  console.log('\nI-bis. Guardar estado actual: inicio y final de la sesión (T06)');
+  // Un solo botón (Dei, 23/09): el primer guardado queda como inicio; los siguientes actualizan.
   const wE = ventana({});
   await E(wE,'modelosListos');
   const doc = wE.document;
+  const btn = doc.getElementById('btnEstructuraActual');
+  check('hay un solo botón de guardado (ya no existe "Guardar inicial")',
+    !!btn && !doc.getElementById('btnEstructuraInicial') && /Guardar estado actual/.test(btn.textContent));
   check('arranca sin fotos: el JSON exporta estructuras en null',
     JSON.stringify(E(wE,'buildConfiguracionCliente()').estructuras) === '{"inicial":null,"actual":null}');
   E(wE,'createSede(30, 3, 1)');
-  doc.getElementById('btnEstructuraInicial').click();
+  btn.click();
   const ini = E(wE,'state.estructuras.inicial');
-  check('"Guardar inicial" guarda una foto con entidades, conexiones, salud y resumen',
+  check('el primer guardado queda como inicio y como actual, con entidades, conexiones, salud y resumen',
     !!ini && ini.sedes.length === 1 && Array.isArray(ini.conexiones) && typeof ini.salud.actual === 'number' &&
-    ini.resumen.sedes === 1 && !('clienteLogo' in ini) && !('estructuras' in ini));
-  check('…y el botón queda marcado con la hora', doc.getElementById('btnEstructuraInicial').classList.contains('is-saved') &&
-    doc.getElementById('estructuraInicialHora').textContent !== '');
+    ini.resumen.sedes === 1 && !('clienteLogo' in ini) && !('estructuras' in ini) &&
+    E(wE,'state.estructuras.actual').resumen.sedes === 1 && E(wE,'state.estructuras.actual') !== ini);
+  check('…y el botón queda marcado con la hora', btn.classList.contains('is-saved') &&
+    doc.getElementById('estructuraActualHora').textContent !== '');
   E(wE,'createSede(30, -3, 1); createMatriz(-4, -3)');
-  check('la foto es un dato congelado: no cambia al seguir trabajando', E(wE,'state.estructuras.inicial').resumen.sedes === 1);
-  doc.getElementById('btnEstructuraInicial').click();
-  check('volver a guardar la inicial pide confirmación y no la pisa sin ella',
-    doc.getElementById('dialogOverlay').classList.contains('show') && E(wE,'state.estructuras.inicial').resumen.sedes === 1);
-  doc.getElementById('dialogConfirm').click();
-  await new Promise(r=> setTimeout(r, 0));
-  check('…al confirmar se reemplaza', E(wE,'state.estructuras.inicial').resumen.sedes === 2);
+  btn.click();
+  check('los guardados siguientes actualizan el actual y no tocan el inicio (sin diálogo)',
+    E(wE,'state.estructuras.inicial').resumen.sedes === 1 && E(wE,'state.estructuras.actual').resumen.sedes === 2 &&
+    !doc.getElementById('dialogOverlay').classList.contains('show'));
   E(wE,'createSede(30, 0, 4)');
   E(wE,'openReport()');
   const cfgE = E(wE,'buildConfiguracionCliente()');
-  check('generar el reporte guarda la actual sola, y el JSON lleva las dos',
-    cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 2);
+  check('generar el reporte guarda el actual solo, y el JSON lleva inicio y final',
+    cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 1);
   check('el reporte muestra el bloque inicio → final', /Estructura: inicio y final/.test(doc.getElementById('reportBody').textContent) &&
-    /2 → 3/.test(doc.getElementById('reportBody').textContent));
+    /1 → 3/.test(doc.getElementById('reportBody').textContent));
   const wE2 = ventana({});
   await E(wE2,'modelosListos');
   E(wE2,'createSede(30, 3, 1); openReport()');
-  check('sin inicial, el reporte se abre igual y lo avisa', /No se guardó una estructura inicial/.test(wE2.document.getElementById('reportBody').textContent) &&
-    !!E(wE2,'state.estructuras.actual'));
+  check('si nunca se guardó, el reporte se abre igual, lo avisa, y su guardado automático no fija el inicio',
+    /No se guardó el estado durante la sesión/.test(wE2.document.getElementById('reportBody').textContent) &&
+    !!E(wE2,'state.estructuras.actual') && E(wE2,'state.estructuras.inicial') === null);
 
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que la doc de v13–v15: líneas con `.style.` (son 64 ocurrencias en 59 líneas, igual que v39)

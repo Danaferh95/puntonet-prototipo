@@ -433,7 +433,7 @@ const state = {
   clienteNombre: '',
   clienteLogo: null,     // dataURL (base64) del logo del cliente, opcional — se incluye en el PDF
   saludInicial: null,    // score 0-100 ingresado a mano por el vendedor: "así estaba antes de Puntonet"
-  estructuras: { inicial:null, actual:null }, // T06: fotos del proyecto (ver fotoEstructura)
+  estructuras: { inicial:null, actual:null }, // T06: inicio de la sesión (primer guardado) y estado actual (ver fotoEstructura)
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
   matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
                           // las sedes: se crean arrastrando, pueden ser varias, y van donde el usuario quiera.
@@ -5980,10 +5980,12 @@ saludInicialInput.addEventListener('input', ()=>{
    T06 (reunión 22/09): ESTRUCTURA INICIAL vs ACTUAL
    Dos fotos del proyecto, guardadas en el estado y en el JSON, para que el reporte muestre cómo
    empezó y cómo terminó la sesión. Todo en memoria, sin backend.
-   - "Guardar inicial": la foto de cómo llega el cliente. Si ya hay una, se pide confirmación
-     antes de reemplazarla (decisión de Dei, 23/09).
-   - "Guardar actual": se puede actualizar cuantas veces se quiera. Generar el reporte la guarda
-     sola, así el final del reporte siempre coincide con lo que hay en pantalla (decisión 23/09).
+   Un solo botón, "Guardar estado actual" (Dei, 23/09: dos botones confundían):
+   - El PRIMER guardado de la sesión queda además como `inicial` (el inicio de la sesión); los
+     siguientes solo actualizan `actual`. No hay forma de reemplazar el inicio a mano.
+   - Generar el reporte guarda `actual` sola, así el final del reporte siempre coincide con lo
+     que hay en pantalla. Ese guardado automático NO fija el inicio: si nunca se tocó el botón,
+     el reporte muestra solo el final y lo avisa.
    Una foto es una copia profunda de lo que exporta buildConfiguracionCliente (entidades,
    productos, conexiones, salud) sin los datos del cliente ni las propias fotos, más un resumen
    con los conteos que usa el reporte. Es un dato congelado: no se vuelve a calcular.
@@ -6008,30 +6010,22 @@ function horaFoto(foto){
   return foto ? new Date(foto.guardadoEn).toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' }) : '';
 }
 function renderBotonesEstructura(){
-  [['inicial', 'btnEstructuraInicial', 'estructuraInicialHora'], ['actual', 'btnEstructuraActual', 'estructuraActualHora']]
-    .forEach(([clave, btnId, horaId])=>{
-      const foto = state.estructuras[clave];
-      byId(btnId).classList.toggle('is-saved', !!foto);
-      byId(horaId).textContent = horaFoto(foto);
-    });
+  const foto = state.estructuras.actual;
+  byId('btnEstructuraActual').classList.toggle('is-saved', !!foto);
+  byId('estructuraActualHora').textContent = horaFoto(foto);
 }
-function guardarEstructura(clave){
-  state.estructuras[clave] = fotoEstructura();
+/* `fijarInicio`: solo el botón lo pide. El primer guardado hecho con el botón fija el inicio. */
+function guardarEstructura(fijarInicio){
+  const foto = fotoEstructura();
+  const esPrimero = fijarInicio && !state.estructuras.inicial;
+  if(esPrimero) state.estructuras.inicial = JSON.parse(JSON.stringify(foto));
+  state.estructuras.actual = foto;
   renderBotonesEstructura();
+  return esPrimero;
 }
-byId('btnEstructuraInicial').addEventListener('click', ()=>{
-  const previa = state.estructuras.inicial;
-  const guardar = ()=>{ guardarEstructura('inicial'); showToast('Estructura inicial guardada.'); };
-  if(!previa) return guardar();
-  showDialog({
-    title: 'Reemplazar estructura inicial',
-    body: `Ya hay una estructura inicial guardada (${horaFoto(previa)}). ¿Reemplazarla por lo que hay ahora en pantalla?`,
-    confirmText: 'Reemplazar',
-  }).then(r=>{ if(r.ok) guardar(); });
-});
 byId('btnEstructuraActual').addEventListener('click', ()=>{
-  guardarEstructura('actual');
-  showToast('Estructura actual guardada.');
+  const esPrimero = guardarEstructura(true);
+  showToast(esPrimero ? 'Estado guardado: queda como inicio de la sesión.' : 'Estado actual guardado.');
 });
 
 /* Bloque del reporte: inicio vs final, con los conteos del resumen y la salud por categoría.
@@ -6042,7 +6036,7 @@ function renderBloqueEstructuras(config){
   const h = document.createElement('h3');
   const ini = config.estructuras.inicial, fin = config.estructuras.actual;
   h.innerHTML = `<span>Estructura: inicio y final de la sesión</span><span class="muted-meta"> · ${
-    ini ? `inicial ${horaFoto(ini)} → final ${horaFoto(fin)}` : `final ${horaFoto(fin)}`}</span>`;
+    ini ? `inicio ${horaFoto(ini)} → final ${horaFoto(fin)}` : `final ${horaFoto(fin)}`}</span>`;
   box.appendChild(h);
   const fila = (etiqueta, a, b)=>{
     const row = document.createElement('div');
@@ -6054,7 +6048,7 @@ function renderBloqueEstructuras(config){
   if(!ini){
     const aviso = document.createElement('div');
     aviso.className = 'report-inst muted-small';
-    aviso.textContent = 'No se guardó una estructura inicial en esta sesión: se muestra solo el final.';
+    aviso.textContent = 'No se guardó el estado durante la sesión: se muestra solo el final.';
     box.appendChild(aviso);
   }
   const r0 = ini ? ini.resumen : {}, r1 = fin.resumen;
@@ -6073,7 +6067,7 @@ function renderBloqueEstructuras(config){
 
 function openReport(){
   // T06: generar el reporte actualiza la estructura actual (el "final" = lo que hay en pantalla).
-  guardarEstructura('actual');
+  guardarEstructura(false);
   const config = buildConfiguracionCliente();
   reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
   saludInicialInput.value = state.saludInicial===null || state.saludInicial===undefined ? '' : state.saludInicial;
