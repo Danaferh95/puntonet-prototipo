@@ -695,7 +695,8 @@ function uid(prefix, seqField){
    una lista de geometrias y posiciones.
      wire(geo, color, opts)  -> aristas de `geo`
      solid(geo, opts)        -> malla rellena de `geo` con MeshBasicMaterial
-     fillMesh(geo, opacity)  -> el relleno oscuro estandar de los volumenes "edificio"
+     fillMesh(geo)           -> el relleno oscuro estandar de los volumenes "edificio" (opaco, T02)
+     colorOpaco(color, a)    -> el color que tendría `color` con opacidad `a` sobre ese relleno
      hitboxMesh(geo)         -> volumen invisible que solo existe para el raycaster (§5)
      haloRing(rIn, rOut, color, name, y, seg) -> anillo de seleccion, tumbado sobre el piso */
 function wire(geometry, color, matOpts){
@@ -708,8 +709,17 @@ function solid(geometry, matOpts){
   return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial(matOpts));
 }
 const FILL_COLOR = 0x141b26; // mismo tono que --panel-2 en css/styles.css
-function fillMesh(geometry, opacity){
-  return solid(geometry, { color:FILL_COLOR, transparent:true, opacity: opacity===undefined ? .55 : opacity });
+/* T02: las entidades son opacas, también en las primitivas de respaldo. Antes el relleno iba al
+   55 % y se veía la grilla, los cables y las otras entidades a través del edificio. */
+function fillMesh(geometry){
+  return solid(geometry, { color:FILL_COLOR });
+}
+/* T02: las aristas y detalles de las primitivas que antes iban translúcidos pasan a opacos con el
+   color que efectivamente se veía: la mezcla de su color con el relleno oscuro, en la proporción
+   de la opacidad vieja. Se conserva el tono sin dejar ver nada detrás. */
+function colorOpaco(color, opacidad){
+  const a = new THREE.Color(FILL_COLOR), b = new THREE.Color(color);
+  return a.lerp(b, opacidad).getHex();
 }
 function hitboxMesh(geometry, name){
   const mesh = solid(geometry, { visible:false });
@@ -919,7 +929,11 @@ piso.position.y = -0.02; // apenas debajo de la grilla, evita z-fighting con sus
 piso.raycast = function(){}; // decorativo: no debe interceptar los clicks/arrastres que hoy resuelven contra un plano matemático (§4)
 scene.add(piso);
 
-const PISO_REFLEJO = { activo:true, opacidad:0.18 };
+/* T02: el reflejo deja de ser translúcido. Antes era el edificio al 18 % de opacidad, y como la
+   grilla y el fondo se veían a través, se leía como un edificio de vidrio que seguía bajo el piso.
+   Ahora es opaco y se atenúa bajando su luz: `intensidad` escala el color, el reflejo del entorno y
+   el emisivo de la copia. */
+const PISO_REFLEJO = { activo:true, intensidad:0.18 };
 const reflejosPiso = new THREE.Group();
 reflejosPiso.name = 'reflejosPiso';
 scene.add(reflejosPiso);
@@ -943,6 +957,14 @@ function invalidarReflejosPiso(){
 /* Copia espejada de UNA entidad: solo su cuerpo real, los meshes con material 'pn_<look>_base' o
    'pn_<look>_glow' que arma ModelLibrary (§3B) — halos, hitboxes, puertos y sprites quedan afuera
    (se ocultan, no se borran, para no desincronizar el clon de su origen). */
+function atenuarMaterialReflejo(m, k){
+  m.transparent = false;
+  m.opacity = 1;
+  m.depthWrite = true;
+  if(m.color) m.color.multiplyScalar(k);
+  if(m.envMapIntensity !== undefined) m.envMapIntensity *= k;
+  if(m.emissiveIntensity !== undefined) m.emissiveIntensity *= k;
+}
 function crearReflejoDeEntidad(entity){
   const espejo = entity.group.clone(true);
   const assetsContainer = espejo.getObjectByName('assetsContainer');
@@ -955,10 +977,8 @@ function crearReflejoDeEntidad(entity){
     o.raycast = function(){}; // nunca intercepta clicks ni arrastre: es un reflejo, no un objeto
     o.layers.disable(CAPA_BRILLO); // fuera del paso de brillo — si no, el cuerpo completo "brillaría" en el reflejo (ver Brillo.renderizarFuente, §3C)
     o.material = o.material.clone();
-    o.material.transparent = true;
-    o.material.depthWrite = false;
+    atenuarMaterialReflejo(o.material, PISO_REFLEJO.intensidad);
     o.material.side = THREE.DoubleSide; // el flip en Y invierte el sentido de las caras; sin esto se ve hueco
-    o.material.opacity = PISO_REFLEJO.opacidad;
   });
   espejo.renderOrder = -1; // se dibuja antes que la escena real, nunca la tapa
   return espejo;
@@ -1185,10 +1205,15 @@ const ModelLibrary = (()=>{
   function materialesDe(look){
     if(materiales[look]) return materiales[look];
     const L = MODELO_LOOKS[look];
-    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, { envMap: obtenerEntornoEntidades() }));
-    const glow = new THREE.MeshStandardMaterial({
+    // T02: opacidad explícita. Son los valores por defecto de three, pero quedan escritos porque
+    // el cliente pidió edificios sin transparencia y el smoke test los verifica: si mañana alguien
+    // agrega `transparent` acá (o el .glb trae alfa), se nota. El material del .glb se reemplaza
+    // entero en prepararPlantilla, así que el alfa que traiga el archivo nunca llega a la escena.
+    const OPACO = { transparent:false, opacity:1, depthWrite:true, alphaTest:0 };
+    const base = new THREE.MeshStandardMaterial(Object.assign({}, MODELO_METAL, OPACO, { envMap: obtenerEntornoEntidades() }));
+    const glow = new THREE.MeshStandardMaterial(Object.assign({
       color:0x000000, emissive:L.glow, emissiveIntensity:L.glowIntensidad, metalness:0, roughness:1,
-    });
+    }, OPACO));
     // Albedo y emisivo se eligieron a ojo en sRGB; en un pipeline PBR van en lineal (§3A-ter b).
     // Sin esto el cian se va hacia un celeste lavado en cuanto sube la intensidad.
     base.color.convertSRGBToLinear();
@@ -1909,21 +1934,21 @@ function construirMatrizPrimitiva(group){
 
   // cascarón exterior giratorio: icosaedro wireframe, simboliza la red corporativa
   const hubShellGeo = new THREE.IcosahedronGeometry(1.7, 0);
-  const hubShell = wire(hubShellGeo, 0x22d3ee, { transparent:true, opacity:.45 });
+  const hubShell = wire(hubShellGeo, colorOpaco(0x22d3ee, .45));
   hubShell.position.y = coreY * 0.62;
   hubShell.name = 'hubShell';
   group.add(hubShell);
 
   // segundo cascarón, más pequeño, gira en sentido contrario para dar profundidad
   const hubShell2Geo = new THREE.IcosahedronGeometry(1.25, 0);
-  const hubShell2 = wire(hubShell2Geo, 0x67e3fa, { transparent:true, opacity:.3 });
+  const hubShell2 = wire(hubShell2Geo, colorOpaco(0x67e3fa, .3));
   hubShell2.position.y = coreY * 0.62;
   hubShell2.name = 'hubShell2';
   group.add(hubShell2);
 
   // haz vertical sutil sobre el hub
   const beamGeo = new THREE.CylinderGeometry(0.04,0.04, 2.4, 8, 1, true);
-  const beam = solid(beamGeo, { color:0x22d3ee, transparent:true, opacity:.18, side:THREE.DoubleSide });
+  const beam = solid(beamGeo, { color:colorOpaco(0x22d3ee, .18), side:THREE.DoubleSide });
   beam.position.y = coreY + 1.2;
   group.add(beam);
 
@@ -1982,15 +2007,15 @@ function construirNubePrimitiva(group, color){
   ];
   puffs.forEach(p=>{
     const geo = new THREE.IcosahedronGeometry(p.r, 0);
-    const edges = wire(geo, color, { transparent:true, opacity:.7 });
-    const fill = fillMesh(geo, .5);
+    const edges = wire(geo, colorOpaco(color, .7));
+    const fill = fillMesh(geo);
     edges.position.set(...p.pos); fill.position.set(...p.pos);
     group.add(edges); group.add(fill);
   });
 
   // base: plataforma delgada, para anclar visualmente la nube al piso de la grilla
   const baseGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.12, 20);
-  const baseEdges = wire(baseGeo, color, { transparent:true, opacity:.4 });
+  const baseEdges = wire(baseGeo, colorOpaco(color, .4));
   const baseFill = fillMesh(baseGeo);
   baseEdges.position.y = 0.06; baseFill.position.y = 0.06;
   group.add(baseEdges, baseFill);
@@ -2059,7 +2084,7 @@ function construirDatacenter(){
     // hilera de "luces de servidor" en la fachada, para dar sensación de datacenter activo
     for(let i=0;i<7;i++){
       const light = solid(new THREE.SphereGeometry(0.05,8,8),
-        { color: i%2===0 ? 0x22d3ee : 0x4ade80, transparent:true, opacity:.85 });
+        { color: colorOpaco(i%2===0 ? 0x22d3ee : 0x4ade80, .85) });
       light.position.set(-1.2 + i*0.4, 0.3, 1.11);
       datacenterGroup.add(light);
     }
@@ -2827,7 +2852,7 @@ function buildSedeMesh(tamanoId){
     edges.position.y = h/2;
     edges.name = 'sedeHitbox';
     group.add(edges);
-    const fill = solid(geo, { color:0x1a2230, transparent:true, opacity:.55 });
+    const fill = solid(geo, { color:0x1a2230 }); // T02: opaco
     fill.position.y = h/2;
     group.add(fill);
   }
