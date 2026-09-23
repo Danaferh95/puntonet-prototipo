@@ -164,7 +164,7 @@ const E = (w, expr) => w.eval(expr);
   E(w,'restoreDatacenter()');
   check('restaurarlo lo vuelve a mostrar con la etiqueta a dcY + 0.8', dc.visible && cerca(E(w,'nameLabels').get('datacenter').localY, E(w,'dcY') + 0.8));
   const cfg = E(w,'buildConfiguracionCliente()');
-  check('JSON exportado sin cambios de esquema (version 14)', cfg.version === 14);
+  check('JSON exportado con el esquema vigente (version 15: salud por cobertura, T05)', cfg.version === 15);
   check('ningún error de script durante todo el recorrido', w.__erroresScript.length === 0, w.__erroresScript);
 
   console.log('\nH. Entidades creadas ANTES de que terminen de cargar los modelos');
@@ -342,7 +342,41 @@ const E = (w, expr) => w.eval(expr);
   check('Salud: ningún número en el panel (T03), aunque haya productos asignados',
     !/\d/.test(pie.textContent) && pie.querySelectorAll('[title]').length === 0 && pie.querySelectorAll('.salud-row').length === 4,
     pie.textContent.replace(/\s+/g, ' '));
-  check('…y la barra sigue reflejando la cobertura', pie.querySelector('.salud-row--conectividad .salud-bar-fill').style.width === '25%');
+  // T05: la barra mide cobertura de ubicaciones; la única Sede tiene Internet → Conectividad al 100 %.
+  check('…y la barra sigue reflejando la cobertura', pie.querySelector('.salud-row--conectividad .salud-bar-fill').style.width === '100%');
+
+  console.log('\nJ-bis. Salud = cobertura de ubicaciones (T05, fórmula A)');
+  // Mismo escenario que la propuesta (claude/tarea-T05-propuesta-formulas.md), con la regla de
+  // Cloud elegida el 23/09: una ubicación cubre Cloud si tiene un cable hacia un DC/Nube con Cloud.
+  const wH = ventana({});
+  await E(wH,'modelosListos');
+  E(wH, `(()=>{
+    const inst = (e, sub) => { const i = { instanciaId: uid('inst','nextInstanceSeq'), subproductoId: sub }; e.instancias.push(i); return i; };
+    const cable = (a, b, sub) => state.conexiones.push({ id: uid('conn','nextConexionSeq'), aId:a.id, bId:b.id, subproductoId:sub });
+    const m = createMatriz(-4, -3), s1 = createSede(30, 3, 1), s2 = createSede(30, -3, 1), s3 = createSede(30, 0, 3);
+    const aws = createNube('AWS', 4, -3), dc = state.datacenter;
+    window.__t05 = { m, s1, s2, s3, aws, dc, inst, cable };
+    ['canal_conexion','cloud_interconnect','internet_corporativo','firewall_on_premise','edr','conferencia'].forEach(s=> inst(m, s));
+    ['canal_conexion','internet_startup','edr'].forEach(s=> inst(s1, s));
+    inst(s2, 'canal_conexion');
+    ['iaas','baas','collocation'].forEach(s=> inst(dc, s));
+    cable(s1, dc, 'canal_conexion'); cable(s2, m, 'canal_conexion'); cable(m, aws, 'cloud_interconnect');
+  })()`);
+  const barras = () => E(wH,'saludPorVertical()').map(v=> v.pct).join('·') + ' → ' + E(wH,'saludGlobal()');
+  const subsOk = E(wH,`['iaas','baas','collocation','internet_startup','firewall_on_premise','conferencia'].every(id=> getSubproducto(id))`);
+  check('los ids de subproducto del escenario existen en el catálogo (si no, esta sección no prueba nada)', subsOk);
+  check('base: Conectividad 75 · Cloud 25 · Ciber 50 · Colab 25 → 44', barras() === '75·25·50·25 → 44', barras());
+  E(wH, `createSede(30, 6, 3)`);
+  check('una Sede vacía BAJA todas las barras: 60 · 20 · 40 · 20 → 35', barras() === '60·20·40·20 → 35', barras());
+  E(wH, `(()=>{ const t = window.__t05; t.s3.herenciaIds = [t.m.instancias.find(i=> i.subproductoId==='conferencia').instanciaId]; })()`);
+  check('lo heredado de la Matriz cuenta: Colaboración sube a 40', E(wH,'saludPorVertical()')[3].pct === 40, barras());
+  E(wH, `(()=>{ const t = window.__t05; t.cable(t.s1, t.s3, 'canal_conexion'); })()`);
+  check('el otro extremo de un Canal también queda cubierto en Conectividad (80)', E(wH,'saludPorVertical()')[0].pct === 80, barras());
+  E(wH, `(()=>{ const t = window.__t05; t.inst(t.aws, 'iaas'); })()`);
+  check('Cloud: el Cloud Interconnect a una Nube cubre la Matriz recién cuando la Nube tiene Hosting (40)', E(wH,'saludPorVertical()')[1].pct === 40, barras());
+  const cfgH = E(wH,'buildConfiguracionCliente()');
+  check('el JSON exporta cubiertas / elegibles (versión 15)',
+    cfgH.version === 15 && cfgH.salud.porVertical.every(v=> v.elegibles === 5 && typeof v.cubiertas === 'number' && !('asignados' in v)), cfgH.salud.porVertical);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);

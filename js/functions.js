@@ -3379,6 +3379,7 @@ function createSede(empleados, gx, gz){
   refreshSedeAssets(sede);
   updateSedeNameSprite(sede);
   rebuildConnections();
+  renderSaludPanel(); // T05: una ubicación nueva, aunque esté vacía, cambia la cobertura
   return sede;
 }
 
@@ -3611,6 +3612,7 @@ function createMatriz(gx, gz){
   refreshSedeAssets(matriz);
   updateSedeNameSprite(matriz);
   rebuildConnections();
+  renderSaludPanel(); // T05: idem createSede
   return matriz;
 }
 
@@ -4576,32 +4578,72 @@ function initials(nombre){
 
 /* =========================================================================
    3.5 SALUD DE INFRAESTRUCTURA — barra de progreso por vertical + score global
-   Cuenta cuántos subproductos DISTINTOS del catálogo de cada vertical están contratados en
-   algún punto de la configuración (Sede, Matriz o Datacenter), sobre el total de subproductos
-   que existen en esa vertical. El score global es el promedio simple de las 4 verticales
-   (cada vertical pesa igual, "regla de tres" por vertical y luego promedio entre las 4).
+   T05 (reunión 22/09, fórmula A elegida por el cliente el 23/09): la barra mide COBERTURA sobre
+   las ubicaciones del cliente, no cuánto del catálogo se vendió. Es un aviso de "me falta
+   cobertura": sumar una Sede o una Matriz sin productos de una categoría BAJA esa barra.
+
+     barra = ubicaciones cubiertas en la categoría ÷ ubicaciones del cliente (Sedes + Matrices)
+
+   El Datacenter y las Nubes no son ubicaciones del cliente: no entran en el denominador de
+   ninguna barra (decisión 23/09). Qué es "cubierta" depende de la categoría:
+   - Conectividad, Ciberseguridad, Colaboración: la ubicación tiene al menos un producto de la
+     categoría, propio o heredado de una Matriz (herenciaIds; decisión 23/09). En Conectividad
+     también cuenta ser el OTRO extremo de un cable de Conectividad (Canal de Conexión, Cloud
+     Interconnect, Túnel IPsec…): el enlace une a las dos, y si no, quedaría cubierta solo la
+     entidad desde la que se arrastró el cable.
+   - Cloud: las Sedes y Matrices no pueden llevar productos de Cloud (catálogo, `destinos`), así
+     que la ubicación está cubierta si tiene un Canal de Conexión o un Cloud Interconnect hacia el
+     Datacenter o una Nube que tengan al menos un producto de Cloud (decisión 23/09). Una Nube sin
+     Hosting (solo con el Cloud Interconnect) no cubre a nadie.
+
+   Sin ubicaciones en el proyecto, todas las barras quedan en 0. El score global sigue siendo el
+   promedio simple de las 4 barras.
    ========================================================================= */
-function totalSubproductosVertical(verticalId){
-  return getProductosByVertical(verticalId)
-    .reduce((sum,p)=>sum+getSubproductosByProducto(p.id).length, 0);
+const SUBPRODUCTOS_CABLE_A_CLOUD = ['canal_conexion', 'cloud_interconnect'];
+function verticalDeSubproducto(subproductoId){
+  const sub = getSubproducto(subproductoId);
+  const producto = sub && getProducto(sub.productoNivel2Id);
+  return producto ? producto.verticalId : null;
 }
-function subproductosAsignadosVertical(verticalId){
-  const productoIds = new Set(getProductosByVertical(verticalId).map(p=>p.id));
-  const ids = new Set();
-  todasLasEntidades().forEach(entity=>{
-    (entity.instancias||[]).forEach(inst=>{
-      const sub = getSubproducto(inst.subproductoId);
-      if(sub && productoIds.has(sub.productoNivel2Id)) ids.add(sub.id);
+/* Verticales que tiene una entidad por sus productos: propios y, en una Sede, los heredados. */
+function verticalesDeEntidad(entity){
+  const set = new Set();
+  (entity.instancias||[]).forEach(inst=> set.add(verticalDeSubproducto(inst.subproductoId)));
+  if(entity.tipo!=='matriz'){
+    (entity.herenciaIds||[]).forEach(hid=>{
+      const inst = findInstanciaEnMatrices(hid);
+      if(inst) set.add(verticalDeSubproducto(inst.subproductoId));
     });
-  });
-  return ids.size;
+  }
+  set.delete(null);
+  return set;
+}
+/* ¿Este destino (Datacenter o Nube) ofrece Cloud? Tiene que existir y tener algún producto de Cloud. */
+function destinoConCloud(entityId){
+  const tipo = tipoEntidad(entityId);
+  if(tipo==='datacenter' && !state.datacenter.activo) return false;
+  if(tipo!=='datacenter' && tipo!=='nube') return false;
+  const e = getSedeById(entityId);
+  return !!e && (e.instancias||[]).some(inst=> verticalDeSubproducto(inst.subproductoId)==='cloud');
+}
+function ubicacionCubierta(entity, verticalId){
+  if(verticalId==='cloud'){
+    return conexionesDe(entity.id).some(c=> SUBPRODUCTOS_CABLE_A_CLOUD.includes(c.subproductoId) &&
+      destinoConCloud(otroExtremo(c, entity.id)));
+  }
+  if(verticalesDeEntidad(entity).has(verticalId)) return true;
+  if(verticalId==='conectividad'){
+    return conexionesDe(entity.id).some(c=> verticalDeSubproducto(c.subproductoId)==='conectividad');
+  }
+  return false;
 }
 function saludPorVertical(){
+  const ubicaciones = entidadesPortadoras(); // Sedes + Matrices
   return VERTICALES.map(v=>{
-    const total = totalSubproductosVertical(v.id);
-    const asignados = subproductosAsignadosVertical(v.id);
-    const pct = total>0 ? Math.round((asignados/total)*100) : 0;
-    return { vertical:v, asignados, total, pct };
+    const elegibles = ubicaciones.length;
+    const cubiertas = ubicaciones.filter(e=> ubicacionCubierta(e, v.id)).length;
+    const pct = elegibles>0 ? Math.round((cubiertas/elegibles)*100) : 0;
+    return { vertical:v, cubiertas, elegibles, pct };
   });
 }
 function saludGlobal(){
@@ -4615,7 +4657,8 @@ function saludGlobal(){
    T03 (reunión 22/09): el panel en pantalla no muestra ningún número. Se quitaron el contador
    "2/8" de cada categoría, el tooltip "Conectividad: 2 de 8 productos (25%)" y el % global del
    título: quedan el símbolo, el nombre y la barra. Los números siguen calculándose
-   (saludPorVertical / saludGlobal) porque los usan el reporte y el JSON exportado. */
+   (saludPorVertical / saludGlobal) porque los usan el reporte y el JSON exportado. Desde T05 la
+   barra mide cobertura de ubicaciones (ver 3.5), no productos del catálogo. */
 
 const saludBarsEl = byId('saludBars');
 function renderSaludPanel(){
@@ -5102,6 +5145,7 @@ function toggleHerencia(sede, instId, on){
   if(on && idx===-1) sede.herenciaIds.push(instId);
   if(!on && idx>=0) sede.herenciaIds.splice(idx,1);
   refreshSedeAssets(sede);
+  renderSaludPanel(); // T05: lo heredado cuenta como cobertura de la Sede
 }
 
 /* =========================================================================
@@ -5768,7 +5812,8 @@ renderLogoButton();
 
 function buildConfiguracionCliente(){
   return {
-    version: 14, // v14: cada Matriz exporta su `concentrador` calculado (total + desglose por
+    version: 15, // v15: salud.porVertical mide cobertura de ubicaciones (T05, ver §3.5).
+                 // v14: cada Matriz exporta su `concentrador` calculado (total + desglose por
                  // canal). Es dato derivado, no editable — se incluye para que quien consuma el
                  // JSON no tenga que reimplementar la regla de "los backups no suman".
                  // v13: Sdwan se aplica sobre un canal EXISTENTE elegido por el vendedor
@@ -5782,7 +5827,9 @@ function buildConfiguracionCliente(){
     salud: {
       inicial: state.saludInicial, // ingresado a mano por el vendedor, o null si no se completó
       actual: saludGlobal(),
-      porVertical: saludPorVertical().map(v=>({ vertical: v.vertical.nombre, asignados: v.asignados, total: v.total, pct: v.pct })),
+      // v15 (T05): cobertura de ubicaciones — `cubiertas` de `elegibles` (Sedes + Matrices) — en
+      // lugar de `asignados`/`total` productos del catálogo.
+      porVertical: saludPorVertical().map(v=>({ vertical: v.vertical.nombre, cubiertas: v.cubiertas, elegibles: v.elegibles, pct: v.pct })),
     },
     matrices: state.matrices.map(m=>({
       id: m.id, nombre: m.nombre, gx: m.gx, gz: m.gz, usuarios: m.usuarios||0,
@@ -5890,7 +5937,7 @@ function openReport(){
   config.salud.porVertical.forEach(v=>{
     const row = document.createElement('div');
     row.className = 'report-inst';
-    row.innerHTML = `<div class="rline1"><span>${v.vertical}</span><span class="muted-small">${v.asignados}/${v.total} · ${v.pct}%</span></div>`;
+    row.innerHTML = `<div class="rline1"><span>${v.vertical}</span><span class="muted-small">${v.cubiertas} de ${v.elegibles} ubicaciones · ${v.pct}%</span></div>`;
     saludBox.appendChild(row);
   });
   reportBody.appendChild(saludBox);
@@ -6347,7 +6394,7 @@ function downloadPDF(){
     ensureSpace(20);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(70,78,90);
     doc.text(v.vertical, marginX+10, y);
-    doc.text(`${v.asignados}/${v.total} · ${v.pct}%`, pageW-marginX, y, { align:'right' });
+    doc.text(`${v.cubiertas} de ${v.elegibles} ubicaciones · ${v.pct}%`, pageW-marginX, y, { align:'right' });
     y += 6;
     const barX = marginX+10, barW = maxWidth-20, barH = 5;
     doc.setFillColor(228,232,238);
