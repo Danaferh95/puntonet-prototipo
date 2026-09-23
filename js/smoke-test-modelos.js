@@ -268,6 +268,46 @@ const E = (w, expr) => w.eval(expr);
   check('…y el cable se redibuja desde ahí', curva0.getPoint(0).distanceTo(wpos(sDer2)) < 1e-6);
   check('sin excepciones', wP.__erroresScript.length === 0, wP.__erroresScript);
 
+  console.log('\nH-quater. Entidades sin transparencia (T02)');
+  // Todo lo visible del edificio es opaco, con modelos .glb y con las primitivas de respaldo.
+  // Quedan afuera a propósito: halos de selección, hitbox (invisibles), el puerto (+) y los
+  // íconos de producto (assetsContainer), que pueden seguir siendo translúcidos.
+  const EXCLUIDOS = ['halo', 'matrizHalo', 'assetsContainer'];
+  const translucidosDe = ent => {
+    const l = [];
+    (function rec(o){
+      if(EXCLUIDOS.includes(o.name) || o.isSprite) return;
+      const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      if(o.visible && ms.length) ms.forEach(m=>{
+        if(m.visible !== false && (m.transparent || m.opacity < 1 || m.depthWrite === false))
+          l.push([o.name || o.type, m.name || m.type, m.transparent, m.opacity, m.depthWrite]);
+      });
+      o.children.forEach(rec);
+    })(ent.group);
+    return l;
+  };
+  const escenaOpaca = async (op, etiqueta) => {
+    const wT = ventana(op);
+    await E(wT,'modelosListos');
+    const ents = [E(wT,'state.datacenter'), E(wT,'createSede(10, 3, 1)'), E(wT,'createSede(90, -3, 1)'),
+                  E(wT,'createMatriz(4, -3)'), E(wT,"createNube('AWS', -4, -3)")];
+    const malos = ents.map(e=> [e.id, translucidosDe(e)]).filter(([, l])=> l.length);
+    check('ningún material de las 5 entidades es translúcido — ' + etiqueta, malos.length === 0, malos);
+    return wT;
+  };
+  const wO = await escenaOpaca({}, 'modelos .glb');
+  const m0 = E(wO,'ModelLibrary').materiales();
+  check('…los materiales compartidos de las 4 familias son opacos (base y glow)',
+    Object.values(m0).every(f=> [f.base, f.glow].every(m=> !m.transparent && m.opacity === 1 && m.depthWrite)));
+  await escenaOpaca({ datos:false }, 'primitivas de respaldo');
+  E(wO,'actualizarReflejosPiso()');
+  const reflejos = [];
+  E(wO,'reflejosPiso').traverse(o=>{ if(o.isMesh && o.visible) reflejos.push(o.material); });
+  check('el reflejo en el piso también es opaco (y existe: si no, esto no prueba nada)',
+    reflejos.length > 0 && reflejos.every(m=> !m.transparent && m.opacity === 1 && m.depthWrite), reflejos.length);
+  check('…y tenue: el color del reflejo es la fracción PISO_REFLEJO.intensidad del original',
+    reflejos.some(m=> m.name.endsWith('_base') && cerca(m.color.r, m0.sede.base.color.r * E(wO,'PISO_REFLEJO').intensidad)));
+
   console.log('\nI. Fallbacks');
   const w3 = ventana({ datos:false });
   const e3 = await E(w3,'modelosListos');
