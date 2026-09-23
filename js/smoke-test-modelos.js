@@ -331,6 +331,19 @@ const E = (w, expr) => w.eval(expr);
   const versiones = HTML.match(/Prototipo v\d+/g) || [];
   check('index.html muestra la versión en el título (' + versiones[0] + '; la etiqueta salió del header en el rediseño)', versiones.length === 1 && parseInt(versiones[0].slice(11)) >= 40, versiones);
 
+  // T03 (reunión 22/09): la Salud en pantalla no muestra números — ni contador por categoría, ni
+  // tooltip, ni % global. Se prueba con productos asignados, que es cuando antes aparecían.
+  const wS = ventana({});
+  await E(wS,'modelosListos');
+  E(wS, `(()=>{ const s = createSede(30, 2, 1);
+    s.instancias.push({ instanciaId:'t03a', subproductoId:'internet_corporativo' }, { instanciaId:'t03b', subproductoId:'puntonet_space' });
+    renderSaludPanel(); })()`);
+  const pie = wS.document.getElementById('saludFooter');
+  check('Salud: ningún número en el panel (T03), aunque haya productos asignados',
+    !/\d/.test(pie.textContent) && pie.querySelectorAll('[title]').length === 0 && pie.querySelectorAll('.salud-row').length === 4,
+    pie.textContent.replace(/\s+/g, ' '));
+  check('…y la barra sigue reflejando la cobertura', pie.querySelector('.salud-row--conectividad .salud-bar-fill').style.width === '25%');
+
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.error(e); process.exit(2); });
