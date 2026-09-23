@@ -164,7 +164,7 @@ const E = (w, expr) => w.eval(expr);
   E(w,'restoreDatacenter()');
   check('restaurarlo lo vuelve a mostrar con la etiqueta a dcY + 0.8', dc.visible && cerca(E(w,'nameLabels').get('datacenter').localY, E(w,'dcY') + 0.8));
   const cfg = E(w,'buildConfiguracionCliente()');
-  check('JSON exportado con el esquema vigente (version 15: salud por cobertura, T05)', cfg.version === 15);
+  check('JSON exportado con el esquema vigente (version 16: salud por cobertura T05 + estructuras T06)', cfg.version === 16);
   check('ningún error de script durante todo el recorrido', w.__erroresScript.length === 0, w.__erroresScript);
 
   console.log('\nG-bis. "+" hacia una Nube = Cloud Interconnect (T04)');
@@ -347,6 +347,41 @@ const E = (w, expr) => w.eval(expr);
   const n5 = E(w5,"createNube('X', 1, 1)"), m5 = E(w5,'createMatriz(0,0)');
   check('si falta un solo .glb → "parcial": esa entidad con primitiva, el resto con modelo', e5 === 'parcial' && !n5.group.userData.modelo && m5.group.userData.modelo, e5);
 
+  console.log('\nI-bis. Estructura inicial vs actual (T06)');
+  const wE = ventana({});
+  await E(wE,'modelosListos');
+  const doc = wE.document;
+  check('arranca sin fotos: el JSON exporta estructuras en null',
+    JSON.stringify(E(wE,'buildConfiguracionCliente()').estructuras) === '{"inicial":null,"actual":null}');
+  E(wE,'createSede(30, 3, 1)');
+  doc.getElementById('btnEstructuraInicial').click();
+  const ini = E(wE,'state.estructuras.inicial');
+  check('"Guardar inicial" guarda una foto con entidades, conexiones, salud y resumen',
+    !!ini && ini.sedes.length === 1 && Array.isArray(ini.conexiones) && typeof ini.salud.actual === 'number' &&
+    ini.resumen.sedes === 1 && !('clienteLogo' in ini) && !('estructuras' in ini));
+  check('…y el botón queda marcado con la hora', doc.getElementById('btnEstructuraInicial').classList.contains('is-saved') &&
+    doc.getElementById('estructuraInicialHora').textContent !== '');
+  E(wE,'createSede(30, -3, 1); createMatriz(-4, -3)');
+  check('la foto es un dato congelado: no cambia al seguir trabajando', E(wE,'state.estructuras.inicial').resumen.sedes === 1);
+  doc.getElementById('btnEstructuraInicial').click();
+  check('volver a guardar la inicial pide confirmación y no la pisa sin ella',
+    doc.getElementById('dialogOverlay').classList.contains('show') && E(wE,'state.estructuras.inicial').resumen.sedes === 1);
+  doc.getElementById('dialogConfirm').click();
+  await new Promise(r=> setTimeout(r, 0));
+  check('…al confirmar se reemplaza', E(wE,'state.estructuras.inicial').resumen.sedes === 2);
+  E(wE,'createSede(30, 0, 4)');
+  E(wE,'openReport()');
+  const cfgE = E(wE,'buildConfiguracionCliente()');
+  check('generar el reporte guarda la actual sola, y el JSON lleva las dos',
+    cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 2);
+  check('el reporte muestra el bloque inicio → final', /Estructura: inicio y final/.test(doc.getElementById('reportBody').textContent) &&
+    /2 → 3/.test(doc.getElementById('reportBody').textContent));
+  const wE2 = ventana({});
+  await E(wE2,'modelosListos');
+  E(wE2,'createSede(30, 3, 1); openReport()');
+  check('sin inicial, el reporte se abre igual y lo avisa', /No se guardó una estructura inicial/.test(wE2.document.getElementById('reportBody').textContent) &&
+    !!E(wE2,'state.estructuras.actual'));
+
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que la doc de v13–v15: líneas con `.style.` (son 64 ocurrencias en 59 líneas, igual que v39)
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
@@ -400,8 +435,8 @@ const E = (w, expr) => w.eval(expr);
   E(wH, `(()=>{ const t = window.__t05; t.inst(t.aws, 'iaas'); })()`);
   check('Cloud: el Cloud Interconnect a una Nube cubre la Matriz recién cuando la Nube tiene Hosting (40)', E(wH,'saludPorVertical()')[1].pct === 40, barras());
   const cfgH = E(wH,'buildConfiguracionCliente()');
-  check('el JSON exporta cubiertas / elegibles (versión 15)',
-    cfgH.version === 15 && cfgH.salud.porVertical.every(v=> v.elegibles === 5 && typeof v.cubiertas === 'number' && !('asignados' in v)), cfgH.salud.porVertical);
+  check('el JSON exporta cubiertas / elegibles (versión 16 tras integrar T06)',
+    cfgH.version === 16 && cfgH.salud.porVertical.every(v=> v.elegibles === 5 && typeof v.cubiertas === 'number' && !('asignados' in v)), cfgH.salud.porVertical);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));
   process.exit(fail ? 1 : 0);
