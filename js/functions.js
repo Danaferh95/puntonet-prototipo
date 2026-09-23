@@ -585,6 +585,57 @@ function tipoConexionPorDestino(){
   return 'canal_conexion';
 }
 
+/* --- T04 (reunión 22/09): el "+" hacia una Nube es un Cloud Interconnect ---
+   Hasta ahora el cable a mano no aceptaba Nubes como destino, y la única forma de llegar a una
+   era el dropdown "Conectar a" del producto. El cliente pidió que conectar con una nube desde el
+   "+" SEA crear un Cloud Interconnect: al soltar sobre una Nube no se crea ningún canal, se abre
+   el formulario de Cloud Interconnect con el origen y la Nube ya elegidos, y la conexión recién
+   existe cuando se guarda (cancelar no deja nada a medias).
+
+   Qué Nubes valen como destino lo decide el propio catálogo, igual que en el dropdown: el origen
+   tiene que poder llevar un Cloud Interconnect (`destinos` del subproducto: Sede o Matriz, no el
+   Datacenter) y la Nube tiene que estar entre sus candidatos (candidatosConexionEntreSedes, que
+   ya excluye la Nube automática de Internet).
+
+   Si ya existe un Cloud Interconnect entre ese origen y esa Nube (decisión de Dei, 23/09): se abre
+   ese para editarlo, en lugar de crear otro. */
+const SUB_CLOUD_INTERCONNECT = 'cloud_interconnect';
+function esDestinoCloudInterconnect(origenId, destinoId){
+  if(!origenId || !destinoId || tipoEntidad(destinoId)!=='nube') return false;
+  const sub = getSubproducto(SUB_CLOUD_INTERCONNECT);
+  if(!sub || !destinosPermitidos(sub).includes(tipoEntidad(origenId))) return false;
+  return candidatosConexionEntreSedes(origenId, sub).some(e=>e.id===destinoId);
+}
+function cloudInterconnectExistente(origenId, nubeId){
+  return state.conexiones.find(c=> c.subproductoId===SUB_CLOUD_INTERCONNECT && !c.esBackup &&
+    ((c.aId===origenId && c.bId===nubeId) || (c.aId===nubeId && c.bId===origenId)));
+}
+/* ¿El cable a mano puede terminar en `destinoId`? Nube → solo como Cloud Interconnect; el resto,
+   la regla de siempre (parValidoConexion). */
+function destinoValidoCableManual(origenId, destinoId){
+  if(!destinoId || destinoId===origenId) return false;
+  if(tipoEntidad(destinoId)==='nube') return esDestinoCloudInterconnect(origenId, destinoId);
+  return parValidoConexion(origenId, destinoId);
+}
+function abrirCloudInterconnectDesdeCable(origenId, nubeId){
+  state.selectedSedeIds = [origenId];
+  const existente = cloudInterconnectExistente(origenId, nubeId);
+  if(existente){
+    state.selectedConexionId = existente.id;
+    updateSelectionVisuals();
+    rebuildConnections();
+    renderRightPanel();
+    openPopupForEdit(existente.ownerId, existente.instanciaId);
+    return;
+  }
+  state.selectedConexionId = null;
+  updateSelectionVisuals();
+  renderRightPanel();
+  openPopupForNew(SUB_CLOUD_INTERCONNECT, [origenId]);
+  // renderPopupConexionField ya listó las Nubes candidatas; se deja elegida la del cable.
+  popupConexionSelect.value = nubeId;
+}
+
 /* --- Auto-conexión: ¿este subproducto, al asignarse a una Sede/Matriz, debe generar también
    una línea de conexión hacia el Datacenter, sin preguntar nada? Solo los subproductos marcados
    `conexion:'datacenter'` en el catálogo (ver definición de SUBPRODUCTOS más arriba). Los
@@ -4102,10 +4153,9 @@ function onPointerMove(e){
       // o mover una sede, sin importar dónde haya empezado el gesto.
       pointerMode = 'pan';
     } else if(pointerDownInfo.hit.port && !pointerDownInfo.forcePan && tipoEntidad(pointerDownInfo.hit.port.entityId)!=='nube' && moved > PORT_DRAG_THRESHOLD){
-      // El cable manual desde el puerto siempre es un Canal de Conexión (ver
-      // tipoConexionPorDestino, ago/2026) — no sabe de Nubes (v9 §4), así que una Nube no puede
-      // ser origen de este gesto. Conectar una Nube es solo vía el dropdown "Conectar a" de
-      // Cloud Interconnect (candidatosConexionEntreSedes).
+      // El cable manual desde el puerto es un Canal de Conexión (ver tipoConexionPorDestino),
+      // salvo que termine en una Nube: ahí abre Cloud Interconnect (T04). Una Nube sigue sin
+      // poder ser ORIGEN de este gesto: el Cloud Interconnect lo contrata la Sede o la Matriz.
       pointerMode = 'connecting';
       connectingFromId = pointerDownInfo.hit.port.entityId;
       connectingHoverId = null;
@@ -4126,8 +4176,8 @@ function onPointerMove(e){
   } else if(pointerMode==='connecting'){
     const originPos = getEntityPortWorldPos(connectingFromId);
     const hover = hitTestAtEvent(e);
-    // Mismo motivo que arriba: una Nube tampoco puede ser destino del cable manual.
-    if(hover.sedeId && hover.sedeId!==connectingFromId && tipoEntidad(hover.sedeId)!=='nube' && parValidoConexion(connectingFromId, hover.sedeId)){
+    // T04: una Nube es destino válido solo como Cloud Interconnect (destinoValidoCableManual).
+    if(hover.sedeId && destinoValidoCableManual(connectingFromId, hover.sedeId)){
       connectingHoverId = hover.sedeId;
       updateTempCable(originPos, getEntityPortWorldPos(hover.sedeId), true);
     } else {
@@ -4154,7 +4204,11 @@ function onPointerUp(e){
   if(e.button===0 && pointerDownInfo){
     if(pointerMode==='connecting'){
       endTempCable();
-      if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
+      if(connectingHoverId && tipoEntidad(connectingHoverId)==='nube'){
+        // T04: no se crea nada todavía — el formulario decide. Guardar crea instancia y cable;
+        // cancelar no deja rastro.
+        if(esDestinoCloudInterconnect(connectingFromId, connectingHoverId)) abrirCloudInterconnectDesdeCable(connectingFromId, connectingHoverId);
+      } else if(connectingHoverId && parValidoConexion(connectingFromId, connectingHoverId) && !conexionExiste(connectingFromId, connectingHoverId)){
         const subproductoId = tipoConexionPorDestino();
         const sub = getSubproducto(subproductoId);
         const producto = getProducto(sub.productoNivel2Id);

@@ -167,6 +167,31 @@ const E = (w, expr) => w.eval(expr);
   check('JSON exportado con el esquema vigente (version 15: salud por cobertura, T05)', cfg.version === 15);
   check('ningún error de script durante todo el recorrido', w.__erroresScript.length === 0, w.__erroresScript);
 
+  console.log('\nG-bis. "+" hacia una Nube = Cloud Interconnect (T04)');
+  // El gesto completo con mouse se probó en Chromium; acá se fija la regla y el flujo del formulario.
+  const wC = ventana({});
+  await E(wC,'modelosListos');
+  const cS = E(wC,'createSede(30, 3, 1)'), cM = E(wC,'createMatriz(-4, -3)'), cN = E(wC,"createNube('AWS', 4, -3)");
+  const cI = E(wC,'getOrCreateNubeInternetAuto()');
+  const destino = (a, b) => E(wC, `esDestinoCloudInterconnect('${a}', '${b}')`);
+  check('Sede y Matriz → Nube de proveedor: sí; → Nube de Internet o desde el Datacenter: no',
+    destino(cS.id, cN.id) && destino(cM.id, cN.id) && !destino(cS.id, cI.id) && !destino('datacenter', cN.id));
+  const nConn = () => E(wC,'state.conexiones.length');
+  const n0 = nConn();
+  E(wC, `abrirCloudInterconnectDesdeCable('${cS.id}', '${cN.id}')`);
+  check('abre el formulario nuevo con la Nube elegida y sin crear nada todavía',
+    E(wC,'popupContext.mode') === 'new' && E(wC,'popupContext.subproductoId') === 'cloud_interconnect' &&
+    E(wC,'popupConexionSelect.value') === cN.id && nConn() === n0);
+  E(wC, `byId('btnSavePopup').click()`);
+  const ciC = E(wC,`state.conexiones.filter(c=>c.subproductoId==='cloud_interconnect')`);
+  check('al guardar queda el Cloud Interconnect ligado a una instancia de la Sede',
+    ciC.length === 1 && ciC[0].aId === cS.id && ciC[0].bId === cN.id &&
+    E(wC,`getSedeById('${cS.id}')`).instancias.some(i=> i.instanciaId === ciC[0].instanciaId));
+  E(wC, `abrirCloudInterconnectDesdeCable('${cS.id}', '${cN.id}')`);
+  check('si ya existe, se abre ese para editarlo (decisión 23/09) y no se crea otro',
+    E(wC,'popupContext.mode') === 'edit' && E(wC,'popupContext.instanciaId') === ciC[0].instanciaId && nConn() === n0 + 1);
+  E(wC, `byId('btnCancelPopup').click()`);
+
   console.log('\nH. Entidades creadas ANTES de que terminen de cargar los modelos');
   const w2 = ventana();
   const pre = E(w2,'createSede(30, 1, 1)'); const preM = E(w2,'createMatriz(0,0)');
