@@ -433,6 +433,7 @@ const state = {
   clienteNombre: '',
   clienteLogo: null,     // dataURL (base64) del logo del cliente, opcional — se incluye en el PDF
   saludInicial: null,    // score 0-100 ingresado a mano por el vendedor: "así estaba antes de Puntonet"
+  estructuras: { inicial:null, actual:null }, // T06: fotos del proyecto (ver fotoEstructura)
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
   matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
                           // las sedes: se crean arrastrando, pueden ser varias, y van donde el usuario quiera.
@@ -5674,7 +5675,8 @@ renderLogoButton();
 
 function buildConfiguracionCliente(){
   return {
-    version: 14, // v14: cada Matriz exporta su `concentrador` calculado (total + desglose por
+    version: 15, // v15 (T06): `estructuras.inicial` / `estructuras.actual`.
+                 // v14: cada Matriz exporta su `concentrador` calculado (total + desglose por
                  // canal). Es dato derivado, no editable — se incluye para que quien consuma el
                  // JSON no tenga que reimplementar la regla de "los backups no suman".
                  // v13: Sdwan se aplica sobre un canal EXISTENTE elegido por el vendedor
@@ -5684,6 +5686,8 @@ function buildConfiguracionCliente(){
                  // instancias) + nueva entidad Nube (destino de Cloud Interconnect)
     nombreCliente: state.clienteNombre || 'Sin nombre',
     clienteLogo: state.clienteLogo || null,
+    // T06: foto de cómo llegó el cliente y de cómo terminó la sesión (null si no se guardó).
+    estructuras: { inicial: state.estructuras.inicial, actual: state.estructuras.actual },
     generadoEn: new Date().toISOString(),
     salud: {
       inicial: state.saludInicial, // ingresado a mano por el vendedor, o null si no se completó
@@ -5777,7 +5781,104 @@ saludInicialInput.addEventListener('input', ()=>{
   state.saludInicial = v==='' ? null : Math.max(0, Math.min(100, parseInt(v,10)||0));
 });
 
+/* =========================================================================
+   T06 (reunión 22/09): ESTRUCTURA INICIAL vs ACTUAL
+   Dos fotos del proyecto, guardadas en el estado y en el JSON, para que el reporte muestre cómo
+   empezó y cómo terminó la sesión. Todo en memoria, sin backend.
+   - "Guardar inicial": la foto de cómo llega el cliente. Si ya hay una, se pide confirmación
+     antes de reemplazarla (decisión de Dei, 23/09).
+   - "Guardar actual": se puede actualizar cuantas veces se quiera. Generar el reporte la guarda
+     sola, así el final del reporte siempre coincide con lo que hay en pantalla (decisión 23/09).
+   Una foto es una copia profunda de lo que exporta buildConfiguracionCliente (entidades,
+   productos, conexiones, salud) sin los datos del cliente ni las propias fotos, más un resumen
+   con los conteos que usa el reporte. Es un dato congelado: no se vuelve a calcular.
+   ========================================================================= */
+function fotoEstructura(){
+  const cfg = JSON.parse(JSON.stringify(buildConfiguracionCliente()));
+  ['version', 'nombreCliente', 'clienteLogo', 'generadoEn', 'estructuras'].forEach(k=> delete cfg[k]);
+  const productos = [...state.sedes, ...state.matrices, ...state.nubes, state.datacenter]
+    .reduce((n, e)=> n + (e.instancias||[]).length, 0);
+  return Object.assign({
+    guardadoEn: new Date().toISOString(),
+    resumen: {
+      sedes: state.sedes.length, matrices: state.matrices.length,
+      nubes: state.nubes.filter(n=>!n.esAutoInternet).length,
+      datacenterActivo: !!state.datacenter.activo,
+      productos, conexiones: state.conexiones.length,
+      saludGlobal: saludGlobal(),
+    },
+  }, cfg);
+}
+function horaFoto(foto){
+  return foto ? new Date(foto.guardadoEn).toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' }) : '';
+}
+function renderBotonesEstructura(){
+  [['inicial', 'btnEstructuraInicial', 'estructuraInicialHora'], ['actual', 'btnEstructuraActual', 'estructuraActualHora']]
+    .forEach(([clave, btnId, horaId])=>{
+      const foto = state.estructuras[clave];
+      byId(btnId).classList.toggle('is-saved', !!foto);
+      byId(horaId).textContent = horaFoto(foto);
+    });
+}
+function guardarEstructura(clave){
+  state.estructuras[clave] = fotoEstructura();
+  renderBotonesEstructura();
+}
+byId('btnEstructuraInicial').addEventListener('click', ()=>{
+  const previa = state.estructuras.inicial;
+  const guardar = ()=>{ guardarEstructura('inicial'); showToast('Estructura inicial guardada.'); };
+  if(!previa) return guardar();
+  showDialog({
+    title: 'Reemplazar estructura inicial',
+    body: `Ya hay una estructura inicial guardada (${horaFoto(previa)}). ¿Reemplazarla por lo que hay ahora en pantalla?`,
+    confirmText: 'Reemplazar',
+  }).then(r=>{ if(r.ok) guardar(); });
+});
+byId('btnEstructuraActual').addEventListener('click', ()=>{
+  guardarEstructura('actual');
+  showToast('Estructura actual guardada.');
+});
+
+/* Bloque del reporte: inicio vs final, con los conteos del resumen y la salud por categoría.
+   El diseño definitivo de esta comparación (y su versión en el PDF) es de T08. */
+function renderBloqueEstructuras(config){
+  const box = document.createElement('div');
+  box.className = 'report-sede';
+  const h = document.createElement('h3');
+  const ini = config.estructuras.inicial, fin = config.estructuras.actual;
+  h.innerHTML = `<span>Estructura: inicio y final de la sesión</span><span class="muted-meta"> · ${
+    ini ? `inicial ${horaFoto(ini)} → final ${horaFoto(fin)}` : `final ${horaFoto(fin)}`}</span>`;
+  box.appendChild(h);
+  const fila = (etiqueta, a, b)=>{
+    const row = document.createElement('div');
+    row.className = 'report-inst';
+    const valor = ini ? `${a} → ${b}` : `${b}`;
+    row.innerHTML = `<div class="rline1"><span>${etiqueta}</span><span class="muted-small">${valor}</span></div>`;
+    box.appendChild(row);
+  };
+  if(!ini){
+    const aviso = document.createElement('div');
+    aviso.className = 'report-inst muted-small';
+    aviso.textContent = 'No se guardó una estructura inicial en esta sesión: se muestra solo el final.';
+    box.appendChild(aviso);
+  }
+  const r0 = ini ? ini.resumen : {}, r1 = fin.resumen;
+  fila('Sedes', r0.sedes, r1.sedes);
+  fila('Matrices', r0.matrices, r1.matrices);
+  fila('Nubes de proveedor', r0.nubes, r1.nubes);
+  fila('Productos', r0.productos, r1.productos);
+  fila('Conexiones', r0.conexiones, r1.conexiones);
+  fila('Salud de infraestructura', `${r0.saludGlobal}%`, `${r1.saludGlobal}%`);
+  fin.salud.porVertical.forEach((v, i)=>{
+    const antes = ini && ini.salud.porVertical[i] ? `${ini.salud.porVertical[i].pct}%` : '';
+    fila(`· ${v.vertical}`, antes, `${v.pct}%`);
+  });
+  return box;
+}
+
 function openReport(){
+  // T06: generar el reporte actualiza la estructura actual (el "final" = lo que hay en pantalla).
+  guardarEstructura('actual');
   const config = buildConfiguracionCliente();
   reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
   saludInicialInput.value = state.saludInicial===null || state.saludInicial===undefined ? '' : state.saludInicial;
@@ -5800,6 +5901,7 @@ function openReport(){
     saludBox.appendChild(row);
   });
   reportBody.appendChild(saludBox);
+  reportBody.appendChild(renderBloqueEstructuras(config));
 
   function renderInstRow(inst, container, heredadoDe){
     const sub = getSubproducto(inst.subproductoId);
