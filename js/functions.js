@@ -732,6 +732,19 @@ const GRID_SPACING = 4;
 const FRUSTUM = 22;
 const PORT_BASE_SCALE = 0.46; // declarado temprano: los puertos de Matriz/Datacenter se crean antes que makePortSprite() en el archivo
 
+/* T01 — Punto de conexión en el techo, al centro.
+   Hasta v48 el puerto (+) vivía a un costado de cada entidad (+X, o +Z en el Datacenter), con
+   offsets fijos distintos por tipo. Si el otro extremo quedaba del lado opuesto, el cable nacía
+   de una pared y atravesaba el propio edificio. Ahora las cuatro entidades lo ponen en el mismo
+   lugar: centrado en X/Z y apenas por encima del techo, calculado con la caja real del modelo
+   (`userData.dims`, que el builder llena igual con .glb o con primitiva). Como el puerto es hijo
+   del group, reconstruir la sede al cambiar los empleados lo recoloca solo.
+   PUERTO_SOBRE_TECHO deja el sprite (0.46 de lado) entero por encima de la cubierta. */
+const PUERTO_SOBRE_TECHO = 0.3;
+function colocarPuertoEnTecho(port, dims){
+  port.position.set(0, dims.h + PUERTO_SOBRE_TECHO, 0);
+}
+
 let camera, renderer;
 function setupCamera(){
   const aspect = wrap.clientWidth / wrap.clientHeight;
@@ -1869,8 +1882,6 @@ function buildMatrizMesh(){
     construirMatrizPrimitiva(group);
     coreY = group.userData.dims.h;
   }
-  const portX = modelo ? Math.max(2.0, modelo.dims.w/2 + 0.3) : 2.0;
-
   // v47: el radio sale de la planta del modelo. Eran 2.3/2.5 fijos, pensados para la Matriz de
   // 3.0 de ancho; con 5.60 el halo quedaba DENTRO del edificio y la hitbox no lo cubría.
   const rMatriz = modelo ? Math.hypot(modelo.dims.w/2, modelo.dims.d/2) : 2.3;
@@ -1882,7 +1893,7 @@ function buildMatrizMesh(){
 
   // Puerto de conexión: desde aquí se arrastra un cable hacia otra Matriz, una sede o el Datacenter.
   const matrizPort = makePortSprite();
-  matrizPort.position.set(portX, coreY*0.5, 0);
+  colocarPuertoEnTecho(matrizPort, group.userData.dims); // T01
   group.add(matrizPort);
 
   // coreY se guarda en userData porque otras funciones (nombre flotante, anillo de productos,
@@ -1952,8 +1963,6 @@ function buildNubeMesh(){
     coreY = 1.9; // altura de referencia para nombre flotante y efecto "recubrimiento"
     group.userData.dims = { w:2.3, h:coreY, d:2.3 };
   }
-  const portX = modelo ? modelo.dims.w/2 + 0.4 : 1.3;
-
   // mismo name que Matriz/Datacenter: hitTest/selección son genéricos por userData
   // v47: mismo criterio que la Matriz — radio derivado de la planta, no fijo.
   const rNube = modelo ? Math.hypot(modelo.dims.w/2, modelo.dims.d/2) : 1.4;
@@ -1965,7 +1974,7 @@ function buildNubeMesh(){
   group.add(haloRing(rNube + 0.15, rNube + 0.3, color, 'matrizHalo', 0.03));
 
   const nubePort = makePortSprite();
-  nubePort.position.set(portX, coreY*0.5, 0);
+  colocarPuertoEnTecho(nubePort, group.userData.dims); // T01
   group.add(nubePort);
 
   group.userData.coreY = coreY;
@@ -2081,7 +2090,7 @@ function construirDatacenter(){
   datacenterGroup.add(dcHitbox);
 
   const dcPort = makePortSprite();
-  dcPort.position.set(0, dcY*0.4, Math.max(1.4, d/2 + 0.45));
+  colocarPuertoEnTecho(dcPort, datacenterGroup.userData.dims); // T01
   dcPort.userData = { isPort:true, entityId:'datacenter' };
   datacenterGroup.add(dcPort);
 }
@@ -2090,7 +2099,7 @@ construirDatacenter();
 /* --- Cables entre entidades (arcos suaves con partícula viajera) ---
    Cada conexión (state.conexiones) es un producto contratado independiente, se dibuja como un
    arco delgado, de grosor FIJO, entre los "puertos" de sus 2 extremos (Sede, Matriz o
-   Datacenter), curvado hacia arriba. Ya NO escala su grosor/brillo según cuántos servicios tenga
+   Datacenter), que desde T01 están en el centro del techo (ver curvaDeCable). Ya NO escala su grosor/brillo según cuántos servicios tenga
    la sede: si una sede tiene varios productos que conectan al mismo destino (p.ej. 3 productos
    distintos hacia el Datacenter), se ven 3 líneas delgadas en paralelo — una por producto, cada
    una con el color de SU producto (ver el "abanico" de mid.addScaledVector más abajo) — en vez
@@ -2107,6 +2116,67 @@ function getEntityPortWorldPos(entityId){
   const pos = new THREE.Vector3();
   portObj.getWorldPosition(pos);
   return pos;
+}
+
+/* --- Trazado del cable entre dos puertos de techo (T01) ---
+   Bézier cúbica con los dos puntos de control EN VERTICAL sobre cada puerto: el cable sale
+   hacia arriba del techo del origen, cruza por encima y baja al techo del destino. Con el
+   puerto al centro del techo, eso basta para que no atraviese ni su edificio ni el del destino,
+   esté donde esté el otro extremo (la curva es una combinación convexa de puntos que están
+   todos por encima de ambos techos mientras recorre sus huellas).
+
+   Lo que no garantiza la forma es un TERCER edificio en el medio (dos sedes a los lados del
+   Datacenter, por ejemplo). Para eso se muestrea la curva contra la caja de cada entidad
+   colocada y, si algún punto cae dentro, se sube el arco y se vuelve a probar.
+
+   `abanico` es el desfase lateral de las conexiones repetidas entre el mismo par: corre los
+   puntos de control hacia un costado, así todas nacen del mismo puerto y se separan en el aire. */
+const CABLE_MUESTRAS = 48;
+const CABLE_HOLGURA = 0.12;   // aire mínimo entre el tubo (con su glow) y cualquier edificio
+const CABLE_SUBIDA_PASO = 0.6;
+const CABLE_SUBIDA_MAX = 14;  // intentos: 14 × 0.6 = 8.4 de altura extra como máximo
+
+function cajasDeEntidades(){
+  const cajas = [];
+  const p = new THREE.Vector3();
+  todasLasEntidades().forEach(e=>{
+    if(!e || !e.group) return;
+    if(e === state.datacenter && !state.datacenter.activo) return;
+    const d = dimsEntidad(e);
+    e.group.getWorldPosition(p);
+    cajas.push({ x0:p.x - d.w/2, x1:p.x + d.w/2, z0:p.z - d.d/2, z1:p.z + d.d/2, y1:p.y + d.h });
+  });
+  return cajas;
+}
+
+function puntoEnCaja(pt, c, holgura){
+  return pt.x > c.x0 - holgura && pt.x < c.x1 + holgura &&
+         pt.z > c.z0 - holgura && pt.z < c.z1 + holgura &&
+         pt.y < c.y1 + holgura;
+}
+
+/* true si algún punto muestreado de la curva queda dentro de alguna caja */
+function curvaCruzaEntidades(curve, cajas, holgura){
+  const pts = curve.getPoints(CABLE_MUESTRAS);
+  return pts.some(pt=> cajas.some(c=> puntoEnCaja(pt, c, holgura)));
+}
+
+function curvaDeCable(start, end, abanico, cajas){
+  cajas = cajas || cajasDeEntidades();
+  const dist = Math.hypot(end.x - start.x, end.z - start.z);
+  const dir = new THREE.Vector3(end.x - start.x, 0, end.z - start.z);
+  if(dir.lengthSq() > 1e-6) dir.normalize(); else dir.set(1, 0, 0);
+  const perp = new THREE.Vector3(-dir.z, 0, dir.x); // perpendicular horizontal al cable
+  let techo = Math.max(start.y, end.y) + Math.min(3, 0.9 + dist*0.12);
+  let curve = null;
+  for(let i=0; i<=CABLE_SUBIDA_MAX; i++){
+    const c1 = new THREE.Vector3(start.x, techo, start.z).addScaledVector(perp, abanico);
+    const c2 = new THREE.Vector3(end.x, techo, end.z).addScaledVector(perp, abanico);
+    curve = new THREE.CubicBezierCurve3(start.clone(), c1, c2, end.clone());
+    if(!curvaCruzaEntidades(curve, cajas, CABLE_HOLGURA)) break;
+    techo += CABLE_SUBIDA_PASO;
+  }
+  return curve;
 }
 
 /* --- Construye el/los tubo(s) 3D de un cable, sólido o punteado ---
@@ -2167,24 +2237,20 @@ function rebuildConnections(){
   // se dibuja SOBRE la conexión específica que balancea, así que rebuildSdwanBadges necesita la
   // misma curva (con el desfase del "abanico" ya aplicado) que se usó para dibujar ese cable.
   const curveByConexionId = {};
+  const cajas = cajasDeEntidades(); // T01: una vez por reconstrucción, no por cable
 
   state.conexiones.forEach((c, idx)=>{
     const start = getEntityPortWorldPos(c.aId);
     const end = getEntityPortWorldPos(c.bId);
-    const dist = start.distanceTo(end);
-    const mid = start.clone().add(end).multiplyScalar(0.5);
-    mid.y = Math.max(start.y, end.y) + Math.min(3, 0.9 + dist*0.12);
     const key = pairKey(c.aId, c.bId);
     const idxInPair = pairDrawnCount[key] || 0;
     pairDrawnCount[key] = idxInPair + 1;
+    let abanico = 0;
     if(idxInPair>0){
-      const dir = end.clone().sub(start).normalize();
-      const perp = new THREE.Vector3(-dir.z, 0, dir.x); // perpendicular horizontal a la curva
       const side = idxInPair%2===1 ? 1 : -1;
-      const mag = Math.ceil(idxInPair/2) * 0.55;
-      mid.addScaledVector(perp, side*mag);
+      abanico = side * Math.ceil(idxInPair/2) * 0.55;
     }
-    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const curve = curvaDeCable(start, end, abanico, cajas);
     curveByConexionId[c.id] = curve;
 
     const selected = state.selectedConexionId === c.id;
@@ -2839,7 +2905,7 @@ function buildSedeMesh(tamanoId){
 
   // Puerto de conexión: desde aquí el usuario arrastra un cable hacia otra Sede, la Matriz o el Datacenter.
   const port = makePortSprite();
-  port.position.set(w/2 + 0.28, h*0.7, 0);
+  colocarPuertoEnTecho(port, group.userData.dims); // T01
   group.add(port);
 
   return group;
@@ -3050,8 +3116,9 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
     case 'portico': {
       escalarPorAltura(asset, g.h * factor);
       const m = medidaAsset(asset);
-      // Sobre la ruta del cable y POR FUERA del sprite del puerto (+), que vive en w/2 + 0.28:
-      // si el arco queda a esa misma distancia se superponen y ninguno de los dos se lee.
+      // Del lado `ladoPuerto`, apenas por fuera de la plataforma. Hasta T01 ahí estaba el puerto
+      // (+) y la ruta del cable; ahora el puerto está en el techo y el arco quedó en el mismo
+      // lugar a la espera de T07 (jerarquía de íconos), que define dónde va cada producto.
       const radio = (ladoPuerto.x !== 0 ? g.w/2 : g.d/2) + 0.34 + m.huella*0.6;
       asset.position.set(ladoPuerto.x * radio, 0.01, ladoPuerto.z * radio);
       asset.rotation.y = ladoPuerto.x !== 0 ? Math.PI/2 : 0;
@@ -3124,8 +3191,8 @@ function refreshSedeAssets(sede){
   container.name = 'assetsContainer';
 
   const g = geometriaEntidad(sede);
-  // Por dónde sale el cable de esta entidad: el Datacenter tiene el puerto en +Z, el resto en +X.
-  // Es lo que orienta el `portico` de Acceso, que solo se lee bien si está sobre la ruta.
+  // Lado donde se planta el `portico` de Acceso: +Z en el Datacenter, +X en el resto. Era el
+  // lado del puerto hasta T01; se conserva para no mover íconos antes de T07.
   const ladoPuerto = sede.tipo === 'datacenter' ? { x:0, z:1 } : { x:1, z:0 };
 
   const propias = sede.instancias;
@@ -3949,7 +4016,10 @@ function startTempCable(){
 function updateTempCable(from, to, valid){
   if(!tempCableLine) return;
   tempCableLine.geometry.dispose();
-  tempCableLine.geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+  // T01: sobre un destino válido se previsualiza el mismo arco que va a quedar dibujado; mientras
+  // sigue al cursor es una recta, porque el cursor no es un techo.
+  const pts = valid ? curvaDeCable(from, to, 0).getPoints(32) : [from, to];
+  tempCableLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
   setColorUI(tempCableLine.material, valid ? 0x4ade80 : 0x22d3ee); // §3A-ter: .set() crudo pisaría la conversión a lineal
   tempCableLine.material.opacity = valid ? 1 : 0.7;
 }

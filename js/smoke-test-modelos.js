@@ -210,6 +210,64 @@ const E = (w, expr) => w.eval(expr);
   check('mover una entidad no la considera obstáculo de sí misma',
     E(wG, `occupied(${gA.gx}, ${gA.gz}, '${gA.id}', dimsEntidad(state.sedes.find(s=>s.id==='${gA.id}')))`) === false);
 
+  console.log('\nH-ter. Punto de conexión en el techo, al centro (T01)');
+  // El puerto (+) de las cuatro entidades va centrado sobre el techo, y los cables salen y llegan
+  // por arriba. La verificación de cruce NO reutiliza curvaDeCable ni cajasDeEntidades: las cajas
+  // se arman acá, desde la posición del group y dimsEntidad, y la curva se muestrea más fino.
+  const wP = ventana({});
+  await E(wP,'modelosListos');
+  const LIFT = E(wP,'PUERTO_SOBRE_TECHO');
+  const puertoLocal = ent => ent.group.getObjectByName('connPort').position;
+  const enTecho = ent => { const p = puertoLocal(ent), d = E(wP,'dimsEntidad')(ent);
+    return cerca(p.x, 0) && cerca(p.z, 0) && cerca(p.y, d.h + LIFT); };
+  const dcP = E(wP,'state.datacenter');
+  // DC en (0,-2). Una entidad de cada tipo en los cuatro lados, lejos entre sí para que la
+  // grilla no las corra (se colocan directo, sin nearestFreeCell).
+  const mIzq = E(wP,'createMatriz(-3, -2)');       // a la izquierda del DC
+  const sDer = E(wP,'createSede(90, 3, -2)');      // a la derecha, Sede Grande
+  const nDel = E(wP,"createNube('AWS', 0, 1)");    // delante
+  const sDet = E(wP,'createSede(10, 0, -5)');      // detrás, Sede Pequeña
+  const todas = [dcP, mIzq, sDer, nDel, sDet];
+  check('el puerto de Datacenter, Matriz, Sede y Nube está al centro, sobre el techo',
+    todas.every(enTecho), todas.map(e=>[e.id, puertoLocal(e).toArray().map(v=>+v.toFixed(2))]));
+
+  const conectar = (a, b) => E(wP, `(state.conexiones.push({ id:'t01_'+state.conexiones.length, aId:'${a.id}', bId:'${b.id}' }), rebuildConnections(), connectionAnims.length)`);
+  [mIzq, sDer, nDel, sDet].forEach(e=> conectar(e, dcP));   // 4 orientaciones hacia el DC
+  conectar(mIzq, sDer);                                     // pasa por encima del DC
+  conectar(sDet, dcP);                                      // repetida: abanico
+  const curvas = E(wP,'connectionAnims').map(a=>a.curve);
+  check('hay un cable por conexión', curvas.length === 6, curvas.length);
+
+  const cajaDe = ent => { const d = E(wP,'dimsEntidad')(ent), p = ent.group.position;
+    return { x0:p.x-d.w/2, x1:p.x+d.w/2, z0:p.z-d.d/2, z1:p.z+d.d/2, y1:d.h }; };
+  const cajas = todas.map(cajaDe);
+  const dentro = (pt, c) => pt.x > c.x0 && pt.x < c.x1 && pt.z > c.z0 && pt.z < c.z1 && pt.y < c.y1;
+  const cruces = curvas.map((cv, i)=> cv.getPoints(400).filter(pt=> cajas.some(c=> dentro(pt, c))).length);
+  check('ningún cable atraviesa un edificio (izq., der., delante, detrás y por encima del DC)',
+    cruces.every(n=> n === 0), cruces);
+
+  const wpos = ent => ent.group.getObjectByName('connPort').getWorldPosition(new wP.THREE.Vector3());
+  check('cada cable nace y termina exactamente en el puerto de techo de sus extremos',
+    E(wP,'state.conexiones').every((c, i)=> curvas[i].getPoint(0).distanceTo(wpos(E(wP,'getSedeById')(c.aId))) < 1e-6 &&
+                                            curvas[i].getPoint(1).distanceTo(wpos(E(wP,'getSedeById')(c.bId))) < 1e-6));
+  check('los cables salen hacia arriba y llegan desde arriba',
+    curvas.every(cv=> cv.getTangent(0).y > 0.9 && cv.getTangent(1).y < -0.9),
+    curvas.map(cv=> [+cv.getTangent(0).y.toFixed(2), +cv.getTangent(1).y.toFixed(2)]));
+  const salidasDC = curvas.filter((cv, i)=> E(wP,'state.conexiones')[i].bId === 'datacenter').map(cv=> cv.getPoint(1));
+  check('todas las conexiones de una entidad comparten el mismo punto (5 al DC, incl. la repetida)',
+    salidasDC.length === 5 && salidasDC.every(p=> p.distanceTo(salidasDC[0]) < 1e-6));
+  check('…y la repetida se separa en el aire (abanico), no queda superpuesta',
+    curvas[5].getPoint(0.5).distanceTo(curvas[3].getPoint(0.5)) > 0.3);
+
+  const yAntes = puertoLocal(sDer).y;
+  E(wP,'setSedeEmpleados')(E(wP,`state.sedes.find(s=>s.id==='${sDer.id}')`), 5);
+  const sDer2 = E(wP,`state.sedes.find(s=>s.id==='${sDer.id}')`);
+  check('cambiar los empleados de una sede recoloca el punto sobre el nuevo techo',
+    enTecho(sDer2) && puertoLocal(sDer2).y < yAntes - 0.1, [yAntes, puertoLocal(sDer2).y]);
+  const curva0 = E(wP,'connectionAnims')[1].curve;
+  check('…y el cable se redibuja desde ahí', curva0.getPoint(0).distanceTo(wpos(sDer2)) < 1e-6);
+  check('sin excepciones', wP.__erroresScript.length === 0, wP.__erroresScript);
+
   console.log('\nI. Fallbacks');
   const w3 = ventana({ datos:false });
   const e3 = await E(w3,'modelosListos');
