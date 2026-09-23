@@ -974,16 +974,16 @@ const grid = new THREE.GridHelper(80, 20, 0x1f2733, 0x161c26);
 scene.add(grid);
 
 /* =========================================================================
-   3A-bis. PISO OSCURO CON REFLEJO FALSO (v2 §7.3 punto 13, pendiente desde v17)
+   3A-bis. PISO OSCURO CON GLOW BAJO CADA ENTIDAD (23/09/2026, reemplaza el reflejo falso)
    -------------------------------------------------------------------------
-   Reflejo FALSO: copias espejadas (scale.y = -1) de cada entidad, translúcidas y sincronizadas a
-   mano cada frame — no un THREE.Reflector real (cámara espejada que renderiza la escena completa
-   una segunda vez). Con la cámara ortográfica sin culling (§1) y hasta ~150 íconos en pantalla,
-   Reflector es el paso más caro de la lista y queda deliberadamente fuera de esta tanda; esto es
-   lo barato de la misma sección, para medir antes de subir de nivel.
-   Solo se reflejan las ENTIDADES (sedes, matrices, nubes, datacenter — unas 20 como mucho), nunca
-   los íconos de producto que orbitan alrededor: son esos ~150 los que harían caro el efecto, y
-   quedan afuera clonando la entidad SIN su `assetsContainer` (§3E). */
+   Hasta el 23/09 acá había un reflejo FALSO: una copia espejada de cada entidad bajo el piso. Dei
+   lo sacó por dos motivos: se leía como el mesh duplicado, y se podía hacer clic en él y
+   "agarrar" el edificio — el clon arrastraba las hitbox invisibles de la entidad (con su
+   `sedeId`), y el raycaster de three r128 no descarta objetos invisibles.
+   En su lugar, cada entidad lleva un halo de luz suave apoyado en el piso: un plano con un
+   degradado radial, del color de acento de su tipo (MODELO_LOOKS), del tamaño de su huella.
+   No es un clon ni cuelga del group de la entidad, y su raycast está anulado: no se puede
+   clickear. Se sincroniza cada frame contra todasLasEntidades(), igual que hacía el reflejo. */
 const piso = new THREE.Mesh(
   new THREE.CircleGeometry(60, 48),
   new THREE.MeshBasicMaterial({ color:0x05070d, transparent:true, opacity:0.55, depthWrite:false })
@@ -994,95 +994,82 @@ piso.position.y = -0.02; // apenas debajo de la grilla, evita z-fighting con sus
 piso.raycast = function(){}; // decorativo: no debe interceptar los clicks/arrastres que hoy resuelven contra un plano matemático (§4)
 scene.add(piso);
 
-/* T02: el reflejo deja de ser translúcido. Antes era el edificio al 18 % de opacidad, y como la
-   grilla y el fondo se veían a través, se leía como un edificio de vidrio que seguía bajo el piso.
-   Ahora es opaco y se atenúa bajando su luz: `intensidad` escala el color, el reflejo del entorno y
-   el emisivo de la copia. */
-const PISO_REFLEJO = { activo:true, intensidad:0.18 };
-const reflejosPiso = new THREE.Group();
-reflejosPiso.name = 'reflejosPiso';
-scene.add(reflejosPiso);
-const reflejosPorEntidad = new Map(); // entityId -> { espejo, origen: entity.group de cuando se creó el reflejo }
+const GLOW_PISO = {
+  activo: true,
+  opacidad: 0.45,  // intensidad del halo (se suma a la luz del piso, blending aditivo)
+  escala: 1.8,     // cuánto se abre respecto de la huella de la entidad
+};
+const glowsPiso = new THREE.Group();
+glowsPiso.name = 'glowsPiso';
+scene.add(glowsPiso);
+const glowPorEntidad = new Map(); // entityId -> { mesh, w, d }
 
-function disposeReflejo(espejo){
-  espejo.traverse(o=>{ if(o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m=>m.dispose()); });
+let texturaGlowPiso = null;
+function obtenerTexturaGlowPiso(){
+  if(texturaGlowPiso) return texturaGlowPiso;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx && ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  if(g){ // sin canvas 2D real (p.ej. el smoke test en jsdom) queda una textura vacía, sin romper
+    // El centro queda tapado por el edificio (la huella ocupa ~55 % del radio): el degradado
+    // guarda fuerza hasta ese borde y recién ahí se apaga, que es la parte que se ve.
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.75, 'rgba(255,255,255,0.3)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  texturaGlowPiso = new THREE.CanvasTexture(c);
+  return texturaGlowPiso;
 }
-
-/* Fuerza a actualizarReflejosPiso() a reconstruir TODOS los reflejos desde cero en el próximo
-   frame. Hace falta porque no todas las entidades reemplazan su `.group` al pasar de primitiva a
-   modelo real — el Datacenter reconstruye sus hijos sobre el mismo objeto (ver construirDatacenter
-   y su llamador aplicarModelosAEscena, §5/§6) — así que el chequeo por identidad de objeto no
-   detecta ese caso por sí solo. Barato: son ~20 entidades como mucho, y solo pasa una vez por
-   tanda de modelos cargada, no en cada frame. */
-function invalidarReflejosPiso(){
-  reflejosPorEntidad.forEach(entry=>{ reflejosPiso.remove(entry.espejo); disposeReflejo(entry.espejo); });
-  reflejosPorEntidad.clear();
+function colorGlowPiso(entity){
+  const look = MODELO_LOOKS[entity.tipo] || MODELO_LOOKS[tipoEntidad(entity.id)] || MODELO_LOOKS.sede;
+  return look.glow;
 }
-
-/* Copia espejada de UNA entidad: solo su cuerpo real, los meshes con material 'pn_<look>_base' o
-   'pn_<look>_glow' que arma ModelLibrary (§3B) — halos, hitboxes, puertos y sprites quedan afuera
-   (se ocultan, no se borran, para no desincronizar el clon de su origen). */
-function atenuarMaterialReflejo(m, k){
-  m.transparent = false;
-  m.opacity = 1;
-  m.depthWrite = true;
-  if(m.color) m.color.multiplyScalar(k);
-  if(m.envMapIntensity !== undefined) m.envMapIntensity *= k;
-  if(m.emissiveIntensity !== undefined) m.emissiveIntensity *= k;
+function crearGlowPiso(entity, w, d){
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      color: colorGlowPiso(entity), map: obtenerTexturaGlowPiso(),
+      transparent: true, opacity: GLOW_PISO.opacidad, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  mesh.name = 'glowPiso';
+  mesh.rotation.x = -Math.PI/2;
+  mesh.scale.set(w * GLOW_PISO.escala, d * GLOW_PISO.escala, 1);
+  mesh.renderOrder = 1;            // después del piso translúcido, que si no lo apaga; los edificios lo tapan por profundidad
+  mesh.raycast = function(){};     // decorativo: nunca intercepta clicks ni arrastres
+  return mesh;
 }
-function crearReflejoDeEntidad(entity){
-  const espejo = entity.group.clone(true);
-  const assetsContainer = espejo.getObjectByName('assetsContainer');
-  if(assetsContainer) espejo.remove(assetsContainer);
-  espejo.traverse(o=>{
-    if(o.isSprite){ o.visible = false; return; }
-    if(!o.isMesh) return;
-    const nombreMat = (o.material && o.material.name) || '';
-    if(nombreMat.indexOf('pn_') !== 0){ o.visible = false; return; } // halo, hitbox, primitivas de fallback, etc. — no son el cuerpo del modelo
-    o.raycast = function(){}; // nunca intercepta clicks ni arrastre: es un reflejo, no un objeto
-    o.layers.disable(CAPA_BRILLO); // fuera del paso de brillo — si no, el cuerpo completo "brillaría" en el reflejo (ver Brillo.renderizarFuente, §3C)
-    o.material = o.material.clone();
-    atenuarMaterialReflejo(o.material, PISO_REFLEJO.intensidad);
-    o.material.side = THREE.DoubleSide; // el flip en Y invierte el sentido de las caras; sin esto se ve hueco
-  });
-  espejo.renderOrder = -1; // se dibuja antes que la escena real, nunca la tapa
-  return espejo;
-}
-
-/* Sincroniza reflejosPiso contra el estado real, cuadro a cuadro (llamada desde animate(), §4).
-   Deliberadamente NO se engancha a createSede/deleteSede/createMatriz/etc.: lee
-   todasLasEntidades() —la misma fuente de verdad que ya usa el resto del código— y arma, mueve o
-   borra reflejos por diferencia contra el frame anterior. Así arrastrar una sede, cambiarle el
-   tier, eliminarla o cargar un proyecto guardado quedan cubiertos sin tocar esos flujos uno por
-   uno ni arriesgarse a que alguno quede sin su reflejo actualizado. */
-function actualizarReflejosPiso(){
-  if(!PISO_REFLEJO.activo){ reflejosPiso.visible = false; return; }
-  reflejosPiso.visible = true;
+function actualizarGlowPiso(){
+  glowsPiso.visible = GLOW_PISO.activo;
+  if(!GLOW_PISO.activo) return;
   const activos = new Set();
   todasLasEntidades().forEach(entity=>{
     if(!entity || !entity.group || entity.group.visible === false) return;
+    if(entity === state.datacenter && !state.datacenter.activo) return;
     activos.add(entity.id);
-    let entry = reflejosPorEntidad.get(entity.id);
-    if(entry && entry.origen !== entity.group){
-      reflejosPiso.remove(entry.espejo);
-      disposeReflejo(entry.espejo);
+    const { w, d } = dimsEntidad(entity);
+    let entry = glowPorEntidad.get(entity.id);
+    if(entry && (entry.w !== w || entry.d !== d)){ // cambió la huella (empleados, carga de modelos)
+      glowsPiso.remove(entry.mesh); entry.mesh.geometry.dispose(); entry.mesh.material.dispose();
       entry = null;
     }
     if(!entry){
-      entry = { espejo: crearReflejoDeEntidad(entity), origen: entity.group };
-      reflejosPorEntidad.set(entity.id, entry);
-      reflejosPiso.add(entry.espejo);
+      entry = { mesh: crearGlowPiso(entity, w, d), w, d };
+      glowPorEntidad.set(entity.id, entry);
+      glowsPiso.add(entry.mesh);
     }
-    const g = entity.group;
-    entry.espejo.position.set(g.position.x, g.position.y, g.position.z);
-    entry.espejo.quaternion.copy(g.quaternion);
-    entry.espejo.scale.set(g.scale.x, -g.scale.y, g.scale.z);
+    const g = entity.group.position;
+    entry.mesh.position.set(g.x, 0.005, g.z); // apenas sobre el piso y la grilla
   });
-  reflejosPorEntidad.forEach((entry, id)=>{
+  glowPorEntidad.forEach((entry, id)=>{
     if(activos.has(id)) return;
-    reflejosPiso.remove(entry.espejo);
-    disposeReflejo(entry.espejo);
-    reflejosPorEntidad.delete(id);
+    glowsPiso.remove(entry.mesh); entry.mesh.geometry.dispose(); entry.mesh.material.dispose();
+    glowPorEntidad.delete(id);
   });
 }
 
@@ -4356,7 +4343,7 @@ function animate(){
   updateSatelliteAnims(t);
   updateSdwanAnims(t);
   animarModelos(t);
-  actualizarReflejosPiso(); // v18-bis: piso con reflejo falso (§3A-bis)
+  actualizarGlowPiso(); // §3A-bis: halo de luz en el piso bajo cada entidad
 
   // pulso sutil en los puertos de conexión, para invitar a arrastrar desde ahí
   const portPulse = 1 + Math.sin(t*3) * 0.14;
@@ -4394,9 +4381,7 @@ function aplicarModelosAEscena(){
   state.nubes.forEach(n=> reconstruirGrupoEntidad(n, buildNubeMesh));
   rebuildConnections();
   updateSelectionVisuals();
-  invalidarReflejosPiso(); // §3A-bis: construirDatacenter() reconstruye datacenterGroup EN el mismo
-  // objeto (no reasigna .group), así que el chequeo "origen !== entity.group" de
-  // actualizarReflejosPiso() no alcanza a notar el cambio por sí solo — se fuerza acá.
+  // §3A-bis: el glow del piso se ajusta solo a la huella nueva (actualizarGlowPiso compara w/d).
 }
 const modelosListos = ModelLibrary.precargar().then(estado=>{
   if(estado !== 'sin_modelos') aplicarModelosAEscena();

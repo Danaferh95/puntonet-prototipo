@@ -325,13 +325,17 @@ const E = (w, expr) => w.eval(expr);
   check('…los materiales compartidos de las 4 familias son opacos (base y glow)',
     Object.values(m0).every(f=> [f.base, f.glow].every(m=> !m.transparent && m.opacity === 1 && m.depthWrite)));
   await escenaOpaca({ datos:false }, 'primitivas de respaldo');
-  E(wO,'actualizarReflejosPiso()');
-  const reflejos = [];
-  E(wO,'reflejosPiso').traverse(o=>{ if(o.isMesh && o.visible) reflejos.push(o.material); });
-  check('el reflejo en el piso también es opaco (y existe: si no, esto no prueba nada)',
-    reflejos.length > 0 && reflejos.every(m=> !m.transparent && m.opacity === 1 && m.depthWrite), reflejos.length);
-  check('…y tenue: el color del reflejo es la fracción PISO_REFLEJO.intensidad del original',
-    reflejos.some(m=> m.name.endsWith('_base') && cerca(m.color.r, m0.sede.base.color.r * E(wO,'PISO_REFLEJO').intensidad)));
+  // 23/09: el reflejo falso se reemplazó por un glow en el piso (§3A-bis). El reflejo clonaba las
+  // hitbox de la entidad y se podía "agarrar" el edificio haciendo clic en él.
+  E(wO,'actualizarGlowPiso()');
+  const glows = E(wO,'glowsPiso').children;
+  check('no queda el reflejo: ninguna copia del edificio bajo el piso',
+    !E(wO,'scene').getObjectByName('reflejosPiso') && glows.every(g=> g.isMesh && g.geometry.type === 'PlaneGeometry'));
+  const dcDims = E(wO,'datacenterGroup').userData.dims, esc = E(wO,'GLOW_PISO').escala;
+  check('hay un glow de piso por entidad, del tamaño de su huella',
+    glows.length === 5 && glows.some(g=> cerca(g.scale.x, dcDims.w*esc) && cerca(g.scale.y, dcDims.d*esc)), glows.length);
+  const rcG = new wO.THREE.Raycaster(new wO.THREE.Vector3(glows[0].position.x, 10, glows[0].position.z), new wO.THREE.Vector3(0, -1, 0));
+  check('el glow no se puede clickear (el raycast lo ignora)', rcG.intersectObject(E(wO,'glowsPiso'), true).length === 0);
 
   console.log('\nI. Fallbacks');
   const w3 = ventana({ datos:false });
