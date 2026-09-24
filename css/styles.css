@@ -22,6 +22,7 @@
      9. Salud de infraestructura
     10. Modales: formulario de producto y diálogo
     11. Reporte
+    12. Reporte PDF (T08)
    ============================================================================= */
 
 
@@ -248,7 +249,14 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--pn-col
    48 px) abajo a la derecha, hint en Body/Small subtle, EntityLabel en cápsula con punto cian,
    PlacementNotice en cápsula de 64 px, toasts y tooltip sobre panel. */
 #canvasWrap{grid-column:2;grid-row:2;position:relative;touch-action:none;}
-#canvasWrap canvas{display:block;width:100%;height:100%;}
+#canvasWrap canvas{display:block;width:100%;height:100%;position:relative;z-index:1;}
+/* Marca de agua (T07, pedido de Dei 24/09): el toggle de la marca, fijo en el centro del visor y
+   DETRÁS del canvas, así que queda por debajo de la grilla y de todo el 3D. No sigue a la cámara.
+   Tamaño y opacidad: --marca-agua-ancho / --marca-agua-opacidad. */
+.marca-agua{--marca-agua-ancho:34%;--marca-agua-opacidad:.5;position:absolute;left:50%;top:50%;z-index:0;
+  width:var(--marca-agua-ancho);aspect-ratio:816/467;transform:translate(-50%,-50%);
+  background:url("../assets/ui/marca/marca-agua.svg") center/contain no-repeat;
+  opacity:var(--marca-agua-opacidad);pointer-events:none;user-select:none;}
 /* Etiquetas de nombre como overlay HTML (no texturas 3D): mismo tamaño de letra a cualquier zoom. */
 #labelLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
 
@@ -293,6 +301,15 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--pn-col
 #tooltip .t-title{font-weight:500;font-size:1rem;line-height:1.5rem;}
 #tooltip .t-sub{color:var(--pn-color-muted);}
 #tooltip .t-heredado{color:var(--pn-color-cyan);font-weight:400;}
+/* T07: tooltip agrupado (varios servicios del mismo producto en una entidad), con viñetas
+   del color de su categoría. */
+#tooltip .t-lista{list-style:none;margin:0.375rem 0 0;padding:0;display:flex;flex-direction:column;gap:0.25rem;}
+#tooltip .t-item{display:flex;align-items:center;gap:0.5rem;--t-bullet:var(--pn-color-cyan);}
+#tooltip .t-bullet{flex:none;width:0.5rem;height:0.5rem;border-radius:50%;background:var(--t-bullet);box-shadow:0 0 6px var(--t-bullet);}
+#tooltip .t-item--conectividad{--t-bullet:var(--pn-color-mint);}
+#tooltip .t-item--cloud{--t-bullet:var(--pn-color-cyan);}
+#tooltip .t-item--ciberseguridad{--t-bullet:var(--pn-color-coral);}
+#tooltip .t-item--colaboracion{--t-bullet:var(--pn-color-lime);}
 
 /* Toasts debajo del título; el aviso de colocación abajo, sobre los controles, para no taparse. */
 #toastStack{position:absolute;top:10rem;left:50%;transform:translateX(-50%);z-index:30;
@@ -554,3 +571,157 @@ input[type="range"]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var
 .report-concentrador .rmeta, .report-concentrador .rprops{padding-left:0;}
 .report-concentrador .muted-small{color:var(--pn-color-cyan);font:700 1.1875rem/1.75rem var(--font-sans);}
 .report-empty{padding:1rem;text-align:center;color:var(--pn-color-muted);font:400 1rem/1.5rem var(--font-sans);}
+/* ---------- 12. Reporte PDF (T08) ----------
+   Páginas A4 que functions.js §9-bis arma en HTML y html2canvas pasa a imagen. Se ven solo dentro
+   del PDF: el escenario queda fuera de pantalla mientras se genera.
+   Medidas en px a propósito: la página mide siempre 794 × 1123 px (A4 a 96 ppp) y no tiene que
+   seguir el tamaño raíz que escala la interfaz según el viewport.
+   Límites de html2canvas que condicionan este bloque: no dibuja mask-image, color-mix() ni
+   background-clip:text, así que los símbolos se tiñen desde JS y los tonos con transparencia van
+   como rgba() del color del token. */
+.pdf-escenario{position:fixed;left:-12000px;top:0;width:794px;pointer-events:none;}
+
+.pdf-pagina{position:relative;box-sizing:border-box;display:flex;flex-direction:column;width:794px;height:1123px;
+  overflow:hidden;padding:36px 48px 26px;color:var(--pn-color-white);font:400 12px/18px var(--font-sans);
+  background:
+    radial-gradient(ellipse at 0% 58%, rgba(18,63,252,.50) 0%, rgba(18,63,252,0) 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(36,59,186,.42) 0%, rgba(36,59,186,0) 50%),
+    linear-gradient(180deg, var(--pn-color-navy) 0%, var(--pn-color-deep) 55%, var(--pn-color-panel) 100%);}
+.pdf-pagina *{box-sizing:border-box;}
+.pdf-pagina :where(h1, h2, h3, h4, p, dl, dd, figure){margin:0;} /* :where() = sin especificidad: las clases de abajo mandan */
+
+.pdf-pagina__cabecera{display:flex;flex:none;align-items:center;justify-content:space-between;height:30px;margin-bottom:34px;}
+.pdf-pagina__logo{display:block;width:110px;height:auto;}
+.pdf-pagina__producto{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-pagina__cuerpo{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden;}
+.pdf-pagina__cuerpo > *{flex-shrink:0;} /* nada se achica: si no entra, pasa a la página siguiente */
+.pdf-pagina__pie{display:flex;flex:none;justify-content:space-between;margin-top:14px;padding-top:12px;
+  border-top:1px solid rgba(48,99,164,.55);color:var(--pn-color-muted);font:400 9px/12px var(--font-sans);}
+
+/* Encabezado de sección: overline con la línea cian adelante y título en dos pesos */
+.pdf-seccion{flex:none;margin-bottom:22px;}
+.pdf-seccion__overline{display:flex;align-items:center;gap:12px;color:var(--pn-color-muted);
+  font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-seccion__overline::before{content:"";flex:none;width:28px;height:1px;background:var(--pn-color-cyan);}
+.pdf-titulo{margin-top:14px;color:var(--pn-color-white);font:300 34px/42px var(--font-sans);}
+.pdf-titulo__fuerte{color:var(--pn-color-cyan);font-weight:500;}
+.pdf-titulo--apilado span{display:block;}
+.pdf-titulo--apilado .pdf-titulo__fuerte{font-weight:700;}
+
+/* Portada */
+.pdf-portada__intro{flex:none;}
+.pdf-portada__titulo{margin:16px 0 22px;font:300 44px/52px var(--font-sans);}
+.pdf-portada__titulo-luz{display:block;color:var(--pn-color-white);}
+.pdf-portada__titulo-fuerte{display:block;color:var(--pn-color-cyan);font-weight:700;}
+.pdf-portada__cliente{display:flex;align-items:center;justify-content:space-between;gap:24px;}
+.pdf-portada__cliente-nombre{font:500 20px/26px var(--font-sans);}
+.pdf-portada__fecha{margin-top:6px;color:var(--pn-color-muted);font:400 9px/13px var(--font-sans);}
+.pdf-portada__fecha-tipo{color:var(--pn-color-cyan);}
+.pdf-portada__cliente-logo{display:block;max-width:120px;max-height:44px;}
+
+.pdf-esquema{--pdf-esquema-fundido:0.1;display:flex;flex:1;flex-direction:column;min-height:0;margin:14px -28px 0;}
+.pdf-esquema__caja{position:relative;flex:1;min-height:0;}
+.pdf-esquema__img{display:block;width:100%;height:100%;}
+.pdf-esquema__nota{flex:none;margin:6px 28px 0;padding-top:10px;border-top:1px solid rgba(48,99,164,.55);
+  color:var(--pn-color-muted);font:400 9px/13px var(--font-sans);}
+/* Etiqueta de nombre sobre la foto del esquema: functions.js lee estos valores y la dibuja en el
+   canvas de la foto (captureHeroSnapshot). Mismo lenguaje que .name-label de la pantalla. */
+.pdf-esquema__etiqueta{display:inline-flex;align-items:center;height:22px;margin-bottom:6px;padding:0 10px 0 9px;
+  border:1px solid var(--pn-color-cyan);border-radius:var(--pn-layout-pill);background:var(--pn-color-panel);
+  color:var(--pn-color-white);font:400 9px/12px var(--font-sans);}
+.pdf-esquema__punto{flex:none;width:5px;height:5px;margin-right:6px;border-radius:50%;background:var(--pn-color-cyan);}
+
+.pdf-cifras{display:flex;flex:none;margin-top:18px;}
+.pdf-cifra{display:flex;flex:1;flex-direction:column;gap:6px;padding:2px 20px;border-left:1px solid rgba(48,99,164,.6);}
+.pdf-cifra:first-child{padding-left:0;border-left:0;}
+.pdf-cifra__valor{color:var(--pn-color-white);font:300 32px/38px var(--font-sans);}
+.pdf-cifra__etiqueta{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-portada__salud{display:flex;flex:none;align-items:center;gap:26px;margin-top:18px;padding-top:18px;border-top:1px solid rgba(48,99,164,.55);}
+.pdf-portada__salud-valor{flex:none;color:var(--pn-color-cyan);font:400 34px/40px var(--font-sans);}
+.pdf-portada__salud-overline{color:var(--pn-color-cyan);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-portada__salud-desc{margin-top:4px;color:var(--pn-color-muted);font:400 10px/15px var(--font-sans);}
+
+/* Resumen: salud global y por categoría */
+.pdf-salud{display:flex;align-items:center;gap:30px;margin-bottom:20px;padding:24px 30px;border:1px solid var(--pn-color-border);
+  border-radius:var(--pn-layout-radius18);background:var(--pn-gradient-detail);box-shadow:var(--pn-glow-blue);}
+.pdf-salud__valor{flex:none;color:var(--pn-color-cyan);font:300 60px/64px var(--font-sans);}
+.pdf-salud__pct{font-size:28px;}
+.pdf-salud__overline{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-salud__desc{margin-top:4px;color:var(--pn-color-white);font:400 11px/16px var(--font-sans);}
+.pdf-salud__inicial{margin-top:10px;color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
+.pdf-salud__inicial strong{color:var(--pn-color-white);font-weight:700;}
+
+.pdf-categorias{display:grid;grid-template-columns:1fr 1fr;gap:18px 34px;margin-bottom:18px;}
+.pdf-categoria{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:6px 10px;color:var(--pn-color-cyan);}
+.pdf-categoria__icono{display:block;width:22px;height:22px;}
+.pdf-categoria__simbolo{display:block;width:100%;height:100%;}
+.pdf-categoria__nombre{color:var(--pn-color-white);font:500 12px/16px var(--font-sans);}
+.pdf-categoria__pct{font:500 11px/16px var(--font-sans);}
+.pdf-categoria__barra{grid-column:2 / 4;display:block;height:7px;overflow:hidden;border-radius:6px;background:var(--pn-color-disabled);}
+.pdf-categoria__relleno{display:block;width:100%;height:100%;} /* SVG armado en functions.js (rellenoBarraPDF) */
+.pdf-categoria__detalle{grid-column:2 / 4;color:var(--pn-color-muted);font:400 8.5px/12px var(--font-sans);}
+.pdf-categoria--conectividad{color:var(--pn-color-mint);}
+.pdf-categoria--cloud{color:var(--pn-color-cyan);}
+.pdf-categoria--ciberseguridad{color:var(--pn-color-coral);}
+.pdf-categoria--colaboracion{color:var(--pn-color-lime);}
+
+.pdf-nota{margin-bottom:22px;padding:1px 0 1px 12px;border-left:2px solid var(--pn-color-cyan);
+  color:var(--pn-color-muted);font:400 9px/14px var(--font-sans);}
+
+/* Resumen: tabla de conexiones */
+.pdf-tabla__titulo{display:flex;align-items:baseline;justify-content:space-between;margin:4px 0 10px;}
+.pdf-tabla__nombre{color:var(--pn-color-white);font:500 17px/24px var(--font-sans);}
+.pdf-tabla__cuenta{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-tabla__fila{display:grid;grid-template-columns:1.15fr 1.25fr 1.3fr 84px;align-items:center;gap:14px;padding:10px 0;
+  border-top:1px solid rgba(48,99,164,.45);}
+.pdf-tabla__fila--cabeza{padding:0 0 8px;border-top:0;color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);
+  letter-spacing:1.5px;text-transform:uppercase;}
+.pdf-tabla__entidad{color:var(--pn-color-white);font:400 11px/15px var(--font-sans);}
+.pdf-tabla__servicio{display:flex;flex-direction:column;gap:2px;font:500 11px/15px var(--font-sans);color:var(--pn-color-cyan);}
+.pdf-tabla__servicio--conectividad{color:var(--pn-color-mint);}
+.pdf-tabla__servicio--ciberseguridad{color:var(--pn-color-coral);}
+.pdf-tabla__servicio--colaboracion{color:var(--pn-color-lime);}
+.pdf-tabla__ancho{color:var(--pn-color-muted);font:400 9px/12px var(--font-sans);}
+
+.pdf-insignia{display:inline-block;padding:2px 10px;border:1px solid var(--pn-color-cyan);border-radius:var(--pn-layout-pill);
+  color:var(--pn-color-cyan);font:400 8.5px/12px var(--font-sans);}
+.pdf-insignia--respaldo{border-color:var(--pn-color-subtle);color:var(--pn-color-muted);}
+
+/* Detalle: entidad, concentrador y servicios */
+.pdf-grupo{flex:none;}
+.pdf-entidad{display:flex;align-items:center;gap:24px;margin-bottom:12px;padding:12px 24px 12px 16px;border:1px solid var(--pn-color-border);
+  border-radius:var(--pn-layout-radius18);background:var(--pn-gradient-detail);}
+.pdf-entidad__render{display:block;flex:none;width:112px;height:auto;}
+.pdf-entidad__tipo{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-entidad__nombre{margin-top:2px;color:var(--pn-color-white);font:500 21px/28px var(--font-sans);}
+.pdf-entidad__meta{margin-top:4px;color:var(--pn-color-muted);font:400 9.5px/14px var(--font-sans);}
+
+.pdf-concentrador{display:flex;align-items:center;gap:26px;margin-bottom:8px;padding:14px 22px;border-left:3px solid var(--pn-color-cyan);
+  border-radius:0 12px 12px 0;background:rgba(6,28,67,.75);}
+.pdf-concentrador__valor{flex:none;color:var(--pn-color-cyan);font:300 26px/32px var(--font-sans);}
+.pdf-concentrador__titulo{color:var(--pn-color-white);font:700 10.5px/15px var(--font-sans);}
+.pdf-concentrador__desc{color:var(--pn-color-muted);font:400 9.5px/14px var(--font-sans);}
+.pdf-desglose{margin-bottom:12px;padding:1px 0 1px 12px;border-left:2px solid var(--pn-color-border);
+  color:var(--pn-color-muted);font:400 9.5px/14px var(--font-sans);}
+
+.pdf-servicio{flex:none;margin-bottom:12px;padding:13px 18px 14px;border:1px solid rgba(48,99,164,.6);border-left:3px solid var(--pn-color-cyan);
+  border-radius:12px;background:var(--pn-gradient-control);color:var(--pn-color-cyan);}
+.pdf-servicio--conectividad{border-left-color:var(--pn-color-mint);color:var(--pn-color-mint);}
+.pdf-servicio--ciberseguridad{border-left-color:var(--pn-color-coral);color:var(--pn-color-coral);}
+.pdf-servicio--colaboracion{border-left-color:var(--pn-color-lime);color:var(--pn-color-lime);}
+.pdf-servicio__cabeza{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.pdf-servicio__categoria{font:700 8.5px/12px var(--font-sans);}
+.pdf-servicio__nombre{margin-top:2px;color:var(--pn-color-white);font:700 13px/18px var(--font-sans);}
+.pdf-servicio__insignia{flex:none;border-color:currentColor;color:inherit;}
+.pdf-servicio__linea{margin-top:3px;color:var(--pn-color-muted);font:400 9.5px/14px var(--font-sans);}
+.pdf-servicio__linea:first-of-type{margin-top:6px;}
+.pdf-servicio__props{display:flex;flex-wrap:wrap;gap:8px 40px;margin-top:10px;}
+.pdf-servicio__prop dt{color:var(--pn-color-muted);font:400 8.5px/12px var(--font-sans);}
+.pdf-servicio__prop dd{margin-top:2px;color:var(--pn-color-white);font:500 11px/15px var(--font-sans);}
+.pdf-servicio__notas{margin-top:10px;}
+.pdf-servicio__notas-titulo{color:var(--pn-color-muted);font:400 8px/12px var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+.pdf-servicio__notas p{margin-top:2px;color:var(--pn-color-white);font:400 9.5px/14px var(--font-sans);}
+
+.pdf-vacio{margin-bottom:12px;padding:14px 18px;border:1px dashed var(--pn-color-border);border-radius:12px;
+  color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
+.pdf-continuacion{flex:none;margin-bottom:10px;color:var(--pn-color-muted);font:400 9.5px/14px var(--font-sans);}

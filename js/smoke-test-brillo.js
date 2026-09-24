@@ -97,9 +97,12 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
   E(w,'scene').traverse(o=>{
     if(!enCapa(o, CAPA)) return;
     let p = o, esModelo = false; while(p){ if(p.name === 'modeloGLB'){ esModelo = true; break; } p = p.parent; }
-    if(!esModelo) fuera.push(o.name || o.type);
+    // T07: el núcleo de la partícula que viaja por el cable brilla a propósito (pedido de Dei).
+    if(!esModelo && o.name !== 'particulaNucleo') fuera.push(o.name || o.type);
   });
   check('nada más brilla: cables, halos, íconos, puertos, hitbox y grilla fuera de la capa', fuera.length === 0, fuera.slice(0, 8));
+  const nucleos = []; E(w,'scene').traverse(o=>{ if(o.name === 'particulaNucleo') nucleos.push(enCapa(o, CAPA)); });
+  check('T07: la partícula del cable sí brilla (su núcleo está en la capa del brillo)', nucleos.length > 0 && nucleos.every(Boolean), nucleos);
 
   console.log('\nC. Secuencia de un frame');
   const r = frame(w);

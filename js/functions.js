@@ -939,7 +939,9 @@ function removeNameLabel(id){
 /* Reutilizada tanto por el loop de animación (posiciones en vivo sobre el canvas) como por el
    snapshot del PDF (posiciones sobre el canvas de salida, en §6 más abajo). */
 function getLabelScreenNDC(entry, outVec){
-  outVec.set(0, entry.localY, 0);
+  // T07: si la entidad tiene algo parado sobre el techo que la etiqueta taparía (el arco de
+  // Acceso), refreshSedeAssets deja en `alturaMinEtiqueta` la altura mínima para no taparlo.
+  outVec.set(0, Math.max(entry.localY, entry.group.userData.alturaMinEtiqueta || 0), 0);
   entry.group.localToWorld(outVec);
   outVec.project(camera);
   return outVec;
@@ -1432,6 +1434,8 @@ const ModelLibrary = (()=>{
    primitiva de siempre — mismo criterio de entrega por tandas que las entidades (v2 §6.7).
    ========================================================================= */
 const ICONOS_ESCALA = 1;
+// T07: brillo propio de los íconos (sin bloom). base = emisivo del cuerpo; glow = del rasgo de glow.
+const ICONOS_BRILLO = { base: 0.18, glow: 1.8 };
 
 // assetKey (mismo que en PRODUCTOS/SUBPRODUCTOS, §1) -> archivo (sin .glb). Va creciendo tanda a
 // tanda; los assetKeys que faltan acá siguen con su primitiva de AssetRegistry (§5).
@@ -1496,8 +1500,10 @@ const IconLibrary = (()=>{
     // sin envMap a propósito: es un hueco/sombra, un reflejo ahí contradice la lectura de "hundido".
     const entorno = obtenerEntornoMetal();
     const set = {
-      base:        new THREE.MeshStandardMaterial({ color, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.3 }),
-      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:1.35, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.9 }),
+      // T07 (24/09, Dei): "que brillen un poquito". El cuerpo suma un emisivo leve de su propio
+      // color y el rasgo de glow sube de 1.35 a ICONOS_BRILLO.glow. Siguen fuera del bloom.
+      base:        new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:ICONOS_BRILLO.base, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.3 }),
+      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:ICONOS_BRILLO.glow, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.9 }),
       translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.25, side:THREE.DoubleSide, envMap: entorno, envMapIntensity:1.2 }),
       receso:      new THREE.MeshStandardMaterial({ color: darkenColor(color, 0.45), metalness:0.2, roughness:0.75 }),
     };
@@ -1697,6 +1703,9 @@ function dimsEntidad(entity){
    renderizarFrame().
    ========================================================================= */
 const CAPA_BRILLO = 1;
+// Partícula que viaja por cada cable (rebuildConnections). Era 0.075; T07 la agranda.
+const PARTICULA_RADIO = 0.13;
+const PARTICULA_TITILEO = 5;
 const CAPA_PUERTOS = 2; // los puertos (+) siguen en la capa 0 para el raycast; esta capa es solo para redibujarlos
 const BRILLO = {
   activo: true,
@@ -2286,6 +2295,9 @@ function buildTubeMeshes(curve, radius, material, dashed){
   return meshes;
 }
 
+/* Multiplicador del grosor de los cables. Siempre 1 en pantalla; la foto del PDF lo sube un
+   momento (ESQUEMA_PDF.grosorCables, §9-bis) porque a esa escala el cable fino desaparece. */
+let grosorCables = 1;
 function rebuildConnections(){
   connectionsGroup.clear();
   connectionAnims = [];
@@ -2327,7 +2339,7 @@ function rebuildConnections(){
     // de líneas, no en el grosor de una sola. Blending NORMAL (no aditivo): el aditivo sumaba luz
     // sobre el fondo oscuro y terminaba "lavando" cualquier color hacia el mismo blanco-cian
     // brillante, por más distinto que fuera el matiz real — así el color se ve tal cual es.
-    const coreRadius = 0.032 * (selected ? 1.6 : 1);
+    const coreRadius = 0.032 * (selected ? 1.6 : 1) * grosorCables;
     const dashed = tipoSub && tipoSub.lineStyle==='dashed';
 
     // Backup (v9 §2): un tubo levemente más grueso y OSCURO detrás del núcleo, a modo de outline
@@ -2366,13 +2378,22 @@ function rebuildConnections(){
       connectionsGroup.add(m);
     });
 
-    // una sola partícula viajera por cable, ritmo fijo (ya no escala con "potencia")
-    const particleGeo = new THREE.SphereGeometry(0.075, 8, 8);
-    const particleMat = new THREE.MeshBasicMaterial({
-      color: 0xbdf3ff, transparent:true, opacity: 0.9,
-      blending: THREE.AdditiveBlending, depthWrite:false,
-    });
-    const particle = new THREE.Mesh(particleGeo, particleMat);
+    // una sola partícula viajera por cable, ritmo fijo (ya no escala con "potencia").
+    // T07 (24/09, Dei): más grande y más brillante, que se lea sin buscarla. Núcleo casi blanco
+    // que participa del bloom (CAPA_BRILLO) + un halo aditivo del color del cable alrededor.
+    const particle = new THREE.Group();
+    const nucleo = new THREE.Mesh(
+      new THREE.SphereGeometry(PARTICULA_RADIO, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xeafcff, transparent:true, opacity: 1, depthWrite:false })
+    );
+    nucleo.name = 'particulaNucleo';
+    nucleo.layers.enable(CAPA_BRILLO);
+    const aura = new THREE.Mesh(
+      new THREE.SphereGeometry(PARTICULA_RADIO * 2.4, 16, 12),
+      new THREE.MeshBasicMaterial({ color: baseColor, transparent:true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite:false })
+    );
+    particle.add(nucleo, aura);
     connectionsGroup.add(particle);
     connectionAnims.push({ curve, particle, speed: 0.3 + (idx%3)*0.05, phase: (idx*0.37)%1 });
   });
@@ -2580,7 +2601,7 @@ const ZOOM_MIN = 0.4, ZOOM_MAX = 4.5;
    MODELOS_ESCALA (§3B), que ya está en su tope (1.5) porque más arriba los edificios de celdas
    vecinas se chocan entre sí. El rango de zoom manual no cambia (ZOOM_MIN/ZOOM_MAX), así que
    alejarse sigue llegando igual de lejos que antes, y el encuadre del snapshot del PDF tampoco se
-   toca: ese se calcula solo con fitZoomToBox() (§7). */
+   toca: ese se calcula solo con encuadrarEsquema() (§9-bis). */
 const ZOOM_INICIAL = 1.5;
 function applyZoom(newZoom){
   zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
@@ -3047,10 +3068,11 @@ function makePortSprite(){
    Modos disponibles:
      envolver    — centrado en el edificio, escalado para rodearlo (aros del candado).
      abrazar     — a ras de piso, escalado a la huella de la plataforma (brackets del escudo).
-     portico     — plantado sobre la ruta del cable, del lado del puerto, como un arco a cruzar.
+     portico     — en el techo, enmarcando el puerto (+) de T01: la puerta por la que entra el cable.
      fachada     — montado contra una pared, semihundido en ella, a media altura del cuerpo.
      plataforma  — apoyado en la plataforma, pegado a la pared, repartido por el perímetro.
-     cubierta    — sobre el techo (lo que "está en la nube" o irradia, no sobre el piso).
+     cubierta    — sobre el techo (lo que "está en la nube" o irradia, no sobre el piso),
+                   repartido alrededor del puerto (+) de T01, que ocupa el centro.
 
    `envolver`, `abrazar` y `portico` son de ocupación única: si dos productos de la misma entidad
    piden el mismo modo, el segundo cae a `plataforma`. `fachada` tiene 4 huecos (las 4 paredes) y
@@ -3067,29 +3089,104 @@ const PLATAFORMA_CUERPO_REL = 0.72;
 const COLOCACION_ICONOS = {
   // Ciberseguridad — las cinco de la lámina de referencia, cada una en su relación
   escudo:             { modo:'abrazar',    factor:1.15 },  // Perimetral: brackets alrededor de la plataforma
-  candado:            { modo:'envolver',   factor:1.30 },  // End Point: aros que rodean el edificio
-  llave:              { modo:'portico',    factor:0.95 },  // Acceso: arco sobre la ruta de conexión
-  muro:               { modo:'fachada',    factor:0.74 },  // Aplicación: panel contra la pared
+  candado:            { modo:'envolver',   factor:1.30,     // End Point: aros que rodean el edificio
+                        // T07 paso 2 (24/09): los candados de End Point (EDR, XDR, Seg. Móvil, Correo)
+                        // se apilan como SD-WAN, en vez de caer chiquitos a la plataforma. Los aros
+                        // son uno solo (los del primero); lo que se apila es la placa del candado,
+                        // hacia afuera de la fachada. `pilaSoloPrimera`: mallas que mezclan los aros
+                        // con el dibujo del candado; se parten (ver construirPilaFachada).
+                        apila:true, pilaSoloPrimera:['Endpoint_loop'],
+                        // T07 (24/09, Dei): los candados van LADO A LADO en la fachada, en fila
+                        // centrada (no frente/fondo), en el orden en que se agregaron.
+                        pilaLateral:true, pilaOrdenAlta:true },
+  // Acceso: arco en el punto de conexión (T07). Varias instancias de MFA no suman arcos sueltos:
+  // se apilan como un túnel, un arco pegado delante del otro, hacia la cámara.
+  llave:              { modo:'portico',    factor:0.95, apila:true },
+  // T07 paso 2 (24/09): WAF y DNS/DDoS se apilan contra la pared, igual que los candados: el
+  // primero semihundido en la fachada y los demás delante, pegados.
+  muro:               { modo:'fachada',    factor:0.74, apila:true },  // Aplicación: panel contra la pared
   firewall_onpremise: { modo:'plataforma', factor:0.42 },  // equipo físico apoyado en la plataforma
   // Firewall Virtual sigue sin modelo (el proveedor lo excluyó del lineup, v2 §3 B8): es la
   // primitiva escudo+anillo. Va a la plataforma como cualquier equipo, no `abrazar`: la
   // primitiva es un cono alto, no los brackets anchos del escudo real.
   firewall_virtual:   { modo:'plataforma', factor:0.55 },
   // Cloud
-  rack:               { modo:'plataforma', factor:0.62 },
-  nube:               { modo:'cubierta',   factor:0.52 },
+  // T07 (24/09, Dei): Housing (Collocation, Crossconexión) se superponía; se apila frente/fondo.
+  rack:               { modo:'plataforma', factor:0.62, apila:true },
+  // T07 paso 2 (24/09): IaaS, BaaS y DRaaS se apilan en el techo, igual que SD-WAN.
+  nube:               { modo:'cubierta',   factor:0.52, apila:true },
   // Colaboración
   pantalla:           { modo:'fachada',    factor:0.76 },  // igual que el render de Conferencia
   documento:          { modo:'fachada',    factor:0.58 },
-  puerta:             { modo:'plataforma', factor:0.50 },
+  // T07 paso 1 (24/09): Portal Cautivo sube al techo, junto al Punto de Acceso: los dos irradian
+  // cobertura y se leen mejor arriba que apoyados en la plataforma.
+  puerta:             { modo:'cubierta',   factor:0.50 },
   antena:             { modo:'cubierta',   factor:0.55 },
   // Conectividad
-  enlace:             { modo:'plataforma', factor:0.46 },
-  nodo:               { modo:'plataforma', factor:0.50 },
-  globo:              { modo:'cubierta',   factor:0.60 },
+  // T07 (24/09, Dei): Datos (Canal de Conexión, Cloud Interconnect) nace del punto de conexión:
+  // va justo encima del "+", más grande que en la plataforma (ahí se perdía). Varias instancias
+  // se apilan frente/fondo como el resto.
+  enlace:             { modo:'puerto',     factor:0.46, apila:true },
+  // T07 paso 1 (24/09): SD-WAN sube al techo, junto a Internet: los dos comparten el punto de
+  // conexión del techo (T01), que es de donde salen sus cables.
+  // T07 paso 2 (24/09): `apila` junta las variantes (Sdwan, Túnel IPsec) en UNA pila tipo lego:
+  // piezas pegadas una detrás de otra, cada una con el tono de su subproducto, en un solo hueco.
+  // Solo para íconos de forma "encastrable": los redondos (globo) no apilan bien, y los que
+  // quedaron igual en el paso 1 no cambian.
+  nodo:               { modo:'cubierta',   factor:0.50, apila:true },
+  // T07 (24/09, Dei): Internet (Corporativo, Startup, Teleworking, Punto Space) se apila EN
+  // VERTICAL, de abajo hacia arriba: el globo es redondo y en fila frente/fondo no se lee.
+  // TODOS los globos de la pila miden lo mismo, y ese tamaño depende de cuántos hay:
+  // `pilaVertical[n-1]` (1 → tamaño normal, 2 → 80%, 3 o más → la mitad). Orden: el de alta
+  // (el primero que se agregó queda abajo), no el del catálogo.
+  globo:              { modo:'cubierta',   factor:0.60, apila:true, pilaVertical:[1, 0.8, 0.5] },
 };
 const COLOCACION_DEFECTO = { modo:'plataforma', factor:0.50 };
-const HUECOS_POR_MODO = { envolver:1, abrazar:1, portico:1, fachada:4 };
+// fachada: una pared por ícono, y solo las dos visibles (ver CARAS_VISIBLES).
+// Alto del arco de Acceso sobre el techo (ver colocarAsset, 'portico'). El vano interior del
+// .glb es ~86% del alto total y ~73% del ancho: a 0.9 el puerto (0.46, centrado a
+// PUERTO_SOBRE_TECHO del techo) entra justo; en el pico del pulso (0.52) roza los postes.
+// Dei pidió achicarlo desde 1.05 (24/09).
+const PORTICO_ALTO = 0.9;
+const PORTICO_AIRE_ETIQUETA = 0.45; // la etiqueta de nombre sube hasta quedar este margen por encima del arco
+const HUECOS_POR_MODO = { envolver:1, abrazar:1, portico:1, puerto:1, fachada:2 };
+// Huella del ícono de Datos cuando nace del "+" (modo 'puerto'). En mundo, como el puerto.
+const PUERTO_ICONO_HUELLA = 1.3;
+
+/* T07 paso 2 — Pila tipo lego, en HORIZONTAL: las piezas se encastran una DETRÁS de otra sobre
+   el eje frente/fondo del edificio (Z), alineadas en una sola fila recta —mismo X, misma altura,
+   misma rotación— y pegadas cara con cara: cada pieza arranca donde termina la de adelante
+   (× PILA_PASO; 1 = se tocan, menos de 1 las encastra un poco). Cada pieza se centra por su caja
+   real, así la fila queda derecha aunque el pivote del .glb no esté perfectamente centrado.
+   El grupo queda con el pivote en el centro de su base, igual que un ícono suelto, así que
+   `colocarAsset` lo ubica como si fuera uno solo. Orden: la primera pieza va ADELANTE (+Z, la
+   más cercana a la cámara); por ahora es el orden del catálogo (hasta el paso 3, que define
+   pesos), no el orden en que se agregaron. */
+// Sin tope (pedido de Dei, 24/09): la pila muestra TODAS las instancias. Se deja la constante
+// por si en una sede muy cargada hace falta volver a limitarla.
+const PILA_MAX = Infinity;
+const PILA_PASO = 1.0;
+function construirPila(piezas){
+  const pila = new THREE.Group();
+  pila.name = 'pilaIconos';
+  const medidas = piezas.map(p=>medidaAsset(p));
+  const pasos = medidas.map(m=>m.tam.z * PILA_PASO);
+  const largo = pasos.reduce((a,b)=>a+b, 0);
+  let z = largo/2; // se arranca por el frente y se avanza hacia el fondo
+  piezas.forEach((pieza, i)=>{
+    const m = medidas[i];
+    const c = m.caja.getCenter(new THREE.Vector3());
+    const zCentro = z - pasos[i]/2;
+    pieza.position.set(-c.x, -m.caja.min.y, zCentro - c.z);
+    z -= pasos[i];
+    pila.add(pieza);
+  });
+  // Cuántas veces la huella de una pieza mide la fila: `colocarAsset` agranda el hueco en esa
+  // proporción para que cada pieza conserve el tamaño de un ícono suelto. Si la fila se achicara
+  // para entrar en el hueco de un ícono, dejaría de verse "más pesada".
+  pila.userData.largoRel = largo / Math.max(...medidas.map(m=>Math.max(m.tam.x, m.tam.z)), 0.001);
+  return pila;
+}
 
 /* Medidas derivadas que necesita la colocación: dónde termina la plataforma y qué huella tiene
    el cuerpo del edificio sobre ella. */
@@ -3136,13 +3233,30 @@ const CARAS_ENTIDAD = [
   { nx:-1, nz: 0, rotY:-Math.PI/2 },
 ];
 
-/* Reparte `total` íconos entre las 4 caras: uno por cara hasta agotarlas, y recién entonces un
-   segundo por cara, corridos lateralmente. Devuelve la cara, cuántos comparten esa cara y qué
-   lugar ocupa dentro de ella, que es lo que permite centrar el grupo sobre la pared. */
-function huecoPerimetral(turno, total){
-  const iCara = turno % CARAS_ENTIDAD.length;
-  const enCara = Math.floor(total / CARAS_ENTIDAD.length) + ((total % CARAS_ENTIDAD.length) > iCara ? 1 : 0);
-  return { cara: CARAS_ENTIDAD[iCara], indice: Math.floor(turno / CARAS_ENTIDAD.length), enCara: Math.max(enCara, 1) };
+/* T07 (24/09, regla de Dei): NUNCA se pone un ícono detrás del mesh. Las paredes de atrás (-Z y
+   -X) quedan tapadas por el propio edificio con la cámara por defecto, así que `fachada` y
+   `plataforma` solo usan la frontal y la derecha. Lo que no entra en una pared se corre
+   lateralmente sobre la misma pared, en vez de irse a la de atrás. */
+const CARAS_VISIBLES = CARAS_ENTIDAD.slice(0, 2);
+
+/* Reparte `total` íconos entre las caras visibles: uno por cara hasta agotarlas, y recién
+   entonces un segundo por cara, corridos lateralmente. Devuelve la cara, cuántos comparten esa
+   cara y qué lugar ocupa dentro de ella, que es lo que permite centrar el grupo sobre la pared. */
+function huecoPerimetral(turno, total, g){
+  // Si la placa del candado (End Point) ocupa el centro del frente, se arranca por la derecha.
+  const caras = g && g.frenteLleno ? [CARAS_VISIBLES[1]]
+    : (g && g.frenteOcupado ? [CARAS_VISIBLES[1], CARAS_VISIBLES[0]] : CARAS_VISIBLES);
+  const n = caras.length;
+  const iCara = turno % n;
+  const enCara = Math.floor(total / n) + ((total % n) > iCara ? 1 : 0);
+  return { cara: caras[iCara], indice: Math.floor(turno / n), enCara: Math.max(enCara, 1) };
+}
+
+/* La placa del candado de End Point va centrada en la fachada frontal. Lo que además cae en esa
+   pared se corre a su mitad izquierda para no quedar tapado por la placa ni taparla. */
+const FRENTE_CORRIMIENTO = 0.36; // fracción del ancho del cuerpo
+function corrimientoFrente(g, cara){
+  return (g.frenteOcupado && cara.nz === 1) ? -g.cuerpoW * FRENTE_CORRIMIENTO : 0;
 }
 
 /* Medio ancho del cuerpo en la dirección de una normal, y su medida perpendicular (la que se usa
@@ -3153,14 +3267,34 @@ function medidasCara(g, cara){
     : { normal: g.cuerpoD/2, lateral: g.cuerpoW, normalPlinto: g.d/2 };
 }
 
+/* T07 paso 1 — Huecos del techo. El puerto (+) de T01 está en el centro, así que los íconos van
+   en los cuadrantes del techo del cuerpo, a un cuarto del ancho/fondo del centro (más afuera se
+   caen de los techos escalonados de los modelos). El orden importa con la cámara isométrica por
+   defecto (mira desde +X/+Z): las diagonales (+X,-Z) y (-X,+Z) quedan a la derecha y a la
+   izquierda del puerto en pantalla, mientras que (+X,+Z) y (-X,-Z) quedan justo debajo y encima
+   de él y lo tapan. Por eso los dos primeros ocupan los costados. Con más de cuatro se suman los
+   cuatro puntos medios, con huecos más chicos. `lado` es la huella máxima de cada ícono. */
+const HUECOS_CUBIERTA = [ [1,-1], [-1,1], [1,1], [-1,-1], [1,0], [0,1], [-1,0], [0,-1] ];
+const CUBIERTA_AIRE = 0.85; // fracción del hueco que puede ocupar el ícono
+function huecoCubierta(g, turno, total){
+  const [sx, sz] = HUECOS_CUBIERTA[turno % HUECOS_CUBIERTA.length];
+  const divisor = total <= 4 ? 2 : 3;
+  return { x: sx * g.cuerpoW/4, z: sz * g.cuerpoD/4, lado: Math.min(g.cuerpoW, g.cuerpoD)/divisor * CUBIERTA_AIRE * ICONOS_TAMANO };
+}
+
 /* Coloca UN ícono según su modo. `turno` es el índice dentro de los que comparten ese modo en
    esta entidad (0 = el primero), y `totalModo` cuántos son, para poder repartirlos.
 
    Los modos que apoyan el ícono contra una cara ROTAN PRIMERO y miden después: la medida que
    importa es la profundidad del ícono ya girado, no la del .glb tal como vino. Medir antes deja
    los íconos de las caras laterales hundidos o despegados de la pared. */
-function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
+/* T07 (24/09, Dei): "los íconos en general un poco más grandes". Multiplica el tamaño de todos
+   los modos y los topes de huella que los acotan. El arco de Acceso (`portico`) queda afuera: Dei
+   ya lo había achicado a propósito (PORTICO_ALTO). */
+const ICONOS_TAMANO = 1.15;
+function colocarAsset(asset, modo, factor, g, turno, totalModo){
   const huellaCuerpo = Math.max(g.cuerpoW, g.cuerpoD);
+  if(modo !== 'portico') factor *= ICONOS_TAMANO;
   switch(modo){
     case 'envolver': {
       escalarPorHuella(asset, huellaCuerpo * factor);
@@ -3178,18 +3312,27 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
       break;
     }
     case 'portico': {
-      escalarPorAltura(asset, g.h * factor);
-      const m = medidaAsset(asset);
-      // Del lado `ladoPuerto`, apenas por fuera de la plataforma. Hasta T01 ahí estaba el puerto
-      // (+) y la ruta del cable; ahora el puerto está en el techo y el arco quedó en el mismo
-      // lugar a la espera de T07 (jerarquía de íconos), que define dónde va cada producto.
-      const radio = (ladoPuerto.x !== 0 ? g.w/2 : g.d/2) + 0.34 + m.huella*0.6;
-      asset.position.set(ladoPuerto.x * radio, 0.01, ladoPuerto.z * radio);
-      asset.rotation.y = ladoPuerto.x !== 0 ? Math.PI/2 : 0;
+      // T07 (24/09, pedido de Dei): el arco de Acceso (MFA) es la puerta por la que ENTRA la
+      // conexión, así que va justo en el punto de conexión de T01: parado en el centro del techo,
+      // enmarcando el puerto (+). Se escala a una altura fija en mundo (el sprite del puerto
+      // también mide lo mismo en todas las entidades) para que el "+" quepa entero dentro del
+      // vano. Alineado con el edificio, mirando al frente (+Z) como las demás piezas de fachada:
+      // girado 45° hacia la cámara se veía raro (Dei, 24/09).
+      escalarPorAltura(asset, PORTICO_ALTO);
+      asset.position.set(0, g.h, 0);
+      asset.rotation.y = 0;
+      break;
+    }
+    case 'puerto': {
+      // T07: justo encima del "+" (centro del techo). Si hay arco de Acceso, se apoya sobre su
+      // dintel; si no, apenas por encima del sprite del puerto.
+      escalarPorHuella(asset, PUERTO_ICONO_HUELLA * ICONOS_TAMANO);
+      const base = g.hayPortico ? PORTICO_ALTO : PUERTO_SOBRE_TECHO + PORT_BASE_SCALE * 0.62;
+      asset.position.set(0, g.h + base, 0);
       break;
     }
     case 'fachada': {
-      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo);
+      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo, g);
       escalarPorAltura(asset, g.cuerpoH * factor);
       asset.rotation.y = cara.rotY;
       const m = medidaAsset(asset);
@@ -3198,7 +3341,8 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
       // parte del edificio y no como una calcomanía pegada por delante.
       const fondo = Math.abs(cara.nx) ? m.tam.x : m.tam.z;
       const dNormal = c.normal - fondo*0.45 + fondo/2;
-      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.15;
+      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.15
+        + corrimientoFrente(g, cara);
       asset.position.set(
         cara.nx * dNormal + (cara.nx ? 0 : lateral),
         g.plintoY + (g.cuerpoH - m.alto)/2,
@@ -3207,10 +3351,21 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
       break;
     }
     case 'cubierta': {
-      escalarPorAltura(asset, g.cuerpoH * factor);
-      const m = medidaAsset(asset);
-      const offset = (turno - (totalModo-1)/2) * m.huella * 1.15;
-      asset.position.set(offset, g.h, 0);
+      // T07 paso 1: el centro del techo es del puerto (+) y de los cables que salen de él (T01),
+      // así que los íconos de cubierta se reparten en huecos ALREDEDOR del centro, nunca encima.
+      // Cada uno se acota al lado de su hueco para no invadir al vecino ni al puerto.
+      const h = huecoCubierta(g, turno, totalModo);
+      // Una pila (paso 2) tiene la altura de un ícono, pero su huella es más larga (largoRel):
+      // el hueco se agranda en esa proporción para que cada pieza conserve su tamaño.
+      // Una pila vertical crece en altura (alturaRel = alto total ÷ alto de un ícono suelto):
+      // así cada pieza queda al tamaño que le fijó la pila (normal, 80% o la mitad).
+      escalarPorAltura(asset, g.cuerpoH * factor * (asset.userData.alturaRel || 1));
+      // Si el hueco acota la huella, la pila vertical se acota en la misma proporción que sus
+      // piezas: si no, en una sede chica el globo al 80% quedaría igual que uno suelto.
+      const lado = h.lado * Math.max(1, asset.userData.largoRel || 1) * (asset.userData.escalaPieza || 1);
+      const m0 = medidaAsset(asset);
+      if(m0.huella > lado) asset.scale.multiplyScalar(lado / m0.huella);
+      asset.position.set(h.x, g.h, h.z);
       break;
     }
     default: { // 'plataforma'
@@ -3219,10 +3374,10 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
       // Z), así que un ícono escalado solo por altura se sale del plinto y queda flotando en el
       // aire. Se acota la huella a una fracción del lado corto: apoyado y con un vuelo mínimo,
       // que es como se ve el firewall físico de la lámina.
-      const huellaMax = Math.min(g.w, g.d) * 0.45;
+      const huellaMax = Math.min(g.w, g.d) * 0.45 * ICONOS_TAMANO;
       const m0 = medidaAsset(asset);
       if(m0.huella > huellaMax) asset.scale.multiplyScalar(huellaMax / m0.huella);
-      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo);
+      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo, g);
       asset.rotation.y = cara.rotY;
       const m = medidaAsset(asset);
       const c = medidasCara(g, cara);
@@ -3236,7 +3391,8 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
         c.normal + fondo*0.15,
         Math.min(c.normal + fondo/2 + 0.04, c.normalPlinto - fondo/2)
       );
-      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.2;
+      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.2
+        + corrimientoFrente(g, cara);
       asset.position.set(
         cara.nx * dNormal + (cara.nx ? 0 : lateral),
         g.plintoY,
@@ -3244,6 +3400,184 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo, ladoPuerto){
       );
       break;
     }
+  }
+}
+
+/* T07 paso 2 — Pila de fachada, de cara a la cámara. Para íconos que envuelven el edificio (el
+   candado de End Point: aros alrededor + placa con el candado en la fachada), apilar el ícono
+   entero duplicaría los aros. Así que se separa en dos:
+     · ANILLOS: una sola copia de los aros (la parte grande de las mallas `soloPrimera`), fija,
+       del color de la primera instancia.
+     · PLACAS: cada instancia aporta su placa con el dibujo del candado, sin los aros. Todas copian la escala y la posición de
+       la primera (mismo tamaño, alineadas) y se corren hacia afuera, pegadas cara con cara, como
+       la pila de SD-WAN: la primera contra la pared y las demás delante.
+   La pila queda ESTÁTICA en la fachada frontal (+Z), como el candado suelto de v46. Se probó
+   girarla para que siguiera a la cámara y Dei prefirió que no se mueva (24/09).
+   `piezas[0]` tiene que llegar ya colocada (con `colocarAsset`), con los aros todavía puestos. */
+/* La malla `Endpoint_loop` del .glb trae en una sola geometría los 3 aros Y el dibujo del
+   candado (cuerpo y arco) que va sobre la placa. Se parte por componentes conexas: las grandes
+   (lado mayor a PARTIR_LADO_MAX, los aros) quedan fijas; las chicas (el candado) viajan con la
+   placa, que es lo que tiene que verse de frente. La geometría es compartida entre instancias,
+   así que no se toca: se arman dos geometrías nuevas que reusan los mismos atributos con otro
+   índice, y se cachean por geometría. */
+const PARTIR_LADO_MAX = 0.3;
+const _partidas = new Map();
+function partirPorComponentes(geo){
+  if(_partidas.has(geo.uuid)) return _partidas.get(geo.uuid);
+  const pos = geo.attributes.position;
+  const idx = geo.index;
+  const padre = Array.from({ length: pos.count }, (_, i)=>i);
+  const raiz = i=>{ while(padre[i] !== i){ padre[i] = padre[padre[i]]; i = padre[i]; } return i; };
+  const unir = (a, b)=>{ a = raiz(a); b = raiz(b); if(a !== b) padre[a] = b; };
+  // Vértices repetidos en las costuras (misma posición, distinta normal) cuentan como uno.
+  const porPosicion = {};
+  for(let i=0; i<pos.count; i++){
+    const k = pos.getX(i).toFixed(4)+','+pos.getY(i).toFixed(4)+','+pos.getZ(i).toFixed(4);
+    if(porPosicion[k] !== undefined) unir(i, porPosicion[k]); else porPosicion[k] = i;
+  }
+  const n = idx ? idx.count : pos.count;
+  const v = t=> idx ? idx.getX(t) : t;
+  for(let t=0; t<n; t+=3){ unir(v(t), v(t+1)); unir(v(t+1), v(t+2)); }
+  const cajas = {};
+  const p = new THREE.Vector3();
+  for(let i=0; i<pos.count; i++){
+    const r = raiz(i);
+    (cajas[r] = cajas[r] || new THREE.Box3()).expandByPoint(p.set(pos.getX(i), pos.getY(i), pos.getZ(i)));
+  }
+  const esChica = {};
+  Object.keys(cajas).forEach(r=>{ const t = cajas[r].getSize(new THREE.Vector3()); esChica[r] = Math.max(t.x, t.z) < PARTIR_LADO_MAX; });
+  const grandes = [], chicas = [];
+  for(let t=0; t<n; t+=3){
+    (esChica[raiz(v(t))] ? chicas : grandes).push(v(t), v(t+1), v(t+2));
+  }
+  const armar = indices=>{
+    const g = new THREE.BufferGeometry();
+    Object.keys(geo.attributes).forEach(nombre=> g.setAttribute(nombre, geo.attributes[nombre]));
+    g.setIndex(indices);
+    // computeBoundingBox() recorre TODO el atributo de posición (también los vértices que este
+    // índice no usa), así que la caja de las chicas saldría del tamaño de los aros. Se arma a mano.
+    const caja = new THREE.Box3(), q = new THREE.Vector3();
+    indices.forEach(i=> caja.expandByPoint(q.set(pos.getX(i), pos.getY(i), pos.getZ(i))));
+    g.boundingBox = caja;
+    g.boundingSphere = caja.getBoundingSphere(new THREE.Sphere());
+    return g;
+  };
+  const r = { grandes: armar(grandes), chicas: armar(chicas) };
+  _partidas.set(geo.uuid, r);
+  return r;
+}
+
+/* `lateral` (opcional, { anchoMax }): en vez de apilar frente/fondo, pone las placas LADO A LADO
+   sobre la pared, en una fila centrada y pegadas. Si la fila no entra en `anchoMax`, se achican
+   todas por igual, cada una alrededor de su propio centro para que no se meta en la pared. */
+const FILA_ANCHO_MAX = 0.85; // fracción del ancho del cuerpo que puede ocupar la fila de candados
+function construirPilaFachada(piezas, soloPrimera, anillos, lateral){
+  const base = piezas[0];
+  const esMixta = o=> o.isMesh && soloPrimera.includes(o.name);
+  if(anillos){
+    // En los anillos quedan solo las partes grandes de las mallas mixtas (los aros); el resto sale.
+    const fuera = [];
+    anillos.traverse(o=>{
+      if(!o.isMesh) return;
+      if(esMixta(o)) o.geometry = partirPorComponentes(o.geometry).grandes;
+      else fuera.push(o);
+    });
+    fuera.forEach(o=>o.parent.remove(o));
+    anillos.scale.copy(base.scale);
+    anillos.rotation.copy(base.rotation);
+    anillos.position.copy(base.position);
+  }
+
+  const placas = new THREE.Group();
+  placas.name = 'pilaFachada';
+  // En cada placa, de las mallas mixtas queda solo el dibujo del candado.
+  piezas.forEach(pz=> pz.traverse(o=>{ if(esMixta(o)) o.geometry = partirPorComponentes(o.geometry).chicas; }));
+  // Hacia afuera de la pared = el +Z del ícono ya girado (la cara que el proveedor modeló de
+  // frente). En la fachada derecha eso es +X. El fondo de cada placa se mide en esa dirección.
+  // El fondo se mide sobre el ícono SIN girar (su +Z de modelo): medido ya girado, en un ícono
+  // que no esté alineado a los ejes la caja mezcla ancho y fondo y las piezas quedan separadas.
+  const normal = new THREE.Vector3(0, 0, 1).applyEuler(base.rotation);
+  const rotOriginal = base.rotation.clone();
+  base.rotation.set(0, 0, 0);
+  base.updateMatrixWorld(true);
+  const tamBase = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3());
+  base.rotation.copy(rotOriginal);
+
+  if(lateral){
+    // Fila lado a lado sobre la pared: el eje es el +X del ícono ya girado.
+    const eje = new THREE.Vector3(1, 0, 0).applyEuler(base.rotation);
+    const n = piezas.length;
+    let ancho = tamBase.x * PILA_PASO;
+    const k = Math.min(1, lateral.anchoMax / (ancho * n));
+    if(k < 1){
+      // Achicar alrededor del centro de la placa, no del pivote del ícono (que está en el centro
+      // del edificio): si no, la placa se acercaría a la pared y se hundiría en ella.
+      base.updateMatrixWorld(true);
+      const centro = new THREE.Box3().setFromObject(base).getCenter(new THREE.Vector3());
+      const r = base.position.clone().sub(centro).multiplyScalar(k);
+      base.scale.multiplyScalar(k);
+      base.position.copy(centro).add(r);
+      ancho *= k;
+    }
+    const origen = base.position.clone();
+    piezas.forEach((pieza, i)=>{
+      pieza.scale.copy(base.scale);
+      pieza.rotation.copy(base.rotation);
+      pieza.position.copy(origen).addScaledVector(eje, ancho * (i - (n-1)/2));
+      placas.add(pieza);
+    });
+    return { anillos: anillos || null, placas };
+  }
+
+  const fondo = tamBase.z * PILA_PASO;
+  piezas.forEach((pieza, i)=>{
+    pieza.scale.copy(base.scale);
+    pieza.rotation.copy(base.rotation);
+    pieza.position.copy(base.position).addScaledVector(normal, fondo * i);
+    placas.add(pieza);
+  });
+  return { anillos: anillos || null, placas };
+}
+
+/* T07 — Pila VERTICAL (Internet). Las piezas se ponen una ENCIMA de otra, centradas en el mismo
+   eje y pegadas (cada una arranca donde termina la de abajo). Todas con el mismo tamaño, que
+   depende de cuántas son: `escalas[n-1]` (la última se repite si hay más). Pivote en el centro de
+   la base, como un ícono suelto. `alturaRel` = alto total ÷ alto de UNA pieza a tamaño normal,
+   para que `cubierta` escale la pila sin deshacer la reducción. */
+function construirPilaVertical(piezas, escalas){
+  const pila = new THREE.Group();
+  pila.name = 'pilaVertical';
+  const k = escalas[Math.min(piezas.length - 1, escalas.length - 1)];
+  let y = 0, altoNormal = 0;
+  piezas.forEach(pieza=>{
+    if(!altoNormal) altoNormal = medidaAsset(pieza).alto;
+    pieza.scale.multiplyScalar(k);
+    const m = medidaAsset(pieza);
+    const c = m.caja.getCenter(new THREE.Vector3());
+    pieza.position.set(-c.x, y - m.caja.min.y, -c.z);
+    y += m.alto * PILA_PASO;
+    pila.add(pieza);
+  });
+  pila.userData.alturaRel = y / Math.max(altoNormal, 0.001);
+  pila.userData.escalaPieza = k; // `cubierta` acota la huella del hueco en esta misma proporción
+  return pila;
+}
+
+/* Marca un ícono (o una pieza de pila) con la instancia a la que pertenece, para que el clic
+   seleccione esa instancia. Las heredadas de una Matriz van en estilo "fantasma": mismo ícono y
+   color, translúcido, y no editables desde la sede (se editan desde la Matriz). */
+function etiquetarAssetDeSede(asset, sede, m){
+  if(m.heredado){
+    asset.traverse(o=>{
+      if(o.material){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; }
+    });
+    const ud = { sedeId: sede.id, matrizInstanciaId: m.inst.instanciaId, isHeredadoAsset:true };
+    asset.userData = ud;
+    asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.matrizInstanciaId=ud.matrizInstanciaId; o.userData.isHeredadoAsset=true; });
+  } else {
+    const ud = { sedeId: sede.id, instanciaId: m.inst.instanciaId, isAsset:true };
+    asset.userData = ud;
+    asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.instanciaId=ud.instanciaId; o.userData.isAsset=true; });
   }
 }
 
@@ -3255,9 +3589,12 @@ function refreshSedeAssets(sede){
   container.name = 'assetsContainer';
 
   const g = geometriaEntidad(sede);
-  // Lado donde se planta el `portico` de Acceso: +Z en el Datacenter, +X en el resto. Era el
-  // lado del puerto hasta T01; se conserva para no mover íconos antes de T07.
-  const ladoPuerto = sede.tipo === 'datacenter' ? { x:0, z:1 } : { x:1, z:0 };
+  // ¿Hay candado de End Point? Su placa ocupa el centro del frente (ver huecoPerimetral).
+  const candados = [...sede.instancias, ...(sede.tipo==='matriz' ? [] : (sede.herenciaIds||[]).map(hid=>findInstanciaEnMatrices(hid)).filter(Boolean))]
+    .filter(i=>{ const sub = getSubproducto(i.subproductoId); return (sub.assetKey || getProducto(sub.productoNivel2Id).assetKey) === 'candado'; }).length;
+  g.frenteOcupado = candados > 0;
+  // Con 2 o más candados la fila ocupa todo el frente: lo demás de pared va a la derecha.
+  g.frenteLleno = candados > 1;
 
   const propias = sede.instancias;
   // Productos heredados de Matrices conectadas (solo aplica a sedes reales, no a las Matrices
@@ -3267,19 +3604,38 @@ function refreshSedeAssets(sede){
 
   // 1ª pasada: resolver el modo de cada instancia y repartir los huecos. Los modos de ocupación
   // única se asignan por orden de llegada; el que no entra cae a 'plataforma', que no se agota.
+  // T07 paso 2: las instancias de un ícono con `apila` se juntan en una sola entrada (una pila),
+  // que ocupa un único hueco. Las propias y las heredadas apilan juntas.
   const usados = {};
-  const planeadas = [...propias.map(i=>({inst:i, heredado:false})), ...heredadas.map(i=>({inst:i, heredado:true}))]
-    .map(entrada=>{
+  const pilas = {};
+  const entradas = [];
+  [...propias.map(i=>({inst:i, heredado:false})), ...heredadas.map(i=>({inst:i, heredado:true}))]
+    .forEach(entrada=>{
       const sub = getSubproducto(entrada.inst.subproductoId);
       const producto = getProducto(sub.productoNivel2Id);
       const clave = sub.assetKey || producto.assetKey;
-      let col = COLOCACION_ICONOS[clave] || COLOCACION_DEFECTO;
-      const tope = HUECOS_POR_MODO[col.modo];
-      if(tope !== undefined && (usados[col.modo]||0) >= tope) col = COLOCACION_DEFECTO;
-      usados[col.modo] = (usados[col.modo]||0) + 1;
-      return { ...entrada, sub, producto, clave, modo: col.modo, factor: col.factor, turno: usados[col.modo]-1 };
+      const miembro = { ...entrada, sub, producto };
+      if(COLOCACION_ICONOS[clave] && COLOCACION_ICONOS[clave].apila){
+        if(!pilas[clave]){ pilas[clave] = { clave, miembros:[] }; entradas.push(pilas[clave]); }
+        pilas[clave].miembros.push(miembro);
+      } else {
+        entradas.push({ clave, miembros:[miembro] });
+      }
     });
+  const planeadas = entradas.map(e=>{
+    const colE = COLOCACION_ICONOS[e.clave];
+    // Las pilas verticales y las laterales respetan el orden en que se agregaron.
+    if(e.miembros.length > 1 && !(colE && (colE.pilaVertical || colE.pilaOrdenAlta))){
+      e.miembros.sort((a,b)=> SUBPRODUCTOS.indexOf(a.sub) - SUBPRODUCTOS.indexOf(b.sub));
+    }
+    let col = COLOCACION_ICONOS[e.clave] || COLOCACION_DEFECTO;
+    const tope = HUECOS_POR_MODO[col.modo];
+    if(tope !== undefined && (usados[col.modo]||0) >= tope) col = COLOCACION_DEFECTO;
+    usados[col.modo] = (usados[col.modo]||0) + 1;
+    return { ...e, col, modo: col.modo, factor: col.factor, turno: usados[col.modo]-1 };
+  });
   const totalPorModo = planeadas.reduce((acc,p)=>{ acc[p.modo]=(acc[p.modo]||0)+1; return acc; }, {});
+  g.hayPortico = !!totalPorModo.portico; // el ícono de Datos se apoya sobre el arco de Acceso
 
   // 2ª pasada: construir, colocar y etiquetar
   planeadas.forEach(p=>{
@@ -3287,27 +3643,46 @@ function refreshSedeAssets(sede){
     // ver AssetRegistry) para distinguirse de sus hermanos, que por defecto comparten el ícono
     // del Producto (N2) — ver comentario del §1 del catálogo.
     const build = AssetRegistry[p.clave] || AssetRegistry.pantalla;
-    const asset = build(getSubproductoColor(p.sub));
-    colocarAsset(asset, p.modo, p.factor, g, p.turno, totalPorModo[p.modo], ladoPuerto);
-
-    if(p.heredado){
-      // estilo "fantasma": mismo ícono/color, pero translúcido, y no editable desde la sede
-      // (el producto pertenece a la Matriz; se edita/elimina desde allí).
-      asset.traverse(o=>{
-        if(o.material){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; }
-      });
-      const ud = { sedeId: sede.id, matrizInstanciaId: p.inst.instanciaId, isHeredadoAsset:true };
-      asset.userData = ud;
-      asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.matrizInstanciaId=ud.matrizInstanciaId; o.userData.isHeredadoAsset=true; });
-    } else {
-      const ud = { sedeId: sede.id, instanciaId: p.inst.instanciaId, isAsset:true };
-      asset.userData = ud;
-      asset.traverse(o=>{ o.userData.sedeId=ud.sedeId; o.userData.instanciaId=ud.instanciaId; o.userData.isAsset=true; });
+    const visibles = p.miembros.slice(0, PILA_MAX);
+    const piezas = visibles.map(m=>{
+      const pieza = build(getSubproductoColor(m.sub));
+      etiquetarAssetDeSede(pieza, sede, m);
+      return pieza;
+    });
+    // Pila "de fachada": íconos que se apoyan contra el edificio (candados, WAF/DNS). El candado
+    // pasa por acá aunque sea uno solo, para que el dibujo viaje siempre con su placa. La primera
+    // pieza se coloca completa, como un ícono suelto, y de ahí salen la escala y la posición de
+    // los aros y de todas las placas, que se corren hacia afuera de la pared.
+    if(p.col.apila && p.modo !== 'cubierta' && (p.col.pilaSoloPrimera || piezas.length > 1)){
+      colocarAsset(piezas[0], p.modo, p.factor, g, p.turno, totalPorModo[p.modo]);
+      let anillos = null;
+      if(p.col.pilaSoloPrimera){
+        anillos = build(getSubproductoColor(visibles[0].sub));
+        etiquetarAssetDeSede(anillos, sede, visibles[0]);
+      }
+      const r = construirPilaFachada(piezas, p.col.pilaSoloPrimera || [], anillos,
+        p.col.pilaLateral ? { anchoMax: g.cuerpoW * FILA_ANCHO_MAX } : null);
+      if(r.anillos) container.add(r.anillos);
+      r.placas.userData.sobrePuerto = p.modo === 'portico' || p.modo === 'puerto';
+      container.add(r.placas);
+      return;
     }
+    const asset = piezas.length < 2 ? piezas[0]
+      : (p.col.pilaVertical ? construirPilaVertical(piezas, p.col.pilaVertical) : construirPila(piezas));
+    colocarAsset(asset, p.modo, p.factor, g, p.turno, totalPorModo[p.modo]);
+    asset.userData.sobrePuerto = p.modo === 'portico' || p.modo === 'puerto';
     container.add(asset);
   });
 
   sede.group.add(container);
+  // La etiqueta de nombre tapaba lo que está parado sobre el "+" (arco de Acceso, ícono de Datos):
+  // se sube hasta quedar por encima de lo más alto de eso.
+  let topeCentral = 0;
+  container.children.forEach(o=>{
+    if(!o.userData.sobrePuerto) return;
+    topeCentral = Math.max(topeCentral, new THREE.Box3().setFromObject(o).max.y);
+  });
+  sede.group.userData.alturaMinEtiqueta = topeCentral ? topeCentral + PORTICO_AIRE_ETIQUETA : 0;
 }
 
 /* =========================================================================
@@ -4290,6 +4665,16 @@ window.addEventListener('touchend', (e)=>{
 });
 window.addEventListener('touchcancel', cancelActiveGesture);
 
+/* T07 — Instancias de la entidad (propias y heredadas de una Matriz) que son del mismo Producto
+   (N2) que `inst`, en el orden en que se agregaron. Es el grupo que muestra el tooltip. */
+function grupoDelTooltip(entity, inst){
+  const productoId = getSubproducto(inst.subproductoId).productoNivel2Id;
+  const heredadas = entity.tipo==='matriz' ? [] :
+    (entity.herenciaIds||[]).map(hid=>findInstanciaEnMatrices(hid)).filter(Boolean);
+  return [...entity.instancias.map(i=>({ inst:i, heredado:false })), ...heredadas.map(i=>({ inst:i, heredado:true }))]
+    .filter(g=>{ const sub = getSubproducto(g.inst.subproductoId); return sub && sub.productoNivel2Id === productoId; });
+}
+
 /* --- Tooltip on hover sobre assets --- */
 const tooltipEl = byId('tooltip');
 renderer.domElement.addEventListener('mousemove', (e)=>{
@@ -4301,10 +4686,10 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
   }
   if(found){
     let inst;
+    const sede = getSedeById(found.sedeId);
     if(found.isHeredadoAsset){
       inst = findInstanciaEnMatrices(found.matrizInstanciaId);
     } else {
-      const sede = getSedeById(found.sedeId);
       inst = sede && sede.instancias.find(i=>i.instanciaId===found.instanciaId);
     }
     if(inst){
@@ -4313,8 +4698,18 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
       tooltipEl.style.display='block';
       tooltipEl.style.left = (e.clientX-rect.left+14)+'px';
       tooltipEl.style.top = (e.clientY-rect.top+10)+'px';
-      tooltipEl.innerHTML = `<div class="t-title">${inst.nombreSubproducto}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
-        <div class="t-sub">${vertical.nombre}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
+      // T07 (24/09, Dei): si la entidad tiene varios servicios del mismo producto (los 4 candados
+      // de End Point, las variantes de Internet…), un solo popup los lista todos con viñetas.
+      const grupo = sede ? grupoDelTooltip(sede, inst) : [inst];
+      if(grupo.length > 1){
+        const producto = getProducto(getSubproducto(inst.subproductoId).productoNivel2Id);
+        tooltipEl.innerHTML = `<div class="t-title">${escapeHtml(producto.nombre)}</div>
+          <div class="t-sub">${vertical.nombre} · ${grupo.length} servicios</div>
+          <ul class="t-lista">${grupo.map(g=>`<li class="t-item t-item--${g.inst.verticalId}"><span class="t-bullet" aria-hidden="true"></span>${escapeHtml(g.inst.nombreSubproducto)}${g.heredado?' <span class="t-heredado">(heredado)</span>':''}</li>`).join('')}</ul>`;
+      } else {
+        tooltipEl.innerHTML = `<div class="t-title">${inst.nombreSubproducto}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
+          <div class="t-sub">${vertical.nombre}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
+      }
     }
   } else {
     tooltipEl.style.display='none';
@@ -4339,6 +4734,7 @@ function animate(){
     const tt = (t * c.speed * 0.3 + c.phase) % 1;
     const p = c.curve.getPointAt(tt);
     c.particle.position.copy(p);
+    c.particle.scale.setScalar(1 + Math.sin(t * PARTICULA_TITILEO + c.phase * 6.28) * 0.12); // brillo que respira
   });
   updateSatelliteAnims(t);
   updateSdwanAnims(t);
@@ -4926,7 +5322,11 @@ function renderRightPanel(){
         row.addEventListener('click', ()=>openPopupForEdit(entity.id, inst.instanciaId));
         row.querySelector('.inst-delete').addEventListener('click', (e)=>{
           e.stopPropagation();
-          deleteInstanceDirect(entity, inst.instanciaId);
+          // T07 (24/09, Dei): paso extra de seguridad antes de quitar un producto.
+          confirmDialog({ title:'Quitar producto',
+            body:`¿Seguro que quieres quitar "${sub.nombre}" de "${entity.nombre}"? Esta acción no se puede deshacer.`,
+            confirmText:'Quitar' })
+            .then(ok=>{ if(ok) deleteInstanceDirect(entity, inst.instanciaId); });
         });
         instanceListEl.appendChild(row);
       });
@@ -5040,7 +5440,16 @@ function renderConnectionsBox(entityId){
     });
     row.querySelector('.connDelete').addEventListener('click', (e)=>{
       e.stopPropagation();
-      eliminarConexion(c.id);
+      // T07 (24/09, Dei): paso extra de seguridad. Quitar una conexión también quita el servicio
+      // que la representa (salvo que sea un backup), así que el texto lo avisa.
+      const subC = getSubproducto(c.subproductoId);
+      const nombreC = subC ? subC.nombre : 'esta conexión';
+      confirmDialog({ title: c.esBackup ? 'Quitar backup' : 'Eliminar conexión',
+        body: c.esBackup
+          ? `¿Seguro que quieres quitar el enlace de backup de "${nombreC}"?`
+          : `¿Seguro que quieres eliminar "${nombreC}"? También se quita el servicio asignado que representa. Esta acción no se puede deshacer.`,
+        confirmText: c.esBackup ? 'Quitar' : 'Eliminar' })
+        .then(ok=>{ if(ok) eliminarConexion(c.id); });
     });
     item.appendChild(row);
     listEl.appendChild(item);
@@ -6267,335 +6676,690 @@ function downloadJSON(){
 }
 byId('btnExportFromReport').addEventListener('click', downloadJSON);
 
-/* Calcula la caja envolvente (world space) de todo lo que hay en el canvas: cada Matriz, el
-   Datacenter, y cada sede colocada. Se usa para que el snapshot del PDF siempre encuadre TODO,
-   sin importar dónde haya dejado la cámara/zoom el vendedor. */
-function computeSceneBoundingBox(){
-  const box = new THREE.Box3();
-  state.matrices.forEach(m=> box.expandByObject(m.group));
-  state.nubes.forEach(n=> box.expandByObject(n.group));
-  box.expandByObject(datacenterGroup);
-  state.sedes.forEach(sede=> box.expandByObject(sede.group));
-  return box;
-}
+/* =========================================================================
+   9-bis. REPORTE PDF (T08, plantilla de Dei del 24/09)
+   -------------------------------------------------------------------------
+   Hasta T08 el PDF se dibujaba primitiva por primitiva con jsPDF (Helvetica sobre blanco). La
+   plantilla nueva es oscura, con Inter, degradados y tarjetas del design system, así que el PDF
+   pasa a armarse como páginas HTML de tamaño A4 (794 × 1123 px) que html2canvas convierte en
+   imagen, una por página, y jsPDF junta en el archivo. Toda la apariencia vive en
+   css/styles.css (§12, clases .pdf-*); acá solo se arma el contenido y se pagina.
 
-/* Dada una caja envolvente y el aspect ratio del canvas, calcula el nivel de zoom ortográfico
-   necesario para que la caja completa entre en el frustum (con margen), con la cámara ya
-   posicionada/orientada. Se proyectan las 8 esquinas de la caja al espacio de la cámara para
-   encontrar el semi-ancho/semi-alto requerido — más preciso que estimar solo con el centro y el
-   radio de la caja. */
-function fitZoomToBox(box, aspect){
-  camera.updateMatrixWorld(true);
-  const inv = camera.matrixWorldInverse;
-  const corners = [
-    [box.min.x,box.min.y,box.min.z], [box.min.x,box.min.y,box.max.z],
-    [box.min.x,box.max.y,box.min.z], [box.min.x,box.max.y,box.max.z],
-    [box.max.x,box.min.y,box.min.z], [box.max.x,box.min.y,box.max.z],
-    [box.max.x,box.max.y,box.min.z], [box.max.x,box.max.y,box.max.z],
-  ];
-  let maxAbsX = 0.001, maxAbsY = 0.001;
-  corners.forEach(([x,y,z])=>{
-    const v = new THREE.Vector3(x,y,z).applyMatrix4(inv);
-    maxAbsX = Math.max(maxAbsX, Math.abs(v.x));
-    maxAbsY = Math.max(maxAbsY, Math.abs(v.y));
+   Páginas:
+     1. Portada: título, cliente y fecha, el esquema del canvas, cifras y salud global.
+     2. Resumen: salud por categoría y la tabla de conexiones (sigue en otra página si no entra).
+     3+. Detalle: una tarjeta por entidad (Matriz, Datacenter, Sedes, Nubes) y una por servicio.
+   Decisiones de Dei (24/09):
+     - La salud sigue midiendo cobertura de ubicaciones (T05); solo cambia el texto.
+     - La salud lleva números (cierra el Pendiente 71).
+     - De inicio → final (T06) queda solo la salud: estado inicial y cambio en puntos.
+     - El esquema es la foto del canvas, pero encuadrada para que se vea TODO y todas las
+       conexiones (ver captureHeroSnapshot).
+     - Sin "EJEMPLO ILUSTRATIVO" ni marca de agua.
+   Las imágenes (logo, renders, símbolos de categoría) vienen embebidas en js/reporte-assets.js
+   (tools/empaquetar-reporte.js): con file:// una imagen local contamina el canvas de html2canvas
+   y el PDF no se podría generar.
+   ========================================================================= */
+
+/* Encuadre y aspecto del esquema de la portada. */
+const ESQUEMA_PDF = {
+  // Elevación de la cámara. Algo más alta que la vista por defecto (35°): los cables se tapan
+  // menos con los edificios y se leen todas las conexiones. La órbita horizontal es la de siempre.
+  elevacion: THREE.MathUtils.degToRad(44),
+  margen: 0.88,        // fracción del cuadro que ocupa el contenido (el resto es aire)
+  grosorCables: 2.2,   // los cables se ven más gruesos solo en la foto: a esa escala el grosor de pantalla desaparece
+  zoomMax: 2.2,        // tope para escenas chicas: con una sola entidad no se acerca hasta llenar la portada
+};
+const PDF_ESCALA = 2;  // resolución de html2canvas: 2 px de imagen por px de página
+
+/* Caja de lo que tiene que entrar en el esquema: cada entidad, los cables (sin las partículas,
+   que se mueven) y el punto de anclaje de cada etiqueta de nombre. Se devuelven puntos sueltos
+   para proyectarlos con la cámara ya orientada. */
+function puntosDelEsquema(){
+  const puntos = [];
+  const caja = new THREE.Box3();
+  const agregarCaja = ()=>{
+    if(caja.isEmpty()) return;
+    [caja.min.x, caja.max.x].forEach(x=> [caja.min.y, caja.max.y].forEach(y=> [caja.min.z, caja.max.z].forEach(z=>
+      puntos.push(new THREE.Vector3(x, y, z)))));
+  };
+  todasLasEntidades().forEach(e=>{
+    if(e.id==='datacenter' && !state.datacenter.activo) return;
+    const grupo = e.id==='datacenter' ? datacenterGroup : e.group;
+    if(!grupo) return;
+    caja.setFromObject(grupo); agregarCaja();
   });
-  const PADDING = 0.78; // deja aire alrededor para que nada quede pegado al borde del banner
-  const zoomX = (FRUSTUM*aspect*PADDING) / maxAbsX;
-  const zoomY = (FRUSTUM*PADDING) / maxAbsY;
-  return Math.min(zoomX, zoomY, ZOOM_MAX);
+  connectionsGroup.traverse(o=>{
+    if(!o.isMesh || !o.userData.isConexion) return;
+    caja.setFromObject(o); agregarCaja();
+  });
+  nameLabels.forEach(entry=>{
+    const v = new THREE.Vector3(0, Math.max(entry.localY, entry.group.userData.alturaMinEtiqueta || 0), 0);
+    entry.group.localToWorld(v);
+    puntos.push(v);
+  });
+  return puntos;
 }
 
-/* Captura un snapshot del canvas 3D para usarlo como header/hero del PDF. En vez de fotografiar
-   la cámara tal como la dejó el vendedor (podía estar zoomeada a un detalle, o mirando desde un
-   ángulo raro), fuerza temporalmente una vista isométrica aérea "de catálogo" — la misma
-   orientación del botón "Restablecer vista" — y calcula el zoom justo para que TODA la
-   infraestructura (Matriz, Datacenter y cada sede) entre en el encuadre. Al terminar, restaura
-   exactamente el ángulo/zoom que el vendedor tenía en pantalla, así el snapshot no altera lo que
-   está viendo mientras sigue trabajando.
-   También renderiza una vez con un color de fondo sólido (el canvas normalmente es transparente,
-   alpha:true, así que sin esto la imagen saldría con fondo transparente/negro al insertarla en
-   una página blanca), y recorta el resultado en un canvas 2D auxiliar al aspect ratio deseado
-   (estilo "cover", igual que un background-size:cover en CSS) para que se vea como un banner
-   prolijo sin deformar la escena. Todo esto es síncrono (drawImage de un canvas WebGL a un canvas
-   2D no requiere esperar a que cargue ninguna imagen), así downloadPDF() no necesita volverse
-   async. */
-function captureHeroSnapshot(targetAspect){
-  // --- Guardar el estado de cámara actual del vendedor, para restaurarlo al final ---
-  const prevAngleX = camAngleX, prevAngleY = camAngleY, prevZoom = camera.zoom;
-  const prevTarget = camTarget.clone(); // v10: si el vendedor paneó la vista, el snapshot no debe heredar ese desplazamiento
-  const prevColor = renderer.getClearColor(new THREE.Color());
-  const prevAlpha = renderer.getClearAlpha();
-
-  // --- Vista isométrica aérea por defecto + auto-zoom para encuadrar todo lo colocado ---
-  camAngleX = DEFAULT_CAM_ANGLE_X;
-  camAngleY = DEFAULT_CAM_ANGLE_Y;
-  camTarget.set(0,0,0);
+/* Orienta la cámara, la centra sobre el contenido y calcula el zoom para que entre completo en
+   un cuadro de proporción `aspect`. A diferencia del snapshot anterior (que encuadraba contra el
+   canvas y después recortaba al aspecto del banner, y por eso cortaba lo que quedaba a los
+   costados), acá el frustum ya tiene el aspecto final: no se recorta nada. */
+function encuadrarEsquema(aspect){
+  camera.left = -FRUSTUM*aspect; camera.right = FRUSTUM*aspect;
+  camera.top = FRUSTUM; camera.bottom = -FRUSTUM;
+  camTarget.set(0, 0, 0);
   updateCameraFromAngles();
-  const aspect = renderer.domElement.width / renderer.domElement.height;
-  const fitZoom = fitZoomToBox(computeSceneBoundingBox(), aspect);
-  camera.zoom = fitZoom;
+  camera.updateMatrixWorld(true);
+  const puntos = puntosDelEsquema();
+  if(!puntos.length){ camera.zoom = ZOOM_INICIAL; camera.updateProjectionMatrix(); return; }
+  const inv = camera.matrixWorldInverse;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  puntos.forEach(p=>{
+    const v = p.clone().applyMatrix4(inv);
+    minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+    minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+  });
+  // Cámara ortográfica: correr cámara y objetivo juntos sobre sus ejes "derecha" y "arriba"
+  // desplaza la vista sin cambiar el ángulo, así el contenido queda centrado en el cuadro.
+  const derecha = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+  const arriba = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+  camTarget.addScaledVector(derecha, (minX+maxX)/2).addScaledVector(arriba, (minY+maxY)/2);
+  updateCameraFromAngles();
+  const semiAncho = Math.max((maxX-minX)/2, 0.001), semiAlto = Math.max((maxY-minY)/2, 0.001);
+  camera.zoom = Math.min(FRUSTUM*aspect*ESQUEMA_PDF.margen/semiAncho, FRUSTUM*ESQUEMA_PDF.margen/semiAlto, ESQUEMA_PDF.zoomMax);
   camera.updateProjectionMatrix();
+}
 
-  renderer.setClearColor(0x0a0e14, 1);
-  renderizarFrame(BRILLO_EN_PDF); // v17: sin efectos por decisión (v2 §7.4); cambiar el booleano los incluye
+/* Las etiquetas de nombre del esquema se dibujan sobre la foto con canvas 2D (son divs HTML en
+   pantalla, fuera del WebGL). Su aspecto no se define acá: se lee de una etiqueta de muestra con
+   las clases .pdf-esquema__etiqueta / __punto de styles.css. */
+function estiloEtiquetaEsquema(contenedor){
+  const muestra = pdfEl('span', 'pdf-esquema__etiqueta');
+  const punto = pdfEl('span', 'pdf-esquema__punto');
+  muestra.append(punto, document.createTextNode('M'));
+  contenedor.appendChild(muestra);
+  const cs = getComputedStyle(muestra), cp = getComputedStyle(punto);
+  const px = v=> parseFloat(v) || 0;
+  const estilo = {
+    fuente: [cs.fontWeight, cs.fontSize, cs.fontFamily],
+    color: cs.color, fondo: cs.backgroundColor, borde: cs.borderTopColor, grosorBorde: px(cs.borderTopWidth),
+    padIzq: px(cs.paddingLeft), padDer: px(cs.paddingRight), alto: muestra.offsetHeight || px(cs.height),
+    separacion: px(cs.marginBottom),
+    punto: { tam: px(cp.width), color: cp.backgroundColor, separacion: px(cp.marginRight) },
+    fundido: parseFloat(getComputedStyle(contenedor).getPropertyValue('--pdf-esquema-fundido')) || 0,
+  };
+  muestra.remove();
+  return estilo;
+}
 
-  const src = renderer.domElement;
-  const sw = src.width, sh = src.height;
-  const srcAspect = sw / sh;
-  let cropW = sw, cropH = sh, sx = 0, sy = 0;
-  if(srcAspect > targetAspect){
-    cropW = sh * targetAspect; sx = (sw - cropW) / 2;
-  } else {
-    cropH = sw / targetAspect; sy = (sh - cropH) / 2;
-  }
-  const outW = 1600, outH = Math.round(outW / targetAspect);
-  const out = document.createElement('canvas');
-  out.width = outW; out.height = outH;
-  const ctx = out.getContext('2d');
-  ctx.drawImage(src, sx, sy, cropW, cropH, 0, 0, outW, outH);
+/* Las etiquetas son más anchas que el punto que las ancla: si una Sede queda en el borde, su
+   etiqueta se saldría del cuadro. Achica el zoom lo justo para que todas entren (cámara
+   ortográfica: el zoom escala las posiciones en pantalla respecto del centro). */
+function ajustarZoomPorEtiquetas(ctx, w, h, e, k){
+  const [peso, tam, familia] = e.fuente;
+  ctx.font = `${peso} ${parseFloat(tam)*k}px ${familia}`;
+  const aire = 8*k, alto = e.alto*k;
+  let factor = 1;
+  nameLabels.forEach(entry=>{
+    getLabelScreenNDC(entry, tmpLabelVec);
+    const dx = Math.abs(tmpLabelVec.x) * w/2;               // distancia del ancla al centro, en px
+    const dy = tmpLabelVec.y * h/2 + (e.separacion*k + alto); // hasta el borde superior de la etiqueta
+    const medioAncho = ((e.padIzq + e.punto.tam + e.punto.separacion + e.padDer)*k + ctx.measureText(entry.el.textContent).width)/2;
+    if(dx > 0) factor = Math.min(factor, (w/2 - aire - medioAncho) / dx);
+    if(tmpLabelVec.y > 0 && dy > h/2 - aire) factor = Math.min(factor, (h/2 - aire - (e.separacion*k + alto)) / (tmpLabelVec.y * h/2));
+  });
+  if(factor < 1){ camera.zoom *= Math.max(factor, 0.3); camera.updateProjectionMatrix(); }
+}
 
-  // --- Nombres de Sede/Matriz/Datacenter: ahora son divs HTML fuera del canvas WebGL (ver §3,
-  // sistema de etiquetas), así que drawImage de arriba no los incluye. Se dibujan acá aparte,
-  // proyectando el mismo punto de anclaje 3D de cada etiqueta con la cámara ya encuadrada, y
-  // mapeando esa posición del espacio del canvas fuente (sw×sh) al recorte/escala del canvas de
-  // salida (mismo sx/sy/cropW/cropH usados arriba para la imagen). */
-  ctx.font = '700 24px Segoe UI, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillStyle = '#e6edf3';
-  ctx.shadowColor = 'rgba(0,0,0,.85)';
-  ctx.shadowBlur = 6;
+function dibujarEtiquetasEsquema(ctx, w, h, e, k){
+  const [peso, tam, familia] = e.fuente;
+  ctx.font = `${peso} ${parseFloat(tam)*k}px ${familia}`;
+  ctx.textBaseline = 'middle';
+  const alto = e.alto*k, radio = alto/2;
   nameLabels.forEach(entry=>{
     getLabelScreenNDC(entry, tmpLabelVec);
     if(tmpLabelVec.z < -1 || tmpLabelVec.z > 1) return;
-    const px = (tmpLabelVec.x*0.5+0.5) * sw;
-    const py = (-tmpLabelVec.y*0.5+0.5) * sh;
-    const outX = (px - sx) * (outW/cropW);
-    const outY = (py - sy) * (outH/cropH);
-    ctx.fillText(entry.el.textContent, outX, outY);
+    const texto = entry.el.textContent;
+    const ancho = (e.padIzq + e.punto.tam + e.punto.separacion + e.padDer)*k + ctx.measureText(texto).width;
+    const cx = (tmpLabelVec.x*0.5+0.5) * w;
+    const base = (-tmpLabelVec.y*0.5+0.5) * h - e.separacion*k;
+    const x = Math.round(cx - ancho/2), y = Math.round(base - alto);
+    ctx.beginPath();
+    ctx.moveTo(x+radio, y); ctx.lineTo(x+ancho-radio, y);
+    ctx.arc(x+ancho-radio, y+radio, radio, -Math.PI/2, Math.PI/2);
+    ctx.lineTo(x+radio, y+alto);
+    ctx.arc(x+radio, y+radio, radio, Math.PI/2, Math.PI*1.5);
+    ctx.closePath();
+    ctx.fillStyle = e.fondo; ctx.fill();
+    if(e.grosorBorde>0){ ctx.lineWidth = e.grosorBorde*k; ctx.strokeStyle = e.borde; ctx.stroke(); }
+    const px = x + e.padIzq*k + e.punto.tam*k/2;
+    ctx.beginPath(); ctx.arc(px, y+alto/2, e.punto.tam*k/2, 0, Math.PI*2);
+    ctx.fillStyle = e.punto.color; ctx.fill();
+    ctx.fillStyle = e.color;
+    ctx.fillText(texto, x + (e.padIzq + e.punto.tam + e.punto.separacion)*k, y+alto/2 + k*0.5);
   });
-  ctx.shadowBlur = 0;
-
-  const dataUrl = out.toDataURL('image/jpeg', 0.9);
-
-  // --- Restaurar exactamente la vista que tenía el vendedor antes de generar el PDF ---
-  camAngleX = prevAngleX; camAngleY = prevAngleY;
-  camTarget.copy(prevTarget);
-  updateCameraFromAngles();
-  camera.zoom = prevZoom;
-  camera.updateProjectionMatrix();
-  renderer.setClearColor(prevColor, prevAlpha);
-  renderer.render(scene, camera);
-  return dataUrl;
 }
 
-/* Exportación a PDF: reconstruye el mismo contenido del reporte en pantalla (Matriz, Datacenter,
-   cada Sede con sus productos propios/heredados) usando jsPDF, con salto de página automático.
-   Empieza con un header/hero: snapshot de la infraestructura 3D tal como quedó armada. */
-function downloadPDF(){
-  const config = buildConfiguracionCliente();
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'pt', format:'a4' });
-  const marginX = 44;
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const maxWidth = pageW - marginX*2;
-  let y = 54;
-
-  function ensureSpace(h){
-    if(y + h > pageH - 40){ doc.addPage(); y = 54; }
-  }
-  function addTitle(text){
-    ensureSpace(26);
-    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(20,24,30);
-    doc.text(text, marginX, y); y += 20;
-  }
-  function addSubtitle(text){
-    ensureSpace(18);
-    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(120,128,140);
-    doc.text(text, marginX, y); y += 24;
-  }
-  function addSectionHeading(text){
-    ensureSpace(26);
-    doc.setDrawColor(215,220,228);
-    doc.line(marginX, y, pageW-marginX, y);
-    y += 16;
-    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20,24,30);
-    const lines = doc.splitTextToSize(text, maxWidth);
-    lines.forEach(line=>{ ensureSpace(14); doc.text(line, marginX, y); y += 14; });
-    y += 4;
-  }
-  function addLine(text, opts={}){
-    const { bold=false, italic=false, size=9.5, color=[70,78,90], indent=10 } = opts;
-    doc.setFont('helvetica', bold ? 'bold' : (italic ? 'italic' : 'normal'));
-    doc.setFontSize(size);
-    doc.setTextColor(color[0],color[1],color[2]);
-    const lines = doc.splitTextToSize(text, maxWidth-indent);
-    lines.forEach(line=>{
-      ensureSpace(size+4);
-      doc.text(line, marginX+indent, y);
-      y += size+4;
-    });
-  }
-  function addEmpty(text){
-    addLine(text, { italic:true, size:9.5, color:[140,148,158] });
-    y += 4;
-  }
-  function addProduct(inst, heredadoDe){
-    const sub = getSubproducto(inst.subproductoId);
-    const producto = getProducto(sub.productoNivel2Id);
-    const vertical = getVertical(inst.verticalId);
-    // Igual que en el reporte en pantalla: Canal de Conexión/Cloud Interconnect ya no aparecen
-    // en "Servicios asignados" del panel (viven en "Conexiones"), pero acá en el PDF sí se
-    // siguen listando — así que necesitan el destino inline, o dos líneas de "Canal de Conexión"
-    // serían indistinguibles entre sí.
-    const conexionLigada = sub.ocultaEnServiciosAsignados
-      ? state.conexiones.find(c=>c.instanciaId===inst.instanciaId && !c.esBackup) : null;
-    let destinoTxt = conexionLigada ? `  →  ${nombreEntidad(otroExtremo(conexionLigada, conexionLigada.ownerId))}` : '';
-    if(!destinoTxt && sub.id==='sdwan' && inst.targetConexionId){
-      const t = state.conexiones.find(c=>c.id===inst.targetConexionId);
-      if(t) destinoTxt = `  →  ${nombreEntidad(t.aId)} ↔ ${nombreEntidad(t.bId)}`;
-    }
-    addLine(`${inst.nombreSubproducto}${destinoTxt}${heredadoDe ? ' (heredado de '+heredadoDe+')' : ''}  —  ${vertical.nombre} · ${producto.nombre}`,
-      { bold:true, size:10.5, color:[20,24,30] });
-    addLine(inst.marca ? `Marca: ${inst.marca}` : 'Marca: —', { size:9, color:[130,138,150] });
-    const props = Object.entries(inst.propiedades||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join('   ·   ');
-    if(props) addLine(props, { size:9, color:[90,98,110] });
-    if(inst.notas) addLine(`"${inst.notas}"`, { italic:true, size:9, color:[140,148,158] });
-    y += 6;
-
-    // Backup (v9 §2): línea propia en el PDF, con su propio destino.
-    // sep/2026 (pedido cliente 03/09): el backup hereda el ancho de banda del canal principal —
-    // se imprimen las MISMAS propiedades que el principal (es la misma instancia), que era
-    // justamente lo que faltaba en el reporte.
-    const backupConexion = state.conexiones.find(c=>c.instanciaId===inst.instanciaId && c.esBackup);
-    if(backupConexion){
-      const backupDestinoTxt = `  →  ${nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId))}`;
-      addLine(`${inst.nombreSubproducto} (Backup)${backupDestinoTxt}  —  ${vertical.nombre} · ${producto.nombre}`,
-        { bold:true, size:10.5, color:[20,24,30] });
-      const notaConcentrador = sub.sumaConcentrador
-        ? ' No suma al concentrador: es el respaldo del mismo canal, no capacidad adicional.' : '';
-      addLine(`Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${inst.nombreSubproducto}).${notaConcentrador}`,
-        { size:9, color:[130,138,150] });
-      if(props) addLine(props, { size:9, color:[90,98,110] });
-      y += 6;
-    }
-  }
-
-  // --- Header/Hero: snapshot de la infraestructura 3D tal como la dejó el cliente ---
-  const HERO_ASPECT = 900/320;
-  const heroW = pageW;
-  const heroH = heroW / HERO_ASPECT;
-  const heroDataUrl = captureHeroSnapshot(HERO_ASPECT);
-  doc.addImage(heroDataUrl, 'JPEG', 0, 0, heroW, heroH);
-
-  // Logo del cliente (opcional, §9 punto 7): esquina superior izquierda del hero, sobre un fondo
-  // blanco redondeado para que se lea bien encima de la escena 3D oscura.
-  if(config.clienteLogo){
-    const logoSize = 40, logoX = 14, logoY = 12;
-    const fmtMatch = config.clienteLogo.match(/^data:image\/(\w+);/);
-    let logoFormat = fmtMatch ? fmtMatch[1].toUpperCase() : 'PNG';
-    if(logoFormat==='JPG') logoFormat = 'JPEG';
-    doc.setFillColor(255,255,255);
-    doc.roundedRect(logoX-5, logoY-5, logoSize+10, logoSize+10, 4, 4, 'F');
-    try{ doc.addImage(config.clienteLogo, logoFormat, logoX, logoY, logoSize, logoSize); }
-    catch(err){ /* si el formato no es soportado por jsPDF, se omite el logo sin romper el PDF */ }
-  }
-
-  // Franja inferior sobre el hero con los datos clave, para que quede legible sobre la escena 3D.
-  const stripH = 34;
-  doc.setFillColor(10, 14, 20);
-  doc.rect(0, heroH - stripH, heroW, stripH, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(230,235,240);
-  doc.text(config.nombreCliente || 'Cliente', marginX, heroH - stripH/2 - 3);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(150,200,215);
-  doc.text(`${config.sedes.length} sede(s) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`,
-    marginX, heroH - stripH/2 + 10);
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(120,230,250);
-  doc.text('PUNTONET', heroW - marginX, heroH - stripH/2 + 3, { align:'right' });
-
-  y = heroH + 26;
-
-  addTitle('Configurador de Infraestructura · Puntonet');
-  addSubtitle(`${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`);
-
-  // --- Salud de infraestructura: score global (y, si se completó, el "antes" del cliente) más
-  // una barra de progreso por vertical, para respaldar la conversación de "tenías X, con
-  // Puntonet llegas a Y" que pidió el cliente. ---
-  const antesTxt = (state.saludInicial===null || state.saludInicial===undefined) ? ''
-    : `  ·  Estado inicial del cliente: ${state.saludInicial}%`;
-  addSectionHeading(`Salud de infraestructura — ${config.salud.actual}%${antesTxt}`);
-  config.salud.porVertical.forEach(v=>{
-    ensureSpace(20);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(70,78,90);
-    doc.text(v.vertical, marginX+10, y);
-    doc.text(`${v.cubiertas} de ${v.elegibles} ubicaciones · ${v.pct}%`, pageW-marginX, y, { align:'right' });
-    y += 6;
-    const barX = marginX+10, barW = maxWidth-20, barH = 5;
-    doc.setFillColor(228,232,238);
-    doc.roundedRect(barX, y, barW, barH, 2, 2, 'F');
-    doc.setFillColor(34,211,238);
-    if(v.pct>0) doc.roundedRect(barX, y, Math.max(barH, barW*(v.pct/100)), barH, 2, 2, 'F');
-    y += barH + 10;
+/* Desvanece los bordes de la foto hacia transparente, para que el esquema se funda con el fondo
+   de la página en vez de verse como un rectángulo pegado. `f` es la fracción de cada lado. */
+function fundirBordesEsquema(ctx, w, h, f){
+  if(!(f>0)) return;
+  ctx.globalCompositeOperation = 'destination-in';
+  [[w, 0], [0, h]].forEach(([dx, dy])=>{
+    const g = ctx.createLinearGradient(0, 0, dx, dy);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(f, 'rgba(0,0,0,1)');
+    g.addColorStop(1-f, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   });
+  ctx.globalCompositeOperation = 'source-over';
+}
 
-  if(config.matrices.length===0){
-    addSectionHeading('Matrices');
-    addEmpty('Aún no se ha agregado ninguna Matriz al canvas.');
-  } else {
-    config.matrices.forEach(matriz=>{
-      addSectionHeading(`${matriz.nombre}  ·  ${matriz.usuarios||0} usuarios  ·  ${matriz.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto(matriz.id)}`);
-      // Concentrador (sep/2026): mismo criterio que en el reporte en pantalla — va antes de los
-      // productos propios y se omite si no llega ningún canal.
-      const conc = concentradorDe(matriz.id);
-      if(conc.enlaces.length>0){
-        addLine(`Concentrador: ${conc.texto}  (calculado — no es un producto contratable)`,
-          { bold:true, size:10.5, color:[20,24,30] });
-        const notaBackup = conc.conBackup>0
-          ? ` ${conc.conBackup} de ${conc.enlaces.length} canal(es) tiene(n) Backup: el respaldo hereda el mismo ancho de banda, pero no suma al concentrador.` : '';
-        addLine(`Suma de los ${conc.enlaces.length} Canal(es) de Conexión que llegan a esta Matriz.${notaBackup}`,
-          { size:9, color:[130,138,150] });
-        addLine(conc.enlaces.map(e=>
-          `${e.origen}: ${formatAnchoBandaMbps(e.mbps) || 'sin ancho de banda'}${e.tieneBackup ? ' (+ backup)' : ''}`
-        ).join('   ·   '), { size:9, color:[90,98,110] });
-        y += 6;
-      }
-      if(matriz.instancias.length===0) addEmpty('Sin productos propios asignados.');
-      else matriz.instancias.forEach(inst=>addProduct(inst, null));
+/* Foto del canvas 3D para la portada, de exactamente `anchoPx` × `altoPx`.
+   - Encuadra todo lo colocado (entidades, cables y etiquetas) con la vista isométrica de siempre,
+     un poco más elevada, sin importar dónde dejó la cámara el vendedor.
+   - Durante la foto: sin selección resaltada, sin los "+" de conexión, sin partículas, y con los
+     cables más gruesos. Fondo transparente: el fondo es el de la página.
+   - Al terminar restaura exactamente la vista, el tamaño del renderer y la selección.
+   Es síncrono: nada llega a pintarse en pantalla entre el cambio y la restauración.
+   `estilo` (opcional) es el de estiloEtiquetaEsquema; sin él no se dibujan etiquetas. */
+function captureHeroSnapshot(anchoPx, altoPx, estilo, escala){
+  const w = Math.max(1, Math.round(anchoPx)), h = Math.max(1, Math.round(altoPx));
+  const k = escala || 1;
+  const prev = {
+    angX: camAngleX, angY: camAngleY, zoom: camera.zoom, target: camTarget.clone(),
+    color: renderer.getClearColor(new THREE.Color()), alpha: renderer.getClearAlpha(),
+    pixelRatio: renderer.getPixelRatio(),
+    seleccion: state.selectedSedeIds.slice(), conexion: state.selectedConexionId,
+  };
+  const puertos = [];
+  scene.traverse(o=>{ if(o.userData && o.userData.isPort && o.visible){ puertos.push(o); o.visible = false; } });
+  try {
+    state.selectedSedeIds = []; state.selectedConexionId = null;
+    updateSelectionVisuals();
+    grosorCables = ESQUEMA_PDF.grosorCables;
+    rebuildConnections();
+    connectionAnims.forEach(a=>{ a.particle.visible = false; });
+    camAngleX = ESQUEMA_PDF.elevacion; camAngleY = DEFAULT_CAM_ANGLE_Y;
+    renderer.setPixelRatio(1);
+    renderer.setSize(w, h, false);
+    encuadrarEsquema(w/h);
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const ctx = out.getContext('2d');
+    if(estilo) ajustarZoomPorEtiquetas(ctx, w, h, estilo, k);
+    renderer.setClearColor(0x000000, 0);
+    renderizarFrame(BRILLO_EN_PDF); // v17: sin efectos por decisión (v2 §7.4); cambiar el booleano los incluye
+
+    ctx.drawImage(renderer.domElement, 0, 0, w, h);
+    if(estilo){
+      fundirBordesEsquema(ctx, w, h, estilo.fundido);
+      dibujarEtiquetasEsquema(ctx, w, h, estilo, k);
+    }
+    return out.toDataURL('image/png');
+  } finally {
+    puertos.forEach(o=>{ o.visible = true; });
+    renderer.setPixelRatio(prev.pixelRatio);
+    handleViewportResize(); // devuelve tamaño del renderer y frustum a los del canvas en pantalla
+    camAngleX = prev.angX; camAngleY = prev.angY;
+    camTarget.copy(prev.target);
+    updateCameraFromAngles();
+    camera.zoom = prev.zoom;
+    camera.updateProjectionMatrix();
+    renderer.setClearColor(prev.color, prev.alpha);
+    state.selectedSedeIds = prev.seleccion; state.selectedConexionId = prev.conexion;
+    grosorCables = 1;
+    rebuildConnections();
+    updateSelectionVisuals();
+    renderer.render(scene, camera);
+  }
+}
+
+/* --- Datos del reporte: todo lo que las páginas muestran, ya resuelto a texto --- */
+const TAMANO_PDF = { pequeno:'Pequeño', mediano:'Mediano', grande:'Grande' };
+function pdfEl(tag, clase, texto){
+  const n = document.createElement(tag);
+  if(clase) n.className = clase;
+  if(texto!==undefined && texto!==null) n.textContent = texto;
+  return n;
+}
+function pluralPDF(n, uno, varios){ return `${n} ${n===1 ? uno : varios}`; }
+function fechaLargaPDF(iso){
+  return new Date(iso).toLocaleDateString('es-EC', { day:'numeric', month:'long', year:'numeric' });
+}
+function origenDeConexion(c){ return c.ownerId || c.aId; }
+
+/* Filas de "Conexiones de la red": cada enlace principal seguido de su respaldo. */
+function enlacesDelReporte(){
+  const fila = c=>{
+    const origen = origenDeConexion(c);
+    const sub = c.subproductoId ? getSubproducto(c.subproductoId) : null;
+    return {
+      origen: nombreEntidad(origen), destino: nombreEntidad(otroExtremo(c, origen)),
+      servicio: sub ? sub.nombre : 'Conexión',
+      verticalId: (sub && verticalDeSubproducto(sub.id)) || 'conectividad',
+      ancho: formatAnchoBandaMbps(anchoBandaMbpsDeInstancia(getInstanciaLigada(c))),
+      respaldo: !!c.esBackup,
+    };
+  };
+  const filas = [];
+  const usados = new Set();
+  state.conexiones.filter(c=>!c.esBackup).forEach(c=>{
+    filas.push(fila(c)); usados.add(c.id);
+    if(!c.instanciaId) return;
+    state.conexiones.filter(b=>b.esBackup && b.instanciaId===c.instanciaId).forEach(b=>{ filas.push(fila(b)); usados.add(b.id); });
+  });
+  state.conexiones.filter(c=>!usados.has(c.id)).forEach(c=> filas.push(fila(c)));
+  return filas;
+}
+
+function tarjetaServicioPDF(inst, heredadoDe){
+  const sub = getSubproducto(inst.subproductoId);
+  const producto = getProducto(sub.productoNivel2Id);
+  const vertical = getVertical(inst.verticalId);
+  const marca = inst.marca || 'No especificada';
+  const lineas = [heredadoDe ? `Heredado de ${heredadoDe} · Marca: ${marca}` : `Marca: ${marca}`];
+  if(!heredadoDe){
+    const principal = state.conexiones.find(c=>c.instanciaId===inst.instanciaId && !c.esBackup);
+    const respaldo = state.conexiones.find(c=>c.instanciaId===inst.instanciaId && c.esBackup);
+    const tramo = c=>{ const o = origenDeConexion(c); return `${nombreEntidad(o)} → ${nombreEntidad(otroExtremo(c, o))}`; };
+    if(principal) lineas.push(`Principal: ${tramo(principal)}`);
+    if(respaldo){
+      lineas.push(`Respaldo: ${tramo(respaldo)}`);
+      lineas.push('Respaldo: comparte las propiedades del canal principal.');
+    }
+  }
+  if(sub.id==='sdwan' && inst.targetConexionId){
+    const t = state.conexiones.find(c=>c.id===inst.targetConexionId);
+    if(t) lineas.push(`Aplicado sobre: ${nombreEntidad(t.aId)} ↔ ${nombreEntidad(t.bId)}`);
+  }
+  const props = Object.entries(inst.propiedades || {}).filter(([, v])=> v!==undefined && v!==null && String(v).trim()!=='');
+  return {
+    verticalId: inst.verticalId, categoria: `${vertical.nombre} / ${producto.nombre}`,
+    nombre: inst.nombreSubproducto, heredado: !!heredadoDe, lineas, props, notas: inst.notas || '',
+  };
+}
+
+/* Entidades en el orden de la plantilla: Matrices, Datacenter, Sedes, Nubes. La Nube automática
+   de Internet solo aparece si tiene servicios propios. */
+function entidadesDelReporte(){
+  const lista = [];
+  const propios = e=> (e.instancias || []).map(i=> tarjetaServicioPDF(i, null));
+  state.matrices.forEach(m=>{
+    const conc = concentradorDe(m.id);
+    lista.push({ etiqueta:'Matriz', render:'matriz', nombre:m.nombre,
+      meta: `${m.usuarios || 0} usuarios · ${pluralPDF(m.instancias.length, 'servicio propio', 'servicios propios')}`,
+      concentrador: conc.enlaces.length ? conc : null, servicios: propios(m) });
+  });
+  if(state.datacenter.activo){
+    const dc = state.datacenter;
+    lista.push({ etiqueta:'Datacenter', render:'datacenter', nombre:dc.nombre,
+      meta: pluralPDF(dc.instancias.length, 'servicio propio', 'servicios propios'), servicios: propios(dc) });
+  }
+  state.sedes.forEach(s=>{
+    const heredadas = heredadasConNombreMatriz(s, state.matrices);
+    lista.push({ etiqueta:'Sede', render:'sede', nombre:s.nombre,
+      meta: [`${s.empleados} empleados`, `Tamaño: ${TAMANO_PDF[s.tamano] || getTamanoLocal(s.tamano).nombre}`,
+        pluralPDF(s.instancias.length, 'servicio propio', 'servicios propios'),
+        pluralPDF(heredadas.length, 'heredado', 'heredados')].join(' · '),
+      servicios: propios(s).concat(heredadas.map(h=> tarjetaServicioPDF(h.inst, h.matrizNombre))) });
+  });
+  state.nubes.filter(n=> !n.esAutoInternet || n.instancias.length).forEach(n=>{
+    lista.push({ etiqueta: n.esAutoInternet ? 'Nube de Internet' : 'Nube', render:'nube', nombre:n.nombre,
+      meta: pluralPDF(n.instancias.length, 'servicio propio', 'servicios propios'), servicios: propios(n) });
+  });
+  return lista;
+}
+
+function datosReportePDF(config){
+  const entidadesConServicios = [...state.matrices, ...state.sedes, ...state.nubes, ...(state.datacenter.activo ? [state.datacenter] : [])];
+  // Estado inicial de la salud: el valor que carga el asesor en el reporte; si no lo cargó, la
+  // salud del inicio de la sesión (T06, primer "Guardar estado actual").
+  const ini = config.estructuras.inicial;
+  const inicial = (state.saludInicial!==null && state.saludInicial!==undefined) ? state.saludInicial
+    : (ini && ini.resumen ? ini.resumen.saludGlobal : null);
+  return {
+    cliente: config.nombreCliente, clienteLogo: config.clienteLogo, fecha: fechaLargaPDF(config.generadoEn),
+    cifras: {
+      sedes: state.sedes.length, matrices: state.matrices.length,
+      nubes: state.nubes.filter(n=>!n.esAutoInternet).length,
+      servicios: entidadesConServicios.reduce((n, e)=> n + (e.instancias || []).length, 0),
+    },
+    salud: { actual: config.salud.actual, inicial, porVertical: saludPorVertical() },
+    enlaces: enlacesDelReporte(),
+    entidades: entidadesDelReporte(),
+  };
+}
+
+/* --- Armado de páginas --- */
+function crearPaginaPDF(ctx, clase){
+  const pagina = pdfEl('section', 'pdf-pagina' + (clase ? ' ' + clase : ''));
+  const cabecera = pdfEl('header', 'pdf-pagina__cabecera');
+  const logo = pdfEl('img', 'pdf-pagina__logo');
+  logo.src = window.PN_REPORTE_ASSETS.logo; logo.alt = 'Puntonet';
+  cabecera.append(logo, pdfEl('span', 'pdf-pagina__producto', 'Configurador de infraestructura'));
+  const cuerpo = pdfEl('div', 'pdf-pagina__cuerpo');
+  const pie = pdfEl('footer', 'pdf-pagina__pie');
+  pie.append(pdfEl('span', 'pdf-pagina__cliente', `${ctx.datos.cliente} · ${ctx.datos.fecha}`), pdfEl('span', 'pdf-pagina__numero'));
+  pagina.append(cabecera, cuerpo, pie);
+  ctx.escenario.appendChild(pagina);
+  ctx.paginas.push(pagina);
+  return cuerpo;
+}
+function encabezadoSeccionPDF(overline, luz, fuerte, apilado){
+  const box = pdfEl('div', 'pdf-seccion');
+  box.appendChild(pdfEl('div', 'pdf-seccion__overline', overline));
+  const h = pdfEl('h2', 'pdf-titulo' + (apilado ? ' pdf-titulo--apilado' : ''));
+  h.append(pdfEl('span', 'pdf-titulo__luz', luz), document.createTextNode(' '), pdfEl('span', 'pdf-titulo__fuerte', fuerte));
+  box.appendChild(h);
+  return box;
+}
+function desbordaPDF(cuerpo){ return cuerpo.scrollHeight > cuerpo.clientHeight + 1; }
+
+/* Reparte bloques en páginas. `nuevaPagina(continua)` crea la página (con su encabezado) y
+   devuelve su cuerpo. Cada bloque es { nodo, prefijo? }: si el bloque abre una página que
+   continúa una sección, `prefijo()` devuelve lo que va antes (p.ej. "Matriz Quito /
+   Continuación" o la cabecera de la tabla), y `alColocar()` se llama cuando el bloque ya quedó
+   en su página definitiva. Un bloque que no entra ni en una página vacía se deja igual (se
+   corta), para no entrar en un bucle. */
+function fluirBloquesPDF(bloques, nuevaPagina){
+  let cuerpo = nuevaPagina(false), vacia = true;
+  bloques.forEach(b=>{
+    cuerpo.appendChild(b.nodo);
+    if(!vacia && desbordaPDF(cuerpo)){
+      b.nodo.remove();
+      cuerpo = nuevaPagina(true);
+      if(b.prefijo){ const p = b.prefijo(); if(p) cuerpo.appendChild(p); }
+      cuerpo.appendChild(b.nodo);
+    }
+    vacia = false;
+    if(b.alColocar) b.alColocar();
+  });
+}
+
+function imagenCategoriaPDF(verticalId, color){
+  // Los símbolos vienen en el cian del design system; se tiñen con el color de la categoría,
+  // que se lee de styles.css (.pdf-categoria--<vertical>).
+  const base64 = window.PN_REPORTE_ASSETS.categorias[verticalId].split(',')[1];
+  const svg = atob(base64).split('rgba(0,215,255,1)').join(color);
+  const img = pdfEl('img', 'pdf-categoria__simbolo');
+  img.src = 'data:image/svg+xml;base64,' + btoa(svg);
+  img.alt = '';
+  return img;
+}
+
+/* Relleno de una barra de salud. En pantalla (renderSaludPanel) el ancho va inline; acá no se
+   suma ningún estilo inline: el relleno es un SVG del tamaño medido de la barra, con el ancho
+   como atributo y el color de la categoría leído de styles.css. La pista, el alto y el radio
+   siguen siendo los de .pdf-categoria__barra. */
+function rellenoBarraPDF(barra, pct, color){
+  const w = Math.max(1, barra.clientWidth), h = Math.max(1, barra.clientHeight);
+  const ancho = Math.round(w * Math.max(0, Math.min(100, pct)) / 100);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    (ancho>0 ? `<rect width="${Math.max(ancho, h)}" height="${h}" rx="${h/2}" fill="${color}"/>` : '') + '</svg>';
+  const img = pdfEl('img', 'pdf-categoria__relleno');
+  img.src = 'data:image/svg+xml;base64,' + btoa(svg);
+  img.alt = '';
+  return img;
+}
+
+function armarPortadaPDF(ctx){
+  const d = ctx.datos;
+  const cuerpo = crearPaginaPDF(ctx, 'pdf-pagina--portada');
+  const intro = pdfEl('div', 'pdf-portada__intro');
+  intro.appendChild(pdfEl('div', 'pdf-seccion__overline', 'Reporte de configuración'));
+  const titulo = pdfEl('h1', 'pdf-portada__titulo');
+  titulo.append(pdfEl('span', 'pdf-portada__titulo-luz', 'Tu infraestructura.'), pdfEl('span', 'pdf-portada__titulo-fuerte', 'Conectada.'));
+  intro.appendChild(titulo);
+  const cliente = pdfEl('div', 'pdf-portada__cliente');
+  const clienteTexto = pdfEl('div', 'pdf-portada__cliente-texto');
+  clienteTexto.appendChild(pdfEl('div', 'pdf-portada__cliente-nombre', d.cliente));
+  const fecha = pdfEl('div', 'pdf-portada__fecha', `${d.fecha} · `);
+  fecha.appendChild(pdfEl('span', 'pdf-portada__fecha-tipo', 'Configuración de infraestructura'));
+  clienteTexto.appendChild(fecha);
+  cliente.appendChild(clienteTexto);
+  if(d.clienteLogo){
+    const logo = pdfEl('img', 'pdf-portada__cliente-logo');
+    logo.src = d.clienteLogo; logo.alt = '';
+    cliente.appendChild(logo);
+  }
+  intro.appendChild(cliente);
+  cuerpo.appendChild(intro);
+
+  const figura = pdfEl('figure', 'pdf-esquema');
+  const caja = pdfEl('div', 'pdf-esquema__caja');
+  const img = pdfEl('img', 'pdf-esquema__img');
+  img.alt = 'Esquema de la infraestructura configurada';
+  caja.appendChild(img);
+  figura.append(caja, pdfEl('figcaption', 'pdf-esquema__nota',
+    'Vista de la infraestructura configurada y sus conexiones. Un respaldo se dibuja como una segunda línea junto al canal principal.'));
+  cuerpo.appendChild(figura);
+
+  const cifras = pdfEl('div', 'pdf-cifras');
+  [[d.cifras.sedes, 'Sedes'], [d.cifras.matrices, 'Matrices'], [d.cifras.nubes, 'Nubes'], [d.cifras.servicios, 'Servicios propios']].forEach(([n, t])=>{
+    const c = pdfEl('div', 'pdf-cifra');
+    c.append(pdfEl('span', 'pdf-cifra__valor', String(n)), pdfEl('span', 'pdf-cifra__etiqueta', t));
+    cifras.appendChild(c);
+  });
+  cuerpo.appendChild(cifras);
+
+  const salud = pdfEl('div', 'pdf-portada__salud');
+  salud.appendChild(pdfEl('span', 'pdf-portada__salud-valor', `${d.salud.actual}%`));
+  const saludTexto = pdfEl('div', 'pdf-portada__salud-texto');
+  saludTexto.append(pdfEl('div', 'pdf-portada__salud-overline', 'Salud de infraestructura'),
+    pdfEl('p', 'pdf-portada__salud-desc', 'Cobertura de servicios en las ubicaciones del cliente. Consulta el desglose por categoría y el detalle de cada elemento en las siguientes páginas.'));
+  salud.appendChild(saludTexto);
+  cuerpo.appendChild(salud);
+
+  // La foto se toma con el tamaño real que ocupa en la página (ya maquetada) × la escala.
+  const estilo = estiloEtiquetaEsquema(figura);
+  img.src = captureHeroSnapshot(caja.clientWidth*PDF_ESCALA, caja.clientHeight*PDF_ESCALA, estilo, PDF_ESCALA);
+}
+
+function armarResumenPDF(ctx){
+  const d = ctx.datos;
+  const bloques = [];
+
+  const salud = pdfEl('div', 'pdf-salud');
+  const valor = pdfEl('div', 'pdf-salud__valor', String(d.salud.actual));
+  valor.appendChild(pdfEl('span', 'pdf-salud__pct', '%'));
+  const texto = pdfEl('div', 'pdf-salud__texto');
+  texto.append(pdfEl('div', 'pdf-salud__overline', 'Salud de infraestructura'),
+    pdfEl('p', 'pdf-salud__desc', 'Promedio de cobertura de las cuatro categorías de servicios en las ubicaciones del cliente.'));
+  if(d.salud.inicial!==null && d.salud.inicial!==undefined){
+    const cambio = d.salud.actual - d.salud.inicial;
+    const p = pdfEl('p', 'pdf-salud__inicial', 'Estado inicial registrado: ');
+    p.append(pdfEl('strong', null, `${d.salud.inicial}%`), document.createTextNode(' · Cambio: '),
+      pdfEl('strong', null, `${cambio>0 ? '+' : ''}${cambio} ${Math.abs(cambio)===1 ? 'punto' : 'puntos'}`));
+    texto.appendChild(p);
+  }
+  salud.append(valor, texto);
+  bloques.push({ nodo: salud });
+
+  const categorias = pdfEl('div', 'pdf-categorias');
+  const pintarCategorias = [];
+  d.salud.porVertical.forEach(v=>{
+    const c = pdfEl('div', `pdf-categoria pdf-categoria--${v.vertical.id}`);
+    const icono = pdfEl('span', 'pdf-categoria__icono');
+    const barra = pdfEl('span', 'pdf-categoria__barra');
+    c.append(icono, pdfEl('span', 'pdf-categoria__nombre', v.vertical.nombre), pdfEl('span', 'pdf-categoria__pct', `${v.pct}%`),
+      barra, pdfEl('span', 'pdf-categoria__detalle',
+        v.elegibles ? `${v.cubiertas} de ${pluralPDF(v.elegibles, 'ubicación cubierta', 'ubicaciones cubiertas')}` : 'Sin ubicaciones todavía'));
+    categorias.appendChild(c);
+    // El símbolo y el relleno se pintan cuando el bloque ya está en su página: necesitan el color
+    // de la categoría (styles.css) y el ancho real de la barra.
+    pintarCategorias.push(()=>{
+      const color = getComputedStyle(c).color;
+      icono.appendChild(imagenCategoriaPDF(v.vertical.id, color));
+      barra.appendChild(rellenoBarraPDF(barra, v.pct, color));
     });
+  });
+  bloques.push({ nodo: categorias, alColocar: ()=> pintarCategorias.forEach(f=>f()) });
+
+  bloques.push({ nodo: pdfEl('p', 'pdf-nota', 'Este indicador refleja qué categorías de servicio cubren a cada ubicación del cliente (Sedes y Matrices). No representa disponibilidad, un SLA ni una auditoría de seguridad. El estado inicial, cuando existe, es el valor registrado por el asesor.') });
+
+  const cabeceraTabla = ()=>{
+    const f = pdfEl('div', 'pdf-tabla__fila pdf-tabla__fila--cabeza');
+    ['Origen', 'Destino', 'Servicio', 'Tipo'].forEach(t=> f.appendChild(pdfEl('span', null, t)));
+    return f;
+  };
+  const filaTabla = e=>{
+    const f = pdfEl('div', 'pdf-tabla__fila');
+    const serv = pdfEl('span', `pdf-tabla__servicio pdf-tabla__servicio--${e.verticalId}`, e.servicio);
+    if(e.ancho) serv.appendChild(pdfEl('span', 'pdf-tabla__ancho', e.ancho));
+    const tipo = pdfEl('span');
+    tipo.appendChild(pdfEl('span', 'pdf-insignia ' + (e.respaldo ? 'pdf-insignia--respaldo' : 'pdf-insignia--principal'), e.respaldo ? 'Respaldo' : 'Principal'));
+    f.append(pdfEl('span', 'pdf-tabla__entidad', e.origen), pdfEl('span', 'pdf-tabla__entidad', e.destino), serv, tipo);
+    return f;
+  };
+  const inicioTabla = pdfEl('div', 'pdf-tabla');
+  const tituloTabla = pdfEl('div', 'pdf-tabla__titulo');
+  tituloTabla.append(pdfEl('h3', 'pdf-tabla__nombre', 'Conexiones de la red'),
+    pdfEl('span', 'pdf-tabla__cuenta', pluralPDF(d.enlaces.length, 'enlace', 'enlaces')));
+  inicioTabla.append(tituloTabla, cabeceraTabla());
+  if(!d.enlaces.length) inicioTabla.appendChild(pdfEl('div', 'pdf-vacio', 'Todavía no hay conexiones configuradas.'));
+  else inicioTabla.appendChild(filaTabla(d.enlaces[0]));
+  bloques.push({ nodo: inicioTabla });
+  d.enlaces.slice(1).forEach(e=> bloques.push({ nodo: filaTabla(e), prefijo: cabeceraTabla }));
+  if(d.enlaces.some(e=>e.respaldo)){
+    bloques.push({ nodo: pdfEl('p', 'pdf-nota', 'Los enlaces de respaldo conservan el ancho de banda del canal principal. No se suman nuevamente a la capacidad del concentrador.') });
   }
 
-  if(config.nubes.length>0){
-    config.nubes.forEach(nube=>{
-      addSectionHeading(`${nube.nombre}  ·  ${nube.esAutoInternet ? 'Nube automática de Internet' : 'Nube'}  ·  ${nube.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto(nube.id)}`);
-      if(nube.instancias.length===0) addEmpty('Sin productos propios asignados.');
-      else nube.instancias.forEach(inst=>addProduct(inst, null));
+  fluirBloquesPDF(bloques, continua=>{
+    const cuerpo = crearPaginaPDF(ctx);
+    cuerpo.appendChild(encabezadoSeccionPDF(continua ? '01 / Resumen · Continuación' : '01 / Resumen', 'La configuración,', 'en perspectiva.', true));
+    return cuerpo;
+  });
+}
+
+function tarjetaServicioNodoPDF(s){
+  const card = pdfEl('article', `pdf-servicio pdf-servicio--${s.verticalId}`);
+  const cabeza = pdfEl('div', 'pdf-servicio__cabeza');
+  const titulos = pdfEl('div');
+  titulos.append(pdfEl('div', 'pdf-servicio__categoria', s.categoria), pdfEl('h4', 'pdf-servicio__nombre', s.nombre));
+  cabeza.append(titulos, pdfEl('span', 'pdf-insignia pdf-servicio__insignia', s.heredado ? 'Heredado' : 'Propio'));
+  card.appendChild(cabeza);
+  s.lineas.forEach(l=> card.appendChild(pdfEl('p', 'pdf-servicio__linea', l)));
+  if(s.props.length){
+    const dl = pdfEl('dl', 'pdf-servicio__props');
+    s.props.forEach(([k, v])=>{
+      const item = pdfEl('div', 'pdf-servicio__prop');
+      item.append(pdfEl('dt', null, k), pdfEl('dd', null, String(v)));
+      dl.appendChild(item);
     });
+    card.appendChild(dl);
   }
+  if(s.notas){
+    const notas = pdfEl('div', 'pdf-servicio__notas');
+    notas.append(pdfEl('div', 'pdf-servicio__notas-titulo', 'Notas'), pdfEl('p', null, s.notas));
+    card.appendChild(notas);
+  }
+  return card;
+}
 
-  addSectionHeading(`${config.datacenter.nombre}  ·  ${config.datacenter.instancias.length} producto(s) propio(s)  ·  ${conexionesTexto('datacenter')}`);
-  if(config.datacenter.instancias.length===0) addEmpty('Sin productos propios asignados.');
-  else config.datacenter.instancias.forEach(inst=>addProduct(inst, null));
+function armarDetallePDF(ctx){
+  const bloques = [];
+  ctx.datos.entidades.forEach(e=>{
+    // El encabezado de la entidad viaja pegado a su primer servicio: nunca queda solo al pie.
+    const grupo = pdfEl('div', 'pdf-grupo');
+    const cabeza = pdfEl('article', 'pdf-entidad');
+    const render = pdfEl('img', 'pdf-entidad__render');
+    render.src = window.PN_REPORTE_ASSETS.renders[e.render]; render.alt = '';
+    const info = pdfEl('div', 'pdf-entidad__info');
+    info.append(pdfEl('div', 'pdf-entidad__tipo', e.etiqueta), pdfEl('h3', 'pdf-entidad__nombre', e.nombre), pdfEl('p', 'pdf-entidad__meta', e.meta));
+    cabeza.append(render, info);
+    grupo.appendChild(cabeza);
+    if(e.concentrador){
+      const c = e.concentrador;
+      const conc = pdfEl('div', 'pdf-concentrador');
+      const txt = pdfEl('div', 'pdf-concentrador__texto');
+      const principales = pluralPDF(c.enlaces.length, 'canal principal', 'canales principales');
+      const respaldo = c.conBackup ? ` ${c.conBackup} con respaldo; el respaldo no agrega capacidad.` : '';
+      txt.append(pdfEl('div', 'pdf-concentrador__titulo', 'Concentrador calculado'), pdfEl('p', 'pdf-concentrador__desc', `Suma de ${principales}.${respaldo}`));
+      conc.append(pdfEl('span', 'pdf-concentrador__valor', c.texto), txt);
+      grupo.append(conc, pdfEl('p', 'pdf-desglose', c.enlaces.map(x=>
+        `${x.origen}: ${formatAnchoBandaMbps(x.mbps) || 'sin ancho de banda'}${x.tieneBackup ? ' (con respaldo)' : ''}`).join(' · ')));
+    }
+    if(!e.servicios.length){
+      grupo.appendChild(pdfEl('div', 'pdf-vacio', 'Sin servicios asignados.'));
+      bloques.push({ nodo: grupo });
+      return;
+    }
+    grupo.appendChild(tarjetaServicioNodoPDF(e.servicios[0]));
+    bloques.push({ nodo: grupo });
+    e.servicios.slice(1).forEach(s=> bloques.push({ nodo: tarjetaServicioNodoPDF(s),
+      prefijo: ()=> pdfEl('p', 'pdf-continuacion', `${e.nombre} / Continuación`) }));
+  });
+  fluirBloquesPDF(bloques, continua=>{
+    const cuerpo = crearPaginaPDF(ctx);
+    cuerpo.appendChild(encabezadoSeccionPDF(continua ? '02 / Configuración · Continuación' : '02 / Configuración', 'Detalle', 'de infraestructura.', false));
+    return cuerpo;
+  });
+}
 
-  if(config.sedes.length===0){
-    addSectionHeading('Sedes');
-    addEmpty('Aún no se han agregado sedes al canvas.');
-  } else {
-    config.sedes.forEach(sede=>{
-      const tamanoInfo = getTamanoLocal(sede.tamano);
-      addSectionHeading(`${sede.nombre}  ·  ${sede.empleados} empleados · ${tamanoInfo.nombre}  ·  ${conexionesTexto(sede.id)}`);
-      const heredadas = heredadasConNombreMatriz(sede, config.matrices);
-      if(sede.instancias.length===0 && heredadas.length===0){
-        addEmpty('Sin servicios asignados.');
-      } else {
-        sede.instancias.forEach(inst=>addProduct(inst, null));
-        heredadas.forEach(h=>addProduct(h.inst, h.matrizNombre));
-      }
+function esperarImagenesPDF(raiz){
+  return Promise.all([...raiz.querySelectorAll('img')].map(img=>
+    (img.decode ? img.decode() : Promise.resolve()).catch(()=>{})));
+}
+
+/* Exportación a PDF: arma las páginas en un escenario fuera de pantalla, espera la tipografía y
+   las imágenes, y pasa cada página por html2canvas. Es async: el botón queda deshabilitado
+   mientras tanto y un aviso indica que se está generando. */
+let pdfEnCurso = false;
+async function downloadPDF(){
+  if(pdfEnCurso) return;
+  if(!window.html2canvas || !window.jspdf || !window.PN_REPORTE_ASSETS){
+    showToast('No se pudo generar el PDF: faltan librerías o imágenes del reporte.');
+    return;
+  }
+  pdfEnCurso = true;
+  const boton = byId('btnExportPDF');
+  const textoBoton = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = 'Generando PDF…'; // en una tablet puede tardar unos segundos por página
+  showToast('Generando el PDF…');
+  const escenario = pdfEl('div', 'pdf-escenario');
+  escenario.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(escenario);
+  try {
+    guardarEstructura(false); // T06: el final del reporte es lo que hay en pantalla
+    const config = buildConfiguracionCliente();
+    const ctx = { escenario, paginas: [], datos: datosReportePDF(config) };
+    if(document.fonts){
+      await Promise.all(['300', '400', '500', '700'].map(p=> document.fonts.load(`${p} 16px Inter`).catch(()=>{})));
+      await document.fonts.ready;
+    }
+    armarPortadaPDF(ctx);
+    armarResumenPDF(ctx);
+    armarDetallePDF(ctx);
+    const total = ctx.paginas.length;
+    ctx.paginas.forEach((p, i)=>{
+      p.querySelector('.pdf-pagina__numero').textContent = `${String(i+1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`;
     });
-  }
+    await esperarImagenesPDF(escenario);
 
-  const fecha = new Date().toISOString().slice(0,10);
-  doc.save(`configuracion-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'pt', format:'a4', compress:true });
+    const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+    for(let i=0; i<total; i++){
+      const lienzo = await window.html2canvas(ctx.paginas[i], { scale: PDF_ESCALA, backgroundColor: null, logging: false,
+        // html2canvas clona el documento entero por cada página; clonar la app (canvas WebGL,
+        // paneles, modales) no aporta nada y es lo que más tarda. Solo se clona el escenario.
+        ignoreElements: n=> !(n.contains(escenario) || escenario.contains(n) || n.closest('head')) });
+      if(i>0) doc.addPage();
+      doc.addImage(lienzo.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
+    }
+    const fecha = new Date().toISOString().slice(0, 10);
+    doc.save(`reporte-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
+  } catch(err){
+    console.error('[pdf] no se pudo generar el reporte:', err);
+    showToast('No se pudo generar el PDF. Revisa la consola para más detalle.');
+  } finally {
+    escenario.remove();
+    boton.textContent = textoBoton;
+    boton.disabled = false;
+    pdfEnCurso = false;
+  }
 }
 byId('btnExportPDF').addEventListener('click', downloadPDF);
 
