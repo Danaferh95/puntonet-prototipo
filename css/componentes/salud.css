@@ -6,7 +6,7 @@
 #saludGlobalWrap{display:flex;align-items:baseline;gap:0.625rem;flex-shrink:0;white-space:nowrap;}
 #saludGlobalLabel{color:var(--pn-color-muted);font:400 0.75rem/1.125rem var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
 #saludBars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:2.0625rem;flex:1;min-height:0;}
-.salud-row{--salud-accent:var(--pn-color-cyan);--salud-icon:url("../../assets/ui/icons/categoria_cloud.svg");
+.salud-row{--salud-accent:var(--pn-color-cyan);--salud-icon:var(--pn-mask-categoria-cloud);
   position:relative;display:flex;align-items:center;gap:1.125rem;min-width:0;}
 .salud-row + .salud-row::before{content:"";position:absolute;left:-1.0625rem;top:0.25rem;bottom:0.25rem;width:1px;background:var(--pn-color-border);opacity:.6;}
 .salud-icon{flex:none;width:3rem;height:3rem;background:var(--salud-accent);
@@ -18,15 +18,15 @@
   background:var(--pn-color-deep);overflow:hidden;}
 .salud-bar-fill{display:block;height:100%;border-radius:0.625rem;transition:width .25s ease;
   background:var(--salud-fill);box-shadow:0 0 12px var(--salud-glow);}
-.salud-row--conectividad{--salud-accent:var(--pn-color-mint);--salud-icon:url("../../assets/ui/icons/categoria_conectividad.svg");
+.salud-row--conectividad{--salud-accent:var(--pn-color-mint);--salud-icon:var(--pn-mask-categoria-conectividad);
   --salud-fill:linear-gradient(180deg,#6bffdb 0%,var(--pn-color-mint) 25%,var(--pn-color-mint) 58%,#007a5d 88%,var(--pn-color-mint) 100%);
   --salud-glow:rgba(0,255,193,.25);}
-.salud-row--cloud{--salud-accent:var(--pn-color-cyan);--salud-icon:url("../../assets/ui/icons/categoria_cloud.svg");
+.salud-row--cloud{--salud-accent:var(--pn-color-cyan);--salud-icon:var(--pn-mask-categoria-cloud);
   --salud-fill:linear-gradient(180deg,#6be8ff 0%,var(--pn-color-cyan) 25%,var(--pn-color-cyan) 58%,#00677a 88%,var(--pn-color-cyan) 100%);
   --salud-glow:rgba(0,215,255,.25);}
-.salud-row--ciberseguridad{--salud-accent:var(--pn-color-coral);--salud-icon:url("../../assets/ui/icons/categoria_seguridad.svg");
+.salud-row--ciberseguridad{--salud-accent:var(--pn-color-coral);--salud-icon:var(--pn-mask-categoria-seguridad);
   --salud-fill:linear-gradient(180deg,#ffa7a0 0%,var(--pn-color-coral) 25%,var(--pn-color-coral) 58%,#7a312c 88%,var(--pn-color-coral) 100%);
   --salud-glow:rgba(255,103,91,.25);}
-.salud-row--colaboracion{--salud-accent:var(--pn-color-lime);--salud-icon:url("../../assets/ui/icons/cliente_personas.svg");
+.salud-row--colaboracion{--salud-accent:var(--pn-color-lime);--salud-icon:var(--pn-mask-cliente-personas);
   --salud-fill:linear-gradient(180deg,#f0fc89 0%,var(--pn-color-lime) 25%,var(--pn-color-lime) 58%,#6e7818 88%,var(--pn-color-lime) 100%);
   --salud-glow:rgba(229,249,51,.25);}

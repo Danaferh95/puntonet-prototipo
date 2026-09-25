@@ -18,6 +18,7 @@ archivo propio. Las reglas son las mismas, en el mismo orden.
 | Archivo | Sección |
 |---|---|
 | `base/tokens.css` | 1. Tokens del design system (colores, tipografía, radios, renders) |
+| `base/mascaras.css` | Íconos usados como `mask-image`, embebidos (**generado**, no editar) |
 | `base/layout.css` | 2. Escala (rem según viewport), base y grilla de pantalla |
 | `componentes/boton.css` | 3. Botón base |
 | `componentes/header.css` | 4. Header |
@@ -36,4 +37,9 @@ archivo propio. Las reglas son las mismas, en el mismo orden.
   de ejecución y no se resuelve con una clase o una variable CSS, hay que pedir autorización antes.
 - **Un componente nuevo:** archivo nuevo en `componentes/`, agregado a `index.html` en el lugar que
   le corresponda en la cascada (normalmente antes de `reporte/`).
+- **Íconos como máscara (`mask-image`):** nunca con `url("../../assets/…")`. Chrome bloquea las
+  máscaras locales al abrir `index.html` con doble clic (`file://`) y el ícono desaparece. Súmalo a
+  `MASCARAS` en `tools/empaquetar-mascaras.js`, corre `node tools/empaquetar-mascaras.js` y úsalo
+  como `var(--pn-mask-<nombre>)`. Las imágenes normales (`background-image`, `<img>`) no tienen
+  este problema.
 - **Colores y medidas:** usa los tokens de `base/tokens.css` (`--pn-color-*`), no valores sueltos.
