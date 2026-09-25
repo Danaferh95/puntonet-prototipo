@@ -252,9 +252,10 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--pn-col
 #canvasWrap canvas{display:block;width:100%;height:100%;position:relative;z-index:1;}
 /* Marca de agua (T07, pedido de Dei 24/09): el toggle de la marca, fijo en el centro del visor y
    DETRÁS del canvas, así que queda por debajo de la grilla y de todo el 3D. No sigue a la cámara.
-   Tamaño y opacidad: --marca-agua-ancho / --marca-agua-opacidad. */
-.marca-agua{--marca-agua-ancho:34%;--marca-agua-opacidad:.5;position:absolute;left:50%;top:50%;z-index:0;
-  width:var(--marca-agua-ancho);aspect-ratio:816/467;transform:translate(-50%,-50%);
+   Tamaño y opacidad: --marca-agua-ancho / --marca-agua-opacidad. v29 (25/09, Dei): de 34% a 60% del
+   visor; max-height evita que se salga por arriba y abajo en pantallas bajas (el SVG va en contain). */
+.marca-agua{--marca-agua-ancho:60%;--marca-agua-opacidad:.5;position:absolute;left:50%;top:50%;z-index:0;
+  width:var(--marca-agua-ancho);max-height:85%;aspect-ratio:816/467;transform:translate(-50%,-50%);
   background:url("../assets/ui/marca/marca-agua.svg") center/contain no-repeat;
   opacity:var(--marca-agua-opacidad);pointer-events:none;user-select:none;}
 /* Etiquetas de nombre como overlay HTML (no texturas 3D): mismo tamaño de letra a cualquier zoom. */

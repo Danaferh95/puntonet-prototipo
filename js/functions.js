@@ -159,7 +159,10 @@ const SUBPRODUCTOS = [
     descripcion:'Enlace de internet satelital atado a una bolsa de Gigas mensuales.',
     parametros:['Tipo de antena','Plan','Con/sin firewall'], conexion:'satelital',
     // "Con/sin firewall" pasa de campo de texto a checkbox (pedido cliente 31/07/2026).
-    parametrosTipos:{ 'Con/sin firewall':'checkbox' } },
+    parametrosTipos:{ 'Con/sin firewall':'checkbox' },
+    // 25/09 (Dei): ícono 3D propio — la antena satelital plana (pn_ico_puntonet_space.glb) en el
+    // techo, de donde nacen las ondas. Deja de apilarse con los globos de Internet.
+    assetKey:'puntonet_space' },
   // Cloud — Housing (Collocation/Energía, Crossconexión): equipamiento que se renta/instala
   // físicamente en el Datacenter de Puntonet, así que solo se puede soltar sobre ese nodo.
   // Hosting (IaaS/BaaS/DRaaS) representa cómputo/backup en la nube — desde v9 §5 se monta sobre
@@ -194,16 +197,16 @@ const SUBPRODUCTOS = [
     descripcion:'Copias de seguridad y recuperación ante desastres.',
     parametros:['Número de VMs','Volumen (GB)','Frecuencia'], destinos:['nube','datacenter'] },
   // Ciberseguridad
-  // Firewall On Premise: ícono propio ('firewall_onpremise', ago/2026) para diferenciarlo del
-  // Firewall Virtual — antes ambos usaban el escudo genérico de "Perimetral" y no se distinguían
-  // en la escena 3D (pedido cliente ago/2026).
+  // Firewall On Premise: tuvo ícono propio ('firewall_onpremise', ago/2026). Desde el 25/09 (Dei)
+  // los TRES de Perimetral (On Premise, IaaS, Internet Seguro) usan las paredes del escudo, cada
+  // uno con su color, anidadas hacia afuera (ver COLOCACION_ICONOS.escudo, `pilaAnidada`).
   // ago/2026 (pedido cliente 28/08): "Firewall, también datacenter, on premise e IaaS, ambos" —
   // los dos suman el Datacenter Epicentro a sus destinos (el equipo físico se instala en el rack
   // del cliente dentro del DC; el virtual protege el perímetro de lo que el cliente tenga ahí).
   { id:'firewall_on_premise', productoNivel2Id:'perimetral', nombre:'Firewall On Premise',
     eslogan:'¡Tu primera línea de defensa, instalada en casa!',
     descripcion:'Hardware físico para protección perimetral.',
-    parametros:['Marca','Modelo de equipo'], assetKey:'firewall_onpremise',
+    parametros:['Marca','Modelo de equipo'],
     destinos:['sede','matriz','datacenter'] },
   { id:'firewall_iaas', productoNivel2Id:'perimetral', nombre:'Firewall IaaS',
     eslogan:'¡La misma protección, sin cables ni hardware!',
@@ -213,15 +216,15 @@ const SUBPRODUCTOS = [
   // Internet Seguro (ago/2026): a partir de esta fase se comporta como el resto de la familia
   // Internet — `conexion:'internetAuto'` lo conecta solo a la Nube de Internet compartida del
   // proyecto (getOrCreateNubeInternetAuto), igual que Internet Corporativo/Startup/Teleworking —
-  // en vez de quedar suelto en la sede sin cable, como antes. Se le da un ícono propio
-  // ('firewall_virtual') para que se vea el Firewall Virtual en la sede de origen, distinto del
-  // ícono de Firewall On Premise.
+  // en vez de quedar suelto en la sede sin cable, como antes. Tuvo un ícono propio provisional
+  // ('firewall_virtual', el cono); desde el 25/09 (Dei) usa las paredes de Perimetral como sus
+  // hermanos, con su propio color.
   { id:'internet_seguro', productoNivel2Id:'perimetral', nombre:'Internet Seguro',
     eslogan:'¡Navega rápido y blindado, todo en uno!',
     descripcion:'Internet más un firewall virtualizado.',
     parametros:['Ancho de banda','Plan (básico/avanzado)'],
     parametrosTipos:{ 'Ancho de banda':'anchoBanda' },
-    conexion:'internetAuto', assetKey:'firewall_virtual' },
+    conexion:'internetAuto' },
   { id:'edr', productoNivel2Id:'endpoint', nombre:'EDR',
     eslogan:'¡Detecta y detiene amenazas antes de que hagan daño!',
     descripcion:'Monitoreo, detección y respuesta a amenazas en dispositivos finales.',
@@ -1462,7 +1465,12 @@ const ICONOS_GLB = {
   enlace:              { archivo:'pn_ico_enlace',                // Datos (Canal de Conexión, Cloud Interconnect)
                          repetir:{ copias:3, paso:[0.26, 0.175, 0] } },
   nodo:                { archivo:'pn_ico_nodo' },                // SD-WAN (Sdwan, Túnel IPsec)
-  globo:               { archivo:'pn_ico_globo' },               // Internet (Corporativo, Startup, Teleworking, Puntonet Space)
+  globo:               { archivo:'pn_ico_globo' },               // Internet (Corporativo, Startup, Teleworking)
+  // 25/09 — Puntonet Space (paquete "GLB End Point + Space"). Primer ícono con `materialesPropios`:
+  // el LEEME pide conservar sus materiales PBR (panel blanco, metal cepillado, borde azul emisivo)
+  // en vez de teñirlo con el color del catálogo. Su origen está en la base del soporte pero el
+  // panel se inclina hacia atrás, así que la caja no queda centrada: `pivoteEsperado` evita el aviso.
+  puntonet_space:      { archivo:'pn_ico_puntonet_space', materialesPropios:true, pivoteEsperado:true },
 };
 const ICONOS_RUTA = 'assets/glb-iconos/';
 const NOMBRES_SLOT_ICONO_TRANSLUCIDO = ['mat_translucido'];
@@ -1547,6 +1555,14 @@ const IconLibrary = (()=>{
     let raiz = gltf.scene;
     raiz.traverse(o=>{
       if(!o.isMesh) return;
+      if(def.materialesPropios){
+        // Se conserva el material del .glb; solo se le suma el mismo environment que al resto,
+        // para que el metal refleje igual que en los demás íconos.
+        const m = o.material;
+        if(m && m.isMeshStandardMaterial && !m.envMap){ m.envMap = obtenerEntornoMetal(); m.envMapIntensity = 1.1; m.needsUpdate = true; }
+        o.userData.slot = 'propio';
+        return;
+      }
       const nombre = (o.material && o.material.name) || '';
       if(NOMBRES_SLOT_GLOW.includes(nombre)) o.userData.slot = 'glow';
       else if(NOMBRES_SLOT_ICONO_TRANSLUCIDO.includes(nombre)) o.userData.slot = 'translucido';
@@ -1583,7 +1599,7 @@ const IconLibrary = (()=>{
     if(Math.abs(caja.min.y) > 0.005 || Math.abs(centro.x) > 0.01 || Math.abs(centro.z) > 0.01){
       // Con `repetir` el desplazamiento lo introdujimos nosotros al armar la diagonal, así que no
       // es un defecto de la entrega y no se avisa: el archivo del proveedor sí tiene su pivote bien.
-      if(!def.repetir) console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
+      if(!def.repetir && !def.pivoteEsperado) console.warn('[iconos] ' + archivo + ': pivote fuera de la base, se corrige por código', caja.min, centro);
       raiz.position.set(-centro.x, -caja.min.y, -centro.z);
     }
     // Normalización de tamaño entre tandas (ver ICONOS_DIM_OBJETIVO, arriba). Se mide DESPUÉS de
@@ -1633,8 +1649,9 @@ const IconLibrary = (()=>{
     const def = ICONOS_GLB[assetKey];
     const plantilla = def && plantillas[def.archivo];
     if(!plantilla) return null;
-    const mats = materialesDeColor(color);
     const objeto = plantilla.clone(true);
+    if(def.materialesPropios) return objeto; // clone(true) comparte los materiales del .glb
+    const mats = materialesDeColor(color);
     objeto.traverse(o=>{
       if(!o.isMesh) return;
       o.material = mats[o.userData.slot] || mats.base;
@@ -2420,6 +2437,21 @@ const SATELLITE_RINGS_PER_LINK = 4;   // ondas por tanda
 const SATELLITE_CYCLE_SECONDS =
   (SATELLITE_RINGS_PER_LINK-1)*SATELLITE_BURST_STAGGER + SATELLITE_RISE_SECONDS + SATELLITE_REST_SECONDS;
 
+/* Centro de la cara del panel de la antena de Puntonet Space de esa instancia, en mundo, o null
+   si la entidad no la está mostrando (p. ej. sin assets todavía). */
+function panelSatelital(entity, instanciaId){
+  const cont = entity.group && entity.group.getObjectByName('assetsContainer');
+  if(!cont) return null;
+  let cara = null;
+  cont.traverse(o=>{ if(!cara && o.name === 'space_radiating_face' && o.userData.instanciaId === instanciaId) cara = o; });
+  if(!cara) return null;
+  entity.group.updateMatrixWorld(true);
+  const caja = new THREE.Box3().setFromObject(cara);
+  const c = caja.getCenter(new THREE.Vector3());
+  c.y = caja.max.y;
+  return c;
+}
+
 function rebuildSatelliteLinks(){
   satelliteAnims = [];
   entidadesPortadoras().forEach(entity=>{
@@ -2428,10 +2460,14 @@ function rebuildSatelliteLinks(){
       return sub && sub.conexion==='satelital';
     });
     if(satInstancias.length===0) return;
-    const start = getEntityPortWorldPos(entity.id);
+    const puerto = getEntityPortWorldPos(entity.id);
     satInstancias.forEach((inst, i)=>{
       const sub = getSubproducto(inst.subproductoId);
       const color = getSubproductoColor(sub);
+      // 25/09: si la sede muestra la antena de Puntonet Space, las ondas nacen de su panel y no
+      // del puerto (LEEME del paquete: "mantener las ondas existentes y anclarlas al terminal").
+      const panel = panelSatelital(entity, inst.instanciaId);
+      const start = panel || puerto;
       // ligera inclinación (no 100% vertical) para diferenciar varios enlaces satelitales en la
       // misma entidad, y para que se lea más "hacia el cielo, en esa dirección" que un poste recto
       const baseAngle = i * 2.4 + start.x*0.13 + start.z*0.17;
@@ -2440,12 +2476,15 @@ function rebuildSatelliteLinks(){
       // todas al mismo tiempo (puramente estético, no afecta el ritmo tanda/descanso de cada una)
       const cycleOffset = Math.abs((start.x*13.7 + start.z*7.3) % SATELLITE_CYCLE_SECONDS);
 
-      // pequeño marcador (antena) en el puerto: de ahí "nacen" las ondas
-      const antennaGeo = new THREE.OctahedronGeometry(0.12, 0);
-      const antennaMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.85 });
-      const antenna = new THREE.Mesh(antennaGeo, antennaMat);
-      antenna.position.copy(start);
-      connectionsGroup.add(antenna);
+      // pequeño marcador (antena) en el puerto: de ahí "nacen" las ondas. Con la antena 3D de
+      // Space ya no hace falta: el panel es el marcador.
+      if(!panel){
+        const antennaGeo = new THREE.OctahedronGeometry(0.12, 0);
+        const antennaMat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.85 });
+        const antenna = new THREE.Mesh(antennaGeo, antennaMat);
+        antenna.position.copy(start);
+        connectionsGroup.add(antenna);
+      }
 
       // ondas concéntricas (anillos planos, estilo señal Wifi) que suben y se desvanecen, en
       // tanda: las 4 nacen escalonadas (SATELLITE_BURST_STAGGER entre cada una) y luego hay una
@@ -2694,6 +2733,7 @@ window.addEventListener('resize', handleViewportResize);
 window.addEventListener('orientationchange', ()=>{ setTimeout(handleViewportResize, 300); });
 
 /* --- Registro de assets por assetKey (§5) --- */
+const SPACE_ROT_Y = 0.35; // giro de la antena de Puntonet Space respecto de su frente (+Z)
 const AssetRegistry = {
   escudo: (color)=>{
     // v18: modelo .glb (Perimetral, tanda Ciberseguridad) si está cargado; si no, la primitiva de siempre.
@@ -2738,6 +2778,23 @@ const AssetRegistry = {
     ring.rotation.x = Math.PI/2.3;
     ring.position.y = 0.28;
     group.add(ring);
+    return group;
+  },
+  // 25/09: Puntonet Space — antena satelital plana. Sin el .glb, un panel inclinado sobre un poste.
+  puntonet_space: (color)=>{
+    const modelo = IconLibrary.instanciar('puntonet_space', color);
+    // El panel mira a +Z (frente del glTF). De frente a la cámara (45°) se lee como un rectángulo
+    // blanco plano; a ~20° se ve en 3/4, con el canto azul y el soporte, como en el render.
+    if(modelo){ modelo.rotation.y = SPACE_ROT_Y; return modelo; }
+    const group = new THREE.Group();
+    const poste = wire(new THREE.BoxGeometry(0.06, 0.26, 0.06), color);
+    poste.position.y = 0.13;
+    group.add(poste);
+    const panel = wire(new THREE.BoxGeometry(0.46, 0.03, 0.36), color);
+    panel.name = 'space_radiating_face';
+    panel.position.y = 0.3;
+    panel.rotation.x = -0.6;
+    group.add(panel);
     return group;
   },
   nube: (color)=>{
@@ -3088,7 +3145,11 @@ const PLATAFORMA_CUERPO_REL = 0.72;
 
 const COLOCACION_ICONOS = {
   // Ciberseguridad — las cinco de la lámina de referencia, cada una en su relación
-  escudo:             { modo:'abrazar',    factor:1.15 },  // Perimetral: brackets alrededor de la plataforma
+  escudo:             { modo:'abrazar',    factor:1.15,     // Perimetral: brackets alrededor de la plataforma
+                        // 25/09 (Dei): On Premise, IaaS e Internet Seguro comparten las paredes.
+                        // Cada uno nuevo envuelve al anterior (el primero que se agregó queda
+                        // adentro), con su color, como anillos concéntricos. Ver colocarAnidado().
+                        apila:true, pilaAnidada:true, pilaOrdenAlta:true },
   candado:            { modo:'envolver',   factor:1.30,     // End Point: aros que rodean el edificio
                         // T07 paso 2 (24/09): los candados de End Point (EDR, XDR, Seg. Móvil, Correo)
                         // se apilan como SD-WAN, en vez de caer chiquitos a la plataforma. Los aros
@@ -3140,6 +3201,8 @@ const COLOCACION_ICONOS = {
   // `pilaVertical[n-1]` (1 → tamaño normal, 2 → 80%, 3 o más → la mitad). Orden: el de alta
   // (el primero que se agregó queda abajo), no el del catálogo.
   globo:              { modo:'cubierta',   factor:0.60, apila:true, pilaVertical:[1, 0.8, 0.5] },
+  // 25/09: Puntonet Space en el techo, como una antena real. Varias instancias se apilan en fila.
+  puntonet_space:     { modo:'cubierta',   factor:0.70, apila:true },
 };
 const COLOCACION_DEFECTO = { modo:'plataforma', factor:0.50 };
 // fachada: una pared por ícono, y solo las dos visibles (ver CARAS_VISIBLES).
@@ -3403,6 +3466,22 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo){
   }
 }
 
+/* 25/09 (Dei) — Pila ANIDADA (Perimetral). Cada instancia aporta sus propias paredes y la
+   siguiente envuelve a la anterior: la primera se coloca como el escudo de siempre (`abrazar`) y
+   cada capa de afuera se agranda solo en planta (X/Z) para dejar ANIDADO_PASO de aire por lado
+   respecto de la anterior, manteniendo la misma altura. El paso es proporcional al cuerpo, así el
+   anidado se lee igual en una Sede pequeña que en una Matriz. */
+const ANIDADO_PASO = 0.075; // aire entre capas, por lado, como fracción de la huella del cuerpo
+function colocarAnidado(asset, factor, g, capa){
+  colocarAsset(asset, 'abrazar', factor, g, 0, 1);
+  if(!capa) return;
+  const m = medidaAsset(asset);
+  const huella = m.huella + 2 * capa * ANIDADO_PASO * Math.max(g.cuerpoW, g.cuerpoD);
+  const k = huella / m.huella;
+  asset.scale.x *= k;
+  asset.scale.z *= k;
+}
+
 /* T07 paso 2 — Pila de fachada, de cara a la cámara. Para íconos que envuelven el edificio (el
    candado de End Point: aros alrededor + placa con el candado en la fachada), apilar el ícono
    entero duplicaría los aros. Así que se separa en dos:
@@ -3649,6 +3728,10 @@ function refreshSedeAssets(sede){
       etiquetarAssetDeSede(pieza, sede, m);
       return pieza;
     });
+    if(p.col.pilaAnidada && p.modo === 'abrazar'){
+      piezas.forEach((pieza, i)=>{ colocarAnidado(pieza, p.factor, g, i); container.add(pieza); });
+      return;
+    }
     // Pila "de fachada": íconos que se apoyan contra el edificio (candados, WAF/DNS). El candado
     // pasa por acá aunque sea uno solo, para que el dibujo viaje siempre con su placa. La primera
     // pieza se coloca completa, como un ícono suelto, y de ahí salen la escala y la posición de

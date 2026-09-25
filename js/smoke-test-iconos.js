@@ -80,7 +80,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   check('PN_MODELOS_GLB e PN_ICONOS_GLB no se pisan (archivos separados)',
     Object.keys(w.PN_MODELOS_GLB).every(k=>!claves.includes(k)) && claves.every(k=>!Object.keys(w.PN_MODELOS_GLB).includes(k)));
   const estado = await E(w,'iconosListos');
-  check('los 14 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
+  check('los 15 íconos cargan: estado "listo", sin errores', estado === 'listo' && Object.keys(E(w,'IconLibrary').errores()).length === 0, [estado, E(w,'IconLibrary').errores()]);
   check('modelosListos sigue resolviendo su propio estado (string), sin verse afectado por los íconos', typeof await E(w,'modelosListos') === 'string');
   check('sin excepciones en la carga de la página', w.__erroresScript.length === 0, w.__erroresScript);
 
@@ -111,11 +111,9 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     const s = subs.find(s=>s.productoNivel2Id===p.id);
     subPorAssetKey[ak] = { subproductoId:s.id, verticalId:p.verticalId };
   });
-  { // firewall_onpremise: assetKey propio de un subproducto (no del producto Perimetral)
-    const s = subs.find(s=>s.assetKey==='firewall_onpremise');
-    subPorAssetKey['firewall_onpremise'] = { subproductoId:s.id, verticalId: prods.find(p=>p.id===s.productoNivel2Id).verticalId };
-  }
-  ['candado','escudo','llave','muro','firewall_onpremise','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo'].forEach(ak=>{
+  // 25/09: firewall_onpremise ya no es el assetKey de ningún subproducto (los 3 de Perimetral
+  // usan el escudo, ver sección D). Su .glb sigue en el lineup y se prueba en F2/SVG.
+  ['candado','escudo','llave','muro','rack','nube','pantalla','documento','puerta','antena','enlace','nodo','globo'].forEach(ak=>{
     const { subproductoId, verticalId } = subPorAssetKey[ak];
     const icono = iconoDe(w, subproductoId, verticalId);
     const mesh = esMalla(icono);
@@ -170,11 +168,28 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     !!mallaNodoBase && mallaNodoBase.material.color.clone().convertLinearToSRGB().getHex() === colorNodo,
     mallaNodoBase && [mallaNodoBase.material.color.clone().convertLinearToSRGB().getHex(), colorNodo]);
 
-  console.log('\nD. Firewall Virtual (assetKey propio, explícitamente fuera del lineup — LEEME.md)');
-  const subFV = s2.find(s=>s.assetKey==='firewall_virtual');
-  const pFV = p2.find(p=>p.id===subFV.productoNivel2Id);
-  const iconoFV = iconoDe(w, subFV.id, pFV.verticalId);
-  check('firewall_virtual sigue con su primitiva (escudo+anillo), no toma el .glb de escudo', !iconoFV.getObjectByName('iconoGLB'));
+  console.log('\nD. Perimetral anidado y Puntonet Space (25/09)');
+  ['firewall_on_premise','firewall_iaas','internet_seguro'].forEach(id=>{
+    const s = s2.find(x=>x.id===id);
+    const clave = s.assetKey || p2.find(p=>p.id===s.productoNivel2Id).assetKey;
+    check(`${id}: usa las paredes de Perimetral (escudo)`, clave === 'escudo', clave);
+  });
+  const anidado = E(w, `(function(){
+    const s = createSede(30, 0, 0);
+    ['firewall_on_premise','firewall_iaas','internet_seguro'].forEach((id,i)=> s.instancias.push({ instanciaId:'anid_'+i, subproductoId:id, verticalId:'ciberseguridad', valores:{} }));
+    refreshSedeAssets(s);
+    const hijos = s.group.getObjectByName('assetsContainer').children;
+    return hijos.map(h=>{ const c = new THREE.Box3().setFromObject(h); const t = c.getSize(new THREE.Vector3()); return { id:h.userData.instanciaId, x:t.x, y:t.y }; });
+  })()`);
+  check('3 de Perimetral en una sede = 3 capas de paredes', anidado.length === 3, anidado);
+  check('cada capa envuelve a la anterior (más ancha, en orden de alta)',
+    anidado.length === 3 && anidado[0].id === 'anid_0' && anidado[1].x > anidado[0].x && anidado[2].x > anidado[1].x, anidado);
+  check('las capas mantienen la misma altura', anidado.length === 3 && Math.abs(anidado[2].y - anidado[0].y) < 1e-3, anidado);
+  const subSp = s2.find(s=>s.id==='puntonet_space');
+  const iSp = iconoDe(w, subSp.id, p2.find(p=>p.id===subSp.productoNivel2Id).verticalId);
+  check('puntonet_space: usa su .glb propio', !!iSp.getObjectByName('iconoGLB') && !!iSp.getObjectByName('space_radiating_face'));
+  const matsSp = new Set(); iSp.traverse(o=>{ if(o.isMesh) matsSp.add(o.material.name); });
+  check('puntonet_space: conserva los materiales PBR del .glb (no se tiñe)', matsSp.has('pn_space_emission') && matsSp.has('pn_space_panel'), [...matsSp]);
 
   console.log('\nE. Color por catálogo (compartido, no uno por instancia)');
   const pPerim = prods.find ? prods.find(p=>p.assetKey==='escudo') : null;
@@ -197,7 +212,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   iCandado.traverse(o=>{ if(o.isMesh){ mallas++; if(o.layers.mask & (1 << capaBrillo)) algunaEnCapaBrillo = true; } });
   check('candado: al menos una malla (más de un slot de material en juego)', mallas > 0, mallas);
   check('los íconos de producto NO participan del bloom (mockup v17: "no brillan… íconos de producto")', !algunaEnCapaBrillo);
-  check('sin avisos de "material desconocido" para los 14 .glb integrados', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
+  check('sin avisos de "material desconocido" para los 15 .glb integrados', !(w.__warns||[]).some(x=>x.includes('material') && x.includes('desconocido')), w.__warns);
   // La tanda Cloud trae SOLO mat_base + mat_glow (la de Ciberseguridad ampliaba con translucido y
   // receso). Se valida que los dos slots lleguen como mallas separadas: si el proveedor hubiera
   // pintado el glow como máscara en vez de geometría propia, acá habría una sola malla.
