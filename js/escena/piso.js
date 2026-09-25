@@ -1,5 +1,5 @@
 /* =========================================================================
-   3A-bis. PISO OSCURO CON GLOW BAJO CADA ENTIDAD (23/09/2026, reemplaza el reflejo falso)
+   3A-bis. GLOW BAJO CADA ENTIDAD (23/09/2026, reemplaza el reflejo falso; sin disco oscuro desde el 25/09)
    -------------------------------------------------------------------------
    Hasta el 23/09 acá había un reflejo FALSO: una copia espejada de cada entidad bajo el piso. Dei
    lo sacó por dos motivos: se leía como el mesh duplicado, y se podía hacer clic en él y
@@ -9,15 +9,9 @@
    degradado radial, del color de acento de su tipo (MODELO_LOOKS), del tamaño de su huella.
    No es un clon ni cuelga del group de la entidad, y su raycast está anulado: no se puede
    clickear. Se sincroniza cada frame contra todasLasEntidades(), igual que hacía el reflejo. */
-const piso = new THREE.Mesh(
-  new THREE.CircleGeometry(60, 48),
-  new THREE.MeshBasicMaterial({ color:0x05070d, transparent:true, opacity:0.55, depthWrite:false })
-);
-piso.name = 'piso';
-piso.rotation.x = -Math.PI/2;
-piso.position.y = -0.02; // apenas debajo de la grilla, evita z-fighting con sus líneas
-piso.raycast = function(){}; // decorativo: no debe interceptar los clicks/arrastres que hoy resuelven contra un plano matemático (§4)
-scene.add(piso);
+/* 25/09/2026 (cliente): se quitó el disco oscuro que hacía de "piso" (CircleGeometry r=60, negro
+   al 55 %). Se leía como un círculo negro alrededor de la escena; queda solo la grilla. El glow
+   bajo cada entidad es aditivo y no dependía de ese disco. */
 
 const GLOW_PISO = {
   activo: true,

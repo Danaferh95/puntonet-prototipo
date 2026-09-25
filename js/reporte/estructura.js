@@ -14,13 +14,16 @@
    Cliente (25/09): la foto del inicio guarda además la captura del canvas en ese momento
    (`imagen`, PNG en data URL), con el mismo encuadre que el esquema del PDF. El PDF la muestra
    junto al score de ese momento; ya no se pide el score a mano.
+   Cliente (25/09, tarde): TODA foto lleva su captura, no solo la del inicio. Cada "Guardar
+   estado actual" (y el guardado automático al generar el reporte) captura el canvas en
+   `actual.imagen`, así el reporte compara la imagen del inicio con la del final.
    ========================================================================= */
-/* Tamaño de la captura del inicio, en px de página del PDF (se toma × PDF_ESCALA). Tiene que
-   coincidir con el aspecto de .pdf-inicio__caja en css/reporte/pdf.css (16:9). */
-const CAPTURA_INICIO = { ancho: 320, alto: 180 };
+/* Tamaño de cada captura (inicio y final), en px de página del PDF (se toma × PDF_ESCALA). Tiene
+   que coincidir con el aspecto de .pdf-comparacion__caja en css/reporte/pdf.css (16:9). */
+const CAPTURA_ESTRUCTURA = { ancho: 320, alto: 180 };
 /* La captura se toma fuera del PDF, así que el estilo de las etiquetas se mide en una página
    temporal fuera de pantalla (las variables y la tipografía son las de .pdf-pagina). */
-function capturaEstructuraInicial(){
+function capturaEstructura(){
   const escenario = pdfEl('div', 'pdf-escenario');
   escenario.setAttribute('aria-hidden', 'true');
   const pagina = pdfEl('section', 'pdf-pagina');
@@ -30,9 +33,9 @@ function capturaEstructuraInicial(){
   document.body.appendChild(escenario);
   try {
     const estilo = estiloEtiquetaEsquema(figura);
-    return captureHeroSnapshot(CAPTURA_INICIO.ancho*PDF_ESCALA, CAPTURA_INICIO.alto*PDF_ESCALA, estilo, PDF_ESCALA);
+    return captureHeroSnapshot(CAPTURA_ESTRUCTURA.ancho*PDF_ESCALA, CAPTURA_ESTRUCTURA.alto*PDF_ESCALA, estilo, PDF_ESCALA);
   } catch(err){
-    console.warn('[estructura] no se pudo capturar el canvas del inicio:', err);
+    console.warn('[estructura] no se pudo capturar el canvas:', err);
     return null;
   } finally {
     escenario.remove();
@@ -65,18 +68,16 @@ function renderBotonesEstructura(){
 /* `fijarInicio`: solo el botón lo pide. El primer guardado hecho con el botón fija el inicio. */
 function guardarEstructura(fijarInicio){
   const foto = fotoEstructura();
+  foto.imagen = capturaEstructura(); // la del final se reemplaza en cada guardado
   const esPrimero = fijarInicio && !state.estructuras.inicial;
-  if(esPrimero){
-    state.estructuras.inicial = JSON.parse(JSON.stringify(foto));
-    state.estructuras.inicial.imagen = capturaEstructuraInicial();
-  }
+  if(esPrimero) state.estructuras.inicial = JSON.parse(JSON.stringify(foto)); // misma captura
   state.estructuras.actual = foto;
   renderBotonesEstructura();
   return esPrimero;
 }
 byId('btnEstructuraActual').addEventListener('click', ()=>{
   const esPrimero = guardarEstructura(true);
-  showToast(esPrimero ? `Estado guardado como inicio de la sesión (captura y salud ${state.estructuras.inicial.resumen.saludGlobal}%).` : 'Estado actual guardado.');
+  showToast(esPrimero ? `Estado guardado como inicio de la sesión (captura y salud ${state.estructuras.inicial.resumen.saludGlobal}%).` : `Estado actual guardado (captura y salud ${state.estructuras.actual.resumen.saludGlobal}%).`);
 });
 
 /* Bloque del reporte: inicio vs final, con los conteos del resumen y la salud por categoría.
@@ -96,14 +97,24 @@ function renderBloqueEstructuras(config){
     row.innerHTML = `<div class="rline1"><span>${etiqueta}</span><span class="muted-small">${valor}</span></div>`;
     box.appendChild(row);
   };
-  if(ini && ini.imagen){
-    const captura = document.createElement('div');
-    captura.className = 'report-inst report-estructura__captura';
-    const img = document.createElement('img');
-    img.className = 'report-estructura__img';
-    img.src = ini.imagen; img.alt = 'Captura de la estructura al inicio de la sesión';
-    captura.appendChild(img);
-    box.appendChild(captura);
+  // Capturas lado a lado: inicio (si se guardó) y final.
+  const capturas = [ini && ['Inicio', ini], ['Final', fin]].filter(Boolean).filter(([, f])=> f.imagen);
+  if(capturas.length){
+    const fila = document.createElement('div');
+    fila.className = 'report-inst report-estructura__capturas';
+    capturas.forEach(([titulo, f])=>{
+      const fig = document.createElement('figure');
+      fig.className = 'report-estructura__captura';
+      const img = document.createElement('img');
+      img.className = 'report-estructura__img';
+      img.src = f.imagen; img.alt = `Captura de la estructura: ${titulo.toLowerCase()} de la sesión`;
+      const pie = document.createElement('figcaption');
+      pie.className = 'muted-small';
+      pie.textContent = `${titulo} · ${horaFoto(f)} · salud ${f.resumen.saludGlobal}%`;
+      fig.append(img, pie);
+      fila.appendChild(fig);
+    });
+    box.appendChild(fila);
   }
   if(!ini){
     const aviso = document.createElement('div');

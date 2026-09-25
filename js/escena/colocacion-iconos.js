@@ -107,7 +107,9 @@ const COLOCACION_DEFECTO = { modo:'plataforma', factor:0.50 };
 // Dei pidió achicarlo desde 1.05 (24/09).
 const PORTICO_ALTO = 0.9;
 const PORTICO_AIRE_ETIQUETA = 0.45; // la etiqueta de nombre sube hasta quedar este margen por encima del arco
-const HUECOS_POR_MODO = { envolver:1, abrazar:1, portico:1, puerto:1, fachada:2 };
+// fachada: hasta 4 (2 por cada pared visible, ver asignarParedes); antes eran 2 y el tercero caía a
+// plataforma, más chico.
+const HUECOS_POR_MODO = { envolver:1, abrazar:1, portico:1, puerto:1, fachada:4 };
 // Huella del ícono de Datos cuando nace del "+" (modo 'puerto'). En mundo, como el puerto.
 const PUERTO_ICONO_HUELLA = 1.3;
 
@@ -149,7 +151,11 @@ function construirPila(piezas){
 /* Medidas derivadas que necesita la colocación: dónde termina la plataforma y qué huella tiene
    el cuerpo del edificio sobre ella. */
 function geometriaEntidad(entity){
-  const d = dimsEntidad(entity);
+  const g = geometriaDeDims(dimsEntidad(entity));
+  g.tam = geometriaTamano(entity, g);
+  return g;
+}
+function geometriaDeDims(d){
   const plintoY = d.h * PLATAFORMA_ALTO_REL;
   return {
     w: d.w, h: d.h, d: d.d,
@@ -158,6 +164,20 @@ function geometriaEntidad(entity){
     cuerpoD: d.d * PLATAFORMA_CUERPO_REL,
     cuerpoH: Math.max(0.1, d.h - plintoY),
   };
+}
+/* 25/09 (Dei): "los íconos en las sedes del mismo tamaño que en las Matrices; no importa si
+   ocupan un poco más que el techo de la sede". Todo se escalaba contra el cuerpo de SU entidad,
+   y como la Sede es más chica que la Matriz sus íconos quedaban chicos. Ahora hay dos medidas:
+   `g` (dónde va cada ícono: techo, paredes, plinto de la entidad real) y `g.tam` (de qué tamaño
+   es). En una Sede más chica que la Matriz, `g.tam` es la geometría de la Matriz; en el resto,
+   la propia. Corrección de Dei (25/09): SOLO los íconos del techo (`cubierta`) usan `g.tam`;
+   los de paredes, plataforma y el candado vuelven a medirse contra su propia entidad. */
+function geometriaTamano(entity, g){
+  if(entity.tipo !== 'sede' || typeof ModelLibrary === 'undefined' || !ModelLibrary.dims) return g;
+  const dm = ModelLibrary.dims('matriz');
+  if(!dm) return g;
+  const gm = geometriaDeDims(dm);
+  return Math.max(gm.cuerpoW, gm.cuerpoD) > Math.max(g.cuerpoW, g.cuerpoD) ? gm : g;
 }
 
 /* Los íconos salen de IconLibrary con el pivote en el centro de su base (v18), así que basta la
@@ -210,6 +230,33 @@ function huecoPerimetral(turno, total, g){
   return { cara: caras[iCara], indice: Math.floor(turno / n), enCara: Math.max(enCara, 1) };
 }
 
+/* 25/09 (Dei): "máximo 2 íconos por lado; si ya hay 2, al otro lado, menos en la cara trasera".
+   Antes fachada y plataforma se repartían cada uno por su cuenta (y con 2 o más candados todo iba
+   a la pared derecha), así que una pared podía juntar 4 o 5 íconos y la otra ninguno. Ahora se
+   asignan juntos, en orden: cada ícono va a la pared visible que tenga menos, sin pasar de
+   PARED_MAX; recién cuando las dos están llenas se admite un tercero (nunca las caras de atrás,
+   regla T07). La fila de candados no cuenta: sus íconos se acomodan a los costados de la fila
+   (repartirParedes). Con candados se arranca por la derecha, que está libre.
+   Devuelve { cara, indice, enCara } por entrada, lo mismo que huecoPerimetral. */
+const PARED_MAX = 2;
+function asignarParedes(planeadas, g){
+  const visibles = g.frenteOcupado ? [CARAS_VISIBLES[1], CARAS_VISIBLES[0]] : CARAS_VISIBLES;
+  const caras = [...visibles, CARAS_ENTIDAD[3]]; // + izquierda (-X); nunca la trasera (-Z)
+  const cuenta = new Map(caras.map(c=> [c, 0]));
+  if(g.frenteOcupado) cuenta.set(CARAS_VISIBLES[0], 1); // la fila de candados ocupa un lugar
+  const elegida = planeadas.filter(p=> p.modo === 'fachada' || p.modo === 'plataforma').map(p=>{
+    const libresVis = visibles.filter(c=> cuenta.get(c) < PARED_MAX);
+    const libres = libresVis.length ? libresVis : caras.filter(c=> cuenta.get(c) < PARED_MAX);
+    const opciones = libres.length ? libres : caras;
+    const cara = opciones.reduce((a, c)=> cuenta.get(c) < cuenta.get(a) ? c : a, opciones[0]);
+    const indice = cuenta.get(cara);
+    cuenta.set(cara, indice + 1);
+    return { p, cara, indice };
+  });
+  const enFila = c=> cuenta.get(c) - (g.frenteOcupado && c === CARAS_VISIBLES[0] ? 1 : 0);
+  elegida.forEach(e=>{ e.p.hueco = { cara: e.cara, indice: e.indice - (g.frenteOcupado && e.cara === CARAS_VISIBLES[0] ? 1 : 0), enCara: Math.max(1, enFila(e.cara)) }; });
+}
+
 /* La placa del candado de End Point va centrada en la fachada frontal. Lo que además cae en esa
    pared se corre a su mitad izquierda para no quedar tapado por la placa ni taparla. */
 const FRENTE_CORRIMIENTO = 0.36; // fracción del ancho del cuerpo
@@ -225,19 +272,83 @@ function medidasCara(g, cara){
     : { normal: g.cuerpoD/2, lateral: g.cuerpoW, normalPlinto: g.d/2 };
 }
 
-/* T07 paso 1 — Huecos del techo. El puerto (+) de T01 está en el centro, así que los íconos van
-   en los cuadrantes del techo del cuerpo, a un cuarto del ancho/fondo del centro (más afuera se
-   caen de los techos escalonados de los modelos). El orden importa con la cámara isométrica por
-   defecto (mira desde +X/+Z): las diagonales (+X,-Z) y (-X,+Z) quedan a la derecha y a la
-   izquierda del puerto en pantalla, mientras que (+X,+Z) y (-X,-Z) quedan justo debajo y encima
-   de él y lo tapan. Por eso los dos primeros ocupan los costados. Con más de cuatro se suman los
-   cuatro puntos medios, con huecos más chicos. `lado` es la huella máxima de cada ícono. */
-const HUECOS_CUBIERTA = [ [1,-1], [-1,1], [1,1], [-1,-1], [1,0], [0,1], [-1,0], [0,-1] ];
-const CUBIERTA_AIRE = 0.85; // fracción del hueco que puede ocupar el ícono
-function huecoCubierta(g, turno, total){
-  const [sx, sz] = HUECOS_CUBIERTA[turno % HUECOS_CUBIERTA.length];
-  const divisor = total <= 4 ? 2 : 3;
-  return { x: sx * g.cuerpoW/4, z: sz * g.cuerpoD/4, lado: Math.min(g.cuerpoW, g.cuerpoD)/divisor * CUBIERTA_AIRE * ICONOS_TAMANO };
+/* 25/09 (cliente): "los íconos de los lados se chocan con la columna". medidasCara() supone una
+   pared lisa a cuerpoW/2 (o cuerpoD/2), pero los modelos no son cajas: la Matriz tiene un anexo
+   pegado a la pared derecha (+X, `shell_b`) que sobresale ~0.45 del cuerpo, y un ícono de
+   fachada o de plataforma puesto contra la pared "teórica" quedaba atravesado por él.
+   Ahora se mide la pared REAL: los vértices del modelo de la entidad (sin íconos, hitbox, halo
+   ni puerto), por encima del plinto, que caen dentro de la franja que ocupa el ícono (ancho
+   sobre la pared y alto). Lo más saliente de esa franja es la pared contra la que se apoya.
+   Los vértices se juntan una vez por grupo de entidad (WeakMap: el grupo se rehace al cambiar el
+   tamaño de una sede, y el caché se va con él). */
+const _verticesPared = new WeakMap();
+function verticesModelo(group, plintoY){
+  if(_verticesPared.has(group)) return _verticesPared.get(group);
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const m = new THREE.Matrix4(), v = new THREE.Vector3(), lista = [];
+  const excluir = o=> o.name === 'assetsContainer' || /hitbox|halo/i.test(o.name) || (o.userData && o.userData.isPort);
+  (function recorrer(o){
+    if(excluir(o)) return;
+    if(o.isMesh && o.visible !== false && o.geometry && o.geometry.attributes.position){
+      const pos = o.geometry.attributes.position;
+      m.multiplyMatrices(inv, o.matrixWorld);
+      for(let i=0; i<pos.count; i++){
+        v.fromBufferAttribute(pos, i).applyMatrix4(m);
+        if(v.y > plintoY + 0.02) lista.push(v.x, v.y, v.z);
+      }
+    }
+    o.children.forEach(recorrer);
+  })(group);
+  const arr = new Float32Array(lista);
+  _verticesPared.set(group, arr);
+  return arr;
+}
+/* Distancia desde el centro hasta la pared real de `cara`, dentro de la franja [latMin, latMax]
+   (sobre la pared) × [yMin, yMax]. Sin modelo medible (primitivas, smoke test) → la teórica. */
+function paredReal(g, cara, latMin, latMax, yMin, yMax){
+  const teorica = medidasCara(g, cara).normal;
+  const vs = g.grupo ? verticesModelo(g.grupo, g.plintoY) : null;
+  if(!vs || !vs.length) return teorica;
+  let max = -Infinity;
+  for(let i=0; i<vs.length; i+=3){
+    const x = vs[i], y = vs[i+1], z = vs[i+2];
+    if(y < yMin || y > yMax) continue;
+    const lat = cara.nx ? z : x;
+    if(lat < latMin || lat > latMax) continue;
+    const n = cara.nx ? x*cara.nx : z*cara.nz;
+    if(n > max) max = n;
+  }
+  return max === -Infinity ? teorica : max;
+}
+// Si la pared real sobresale más que esto de la teórica, es un volumen agregado (anexo,
+// columna) y no la fachada: el ícono se apoya delante, sin hundirse en él.
+const PARED_SALIENTE = 0.08;
+
+/* Huecos del techo. El puerto (+) de T01 está en el centro, así que los íconos van ALREDEDOR de
+   él, nunca encima.
+   25/09 (cliente): con los íconos a la escala del candado (ver tamanoCandado) ya no entran en los
+   cuatro cuadrantes chicos de T07, que los amontonaban sobre el puerto. Ahora se reparten
+   parejos sobre una elipse que sigue la forma del techo (CUBIERTA_RADIO de cada semieje). El
+   primero va a la derecha de la pantalla (-45°: la cámara por defecto mira desde +X/+Z) y el
+   segundo enfrente, a la izquierda: así con uno o dos el puerto queda libre.
+   Desde la tarde del 25/09 esto es solo la posición PROVISORIA: repartirCubierta() (más abajo)
+   ubica a todos juntos, sin achicarlos y sin que se pisen. `escala` ya no se usa. */
+const CUBIERTA_RADIO = 0.72;       // fracción de cada semieje del techo donde se paran los íconos
+const CUBIERTA_SEPARACION = 1.0;   // distancia mínima entre centros, en tamaños de ícono
+function huecoCubierta(g, turno, total, tam){
+  const n = Math.max(1, total);
+  const rx = g.cuerpoW/2 * CUBIERTA_RADIO, rz = g.cuerpoD/2 * CUBIERTA_RADIO;
+  const ang = -Math.PI/4 + turno * 2*Math.PI / n;
+  // Perímetro de la elipse (Ramanujan) repartido entre n: cuánto lugar le toca a cada ícono.
+  // Se mide sobre el techo de `g.tam` (la Matriz, en una Sede): con la misma cantidad, los
+  // íconos de una Sede quedan del mismo tamaño que en la Matriz aunque se salgan de su techo.
+  const gt = g.tam || g;
+  const ex = gt.cuerpoW/2 * CUBIERTA_RADIO, ez = gt.cuerpoD/2 * CUBIERTA_RADIO;
+  const h = Math.pow(ex - ez, 2) / Math.pow(ex + ez, 2);
+  const perimetro = Math.PI * (ex + ez) * (1 + 3*h / (10 + Math.sqrt(4 - 3*h)));
+  const escala = n < 2 ? 1 : Math.min(1, perimetro / n / (tam * CUBIERTA_SEPARACION));
+  return { x: Math.cos(ang) * rx, z: Math.sin(ang) * rz, escala };
 }
 
 /* Coloca UN ícono según su modo. `turno` es el índice dentro de los que comparten ese modo en
@@ -250,8 +361,15 @@ function huecoCubierta(g, turno, total){
    los modos y los topes de huella que los acotan. El arco de Acceso (`portico`) queda afuera: Dei
    ya lo había achicado a propósito (PORTICO_ALTO). */
 const ICONOS_TAMANO = 1.15;
-function colocarAsset(asset, modo, factor, g, turno, totalModo){
+/* 25/09 (cliente): "los íconos de arriba del mesh, todos en la escala de los candados". Lado
+   mayor de la placa del candado de End Point, medido en Matriz y Sede: 0.40 × la huella del
+   cuerpo (1.61 / 4.03 y 1.31 / 3.28), porque el candado se escala contra max(cuerpoW, cuerpoD).
+   Si cambia el factor del candado en COLOCACION_ICONOS, este número se mueve con él. */
+const CANDADO_LADO_REL = 0.40;
+function tamanoCandado(g){ return Math.max(g.cuerpoW, g.cuerpoD) * CANDADO_LADO_REL; }
+function colocarAsset(asset, modo, factor, g, turno, totalModo, hueco){
   const huellaCuerpo = Math.max(g.cuerpoW, g.cuerpoD);
+  const gt = g.tam || g; // tamaño de los íconos del TECHO (ver geometriaTamano); `g` es el lugar
   if(modo !== 'portico') factor *= ICONOS_TAMANO;
   switch(modo){
     case 'envolver': {
@@ -290,7 +408,8 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo){
       break;
     }
     case 'fachada': {
-      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo, g);
+      const { cara, indice, enCara } = hueco || huecoPerimetral(turno, totalModo, g);
+      asset.userData.pared = { cara, modo }; // para repartirParedes (2ª pasada)
       escalarPorAltura(asset, g.cuerpoH * factor);
       asset.rotation.y = cara.rotY;
       const m = medidaAsset(asset);
@@ -298,32 +417,39 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo){
       // Semihundido: se mete en la pared el 45% de su fondo ya girado, para que se lea como
       // parte del edificio y no como una calcomanía pegada por delante.
       const fondo = Math.abs(cara.nx) ? m.tam.x : m.tam.z;
-      const dNormal = c.normal - fondo*0.45 + fondo/2;
-      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.15
+      const ancho = Math.abs(cara.nx) ? m.tam.z : m.tam.x;
+      const lateral = (indice - (enCara-1)/2) * ancho * 1.15
         + corrimientoFrente(g, cara);
+      const y0 = g.plintoY + (g.cuerpoH - m.alto)/2;
+      // Contra la pared REAL de la franja que ocupa (ver paredReal): en la fachada lisa se hunde
+      // el 45 % como siempre; si ahí hay un anexo o una columna, se apoya delante de él.
+      const pared = paredReal(g, cara, lateral - ancho/2, lateral + ancho/2, y0, y0 + m.alto);
+      const hundido = pared > c.normal + PARED_SALIENTE ? 0 : 0.45;
+      const dNormal = Math.max(c.normal, pared) - fondo*hundido + fondo/2;
       asset.position.set(
         cara.nx * dNormal + (cara.nx ? 0 : lateral),
-        g.plintoY + (g.cuerpoH - m.alto)/2,
+        y0,
         cara.nz * dNormal + (cara.nx ? lateral : 0)
       );
       break;
     }
     case 'cubierta': {
-      // T07 paso 1: el centro del techo es del puerto (+) y de los cables que salen de él (T01),
-      // así que los íconos de cubierta se reparten en huecos ALREDEDOR del centro, nunca encima.
-      // Cada uno se acota al lado de su hueco para no invadir al vecino ni al puerto.
-      const h = huecoCubierta(g, turno, totalModo);
-      // Una pila (paso 2) tiene la altura de un ícono, pero su huella es más larga (largoRel):
-      // el hueco se agranda en esa proporción para que cada pieza conserve su tamaño.
-      // Una pila vertical crece en altura (alturaRel = alto total ÷ alto de un ícono suelto):
-      // así cada pieza queda al tamaño que le fijó la pila (normal, 80% o la mitad).
-      escalarPorAltura(asset, g.cuerpoH * factor * (asset.userData.alturaRel || 1));
-      // Si el hueco acota la huella, la pila vertical se acota en la misma proporción que sus
-      // piezas: si no, en una sede chica el globo al 80% quedaría igual que uno suelto.
-      const lado = h.lado * Math.max(1, asset.userData.largoRel || 1) * (asset.userData.escalaPieza || 1);
+      // Alrededor del puerto (+), sobre la elipse de huecoCubierta.
+      // 25/09 (cliente): los íconos del techo van a la MISMA escala que el candado de End Point
+      // (antes se escalaban por altura y se acotaban al hueco, y quedaban chicos al lado del
+      // candado). Se escala para que UNA pieza mida `tamanoCandado(g)` (× la `escala` del hueco) en su lado mayor (alto o
+      // huella). En una pila horizontal la pieza es la huella ÷ largoRel; en una vertical, el
+      // alto ÷ alturaRel: así la pila conserva sus proporciones (80 %, la mitad) por pieza.
       const m0 = medidaAsset(asset);
-      if(m0.huella > lado) asset.scale.multiplyScalar(lado / m0.huella);
+      const pieza = Math.max(m0.alto / (asset.userData.alturaRel || 1),
+                             m0.huella / Math.max(1, asset.userData.largoRel || 1));
+      // Tamaño completo siempre: si no entran en el techo, repartirCubierta() agranda el anillo
+      // donde se paran (un techo "virtual" más grande) en vez de achicarlos.
+      const tam = tamanoCandado(gt);
+      const h = huecoCubierta(g, turno, totalModo, tam); // posición provisoria
+      asset.scale.multiplyScalar(tam / pieza);
       asset.position.set(h.x, g.h, h.z);
+      asset.userData.techo = true;
       break;
     }
     default: { // 'plataforma'
@@ -335,7 +461,8 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo){
       const huellaMax = Math.min(g.w, g.d) * 0.45 * ICONOS_TAMANO;
       const m0 = medidaAsset(asset);
       if(m0.huella > huellaMax) asset.scale.multiplyScalar(huellaMax / m0.huella);
-      const { cara, indice, enCara } = huecoPerimetral(turno, totalModo, g);
+      const { cara, indice, enCara } = hueco || huecoPerimetral(turno, totalModo, g);
+      asset.userData.pared = { cara, modo }; // para repartirParedes (2ª pasada)
       asset.rotation.y = cara.rotY;
       const m = medidaAsset(asset);
       const c = medidasCara(g, cara);
@@ -345,12 +472,15 @@ function colocarAsset(asset, modo, factor, g, turno, totalModo){
       // El max() es el tope del tope: cuando el ícono es más ancho que ese sobrante, quedarse
       // dentro del plinto significaría meterlo DENTRO del edificio. Entre volar un poco sobre el
       // borde y atravesar la pared, vuela: solo se le permite solaparse un 15% de su fondo.
-      const dNormal = Math.max(
-        c.normal + fondo*0.15,
-        Math.min(c.normal + fondo/2 + 0.04, c.normalPlinto - fondo/2)
-      );
-      const lateral = (indice - (enCara-1)/2) * (Math.abs(cara.nx) ? m.tam.z : m.tam.x) * 1.2
+      const ancho = Math.abs(cara.nx) ? m.tam.z : m.tam.x;
+      const lateral = (indice - (enCara-1)/2) * ancho * 1.2
         + corrimientoFrente(g, cara);
+      // 25/09: la pared es la real de su franja (un anexo sobresale de la teórica, ver paredReal).
+      const pared = Math.max(c.normal, paredReal(g, cara, lateral - ancho/2, lateral + ancho/2, g.plintoY, g.plintoY + m.alto));
+      const dNormal = Math.max(
+        pared + fondo*0.15,
+        Math.min(pared + fondo/2 + 0.04, c.normalPlinto - fondo/2)
+      );
       asset.position.set(
         cara.nx * dNormal + (cara.nx ? 0 : lateral),
         g.plintoY,
@@ -556,6 +686,123 @@ function etiquetarAssetDeSede(asset, sede, m){
   }
 }
 
+/* =========================================================================
+   REPARTO SIN SUPERPOSICIÓN (25/09, pedido de Dei)
+   "Íconos que son diferentes ocupan su propio espacio." colocarAsset() ubica cada ícono solo,
+   sin saber de los demás; estas dos funciones corren después, con todos ya medidos:
+   - repartirCubierta: los del techo, en anillo alrededor del puerto (+) si entran; si no, en
+     una grilla sobre un techo "virtual" más grande (misma proporción que el real), así que
+     pueden quedar un poco fuera del edificio. Nunca se achican ni se pisan.
+   - repartirParedes: los de cada pared (fachada y plataforma juntos; máx. 2 por pared, ver
+     asignarParedes) en una fila, uno al lado del otro. Si en el frente está la fila de candados,
+     lo demás va a su izquierda. La fila puede pasarse del ancho de la pared hacia las esquinas
+     de atrás, nunca hacia la esquina que comparten las dos paredes visibles.
+   Las pilas (varias instancias del mismo ícono) se tratan como UN ícono: pueden quedar juntas.
+   Los aros del candado y el escudo de Perimetral envuelven el edificio y no entran acá.
+   ========================================================================= */
+const CUBIERTA_SEP = 1.12;       // aire entre íconos del techo (× la suma de sus radios)
+const CUBIERTA_CENTRO = 0.6;     // radio libre alrededor del puerto (+) y de lo que va sobre él
+const PARED_SEP = 0.1;           // aire entre íconos de una misma pared (unidades de mundo)
+function repartirCubierta(items, g){
+  const n = items.length;
+  if(!n) return;
+  const radios = items.map(o=>{ const t = medidaAsset(o).tam; return Math.max(t.x, t.z)/2; });
+  const libre = (pos)=> pos.every(([x, z], i)=> Math.hypot(x, z) >= radios[i] + CUBIERTA_CENTRO * 0.5 &&
+    pos.every(([x2, z2], j)=> j <= i || Math.hypot(x - x2, z - z2) >= (radios[i] + radios[j]) * 0.98));
+  // 1) Si entran en el techo real: anillo parejo alrededor del puerto (el primero a la derecha
+  //    de la pantalla), como en la Matriz.
+  const rx = g.cuerpoW/2 * CUBIERTA_RADIO, rz = g.cuerpoD/2 * CUBIERTA_RADIO;
+  const anillo = radios.map((r, i)=>{ const a = -Math.PI/4 + i * 2*Math.PI / n; return [Math.cos(a)*rx, Math.sin(a)*rz]; });
+  if(libre(anillo)){ items.forEach((o, i)=>{ o.position.x = anillo[i][0]; o.position.z = anillo[i][1]; }); return; }
+  // 2) Si no: una grilla de casilleros del tamaño del ícono más grande, sobre un techo "virtual"
+  //    con la proporción del real, que crece hasta que entran todos sin tocar el centro (+).
+  //    Se ocupan primero los casilleros más cercanos al centro y, entre esos, los de atrás (que
+  //    en pantalla quedan arriba y no tapan las paredes del frente y de la derecha).
+  const celda = Math.max(...radios) * 2 * CUBIERTA_SEP;
+  let cols = Math.max(1, Math.floor(g.cuerpoW / celda)), filas = Math.max(1, Math.floor(g.cuerpoD / celda));
+  let casilleros = [];
+  for(let intento = 0; intento < 40; intento++){
+    casilleros = [];
+    for(let c = 0; c < cols; c++) for(let f = 0; f < filas; f++){
+      const x = (c - (cols-1)/2) * celda, z = (f - (filas-1)/2) * celda;
+      if(Math.hypot(x, z) >= celda/2 * 0.9 + CUBIERTA_CENTRO * 0.5) casilleros.push([x, z]);
+    }
+    if(casilleros.length >= n) break;
+    // Crece el lado que deja la grilla más parecida a la forma del techo.
+    if((cols + 1) / filas - g.cuerpoW / g.cuerpoD <= g.cuerpoW / g.cuerpoD - cols / (filas + 1)) cols++; else filas++;
+  }
+  casilleros.sort((p, q)=> ((p[0] + p[1]) - (q[0] + q[1])) || (Math.hypot(...p) - Math.hypot(...q)));
+  items.forEach((o, i)=>{ const [x, z] = casilleros[i] || [0, 0]; o.position.x = x; o.position.z = z; });
+}
+function repartirParedes(items, g, bloqueos){
+  const porCara = new Map();
+  items.forEach(o=>{
+    const c = o.userData.pared.cara;
+    if(!porCara.has(c)) porCara.set(c, []);
+    porCara.get(c).push(o);
+  });
+  const lat = (v, cara)=> cara.nx ? v.z : v.x;
+  const nor = (v, cara)=> cara.nx ? v.x * cara.nx : v.z * cara.nz;
+  porCara.forEach((lista, cara)=>{
+    const medidas = lista.map(o=>{
+      o.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(o);
+      const l0 = Math.min(lat(b.min, cara), lat(b.max, cara)), l1 = Math.max(lat(b.min, cara), lat(b.max, cara));
+      const n0 = Math.min(nor(b.min, cara), nor(b.max, cara));
+      // Fondo de UNA pieza (en una pila de WAF el grupo entero es más grueso): la primera hija.
+      const base = o.name === 'pilaFachada' ? o.children[0] : o;
+      const tb = new THREE.Box3().setFromObject(base).getSize(new THREE.Vector3());
+      return { o, l0, l1, n0, y0: b.min.y, y1: b.max.y, fondo: cara.nx ? tb.x : tb.z, alto: tb.y };
+    }).sort((a, b)=> (a.l0 + a.l1) - (b.l0 + b.l1));
+    const total = medidas.reduce((t, m)=> t + (m.l1 - m.l0), 0) + PARED_SEP * (medidas.length - 1);
+    // ¿La fila de candados ocupa esta pared? Solo pasa en el frente.
+    let bloqueo = null;
+    if(cara.nz === 1) bloqueos.forEach(b=>{
+      const bb = new THREE.Box3().setFromObject(b);
+      bloqueo = bloqueo ? { min: Math.min(bloqueo.min, bb.min.x), max: Math.max(bloqueo.max, bb.max.x) }
+        : { min: bb.min.x, max: bb.max.x };
+    });
+    // Si no entran en la fila de antes y sin tocarse, se reacomoda; si ya estaban bien, se deja.
+    const pisados = medidas.some((m, i)=> i > 0 && m.l0 < medidas[i-1].l1 + PARED_SEP*0.5)
+      || (bloqueo !== null && medidas.some(m=> m.l1 > bloqueo.min - PARED_SEP*0.5 && m.l0 < bloqueo.max + PARED_SEP*0.5));
+    // Sin candados: fila centrada. Con candados: todo a su IZQUIERDA (la esquina de la derecha es
+    // la de la otra pared visible, y lo que se pasa de ahí choca con sus íconos).
+    let cursor = -total/2, izq = bloqueo && bloqueo.min - PARED_SEP;
+    medidas.forEach(m=>{
+      const ancho = m.l1 - m.l0;
+      if(!pisados) m.nl0 = m.l0;
+      else if(bloqueo){ m.nl0 = izq - ancho; izq = m.nl0 - PARED_SEP; }
+      else { m.nl0 = cursor; cursor += ancho + PARED_SEP; }
+    });
+    // 25/09 (Dei): la esquina entre el frente y la derecha es de las dos paredes visibles. Nada de
+    // una pared se pasa de esa esquina (se corre la fila entera hacia el otro lado), así un ícono
+    // ancho del frente no se mete delante de los de la derecha ni al revés.
+    const esquina = cara.nz === 1 ? g.cuerpoW/2 : (cara.nx === 1 ? g.cuerpoD/2 : Infinity);
+    const fin = Math.max(...medidas.map(m=> m.nl0 + (m.l1 - m.l0)));
+    if(fin > esquina) medidas.forEach(m=>{ m.nl0 -= fin - esquina; });
+    const c = medidasCara(g, cara);
+    medidas.forEach(m=>{
+      const ancho = m.l1 - m.l0;
+      const nl0 = m.nl0;
+      if(Math.abs(nl0 - m.l0) < 1e-4) return; // no se movió
+      const nl1 = nl0 + ancho;
+      const dLat = nl0 - m.l0;
+      // Fondo: contra la pared real de la franja NUEVA, con las mismas reglas de colocarAsset.
+      let atras;
+      if(m.o.userData.pared.modo === 'fachada'){
+        const pared = paredReal(g, cara, nl0, nl1, m.y0, m.y0 + m.alto);
+        atras = Math.max(c.normal, pared) - m.fondo * (pared > c.normal + PARED_SALIENTE ? 0 : 0.45);
+      } else {
+        const pared = Math.max(c.normal, paredReal(g, cara, nl0, nl1, g.plintoY, g.plintoY + m.alto));
+        atras = Math.max(pared + m.fondo*0.15, Math.min(pared + m.fondo/2 + 0.04, c.normalPlinto - m.fondo/2)) - m.fondo/2;
+      }
+      const dNor = atras - m.n0;
+      if(cara.nx){ m.o.position.z += dLat; m.o.position.x += dNor * cara.nx; }
+      else { m.o.position.x += dLat; m.o.position.z += dNor * cara.nz; }
+    });
+  });
+}
+
 function refreshSedeAssets(sede){
   // limpiar assets previos
   const old = sede.group.getObjectByName('assetsContainer');
@@ -564,6 +811,7 @@ function refreshSedeAssets(sede){
   container.name = 'assetsContainer';
 
   const g = geometriaEntidad(sede);
+  g.grupo = sede.group; // para medir la pared real del modelo (paredReal)
   // ¿Hay candado de End Point? Su placa ocupa el centro del frente (ver huecoPerimetral).
   const candados = [...sede.instancias, ...(sede.tipo==='matriz' ? [] : (sede.herenciaIds||[]).map(hid=>findInstanciaEnMatrices(hid)).filter(Boolean))]
     .filter(i=>{ const sub = getSubproducto(i.subproductoId); return (sub.assetKey || getProducto(sub.productoNivel2Id).assetKey) === 'candado'; }).length;
@@ -611,6 +859,7 @@ function refreshSedeAssets(sede){
   });
   const totalPorModo = planeadas.reduce((acc,p)=>{ acc[p.modo]=(acc[p.modo]||0)+1; return acc; }, {});
   g.hayPortico = !!totalPorModo.portico; // el ícono de Datos se apoya sobre el arco de Acceso
+  asignarParedes(planeadas, g); // qué pared le toca a cada ícono de fachada / plataforma (p.hueco)
 
   // 2ª pasada: construir, colocar y etiquetar
   planeadas.forEach(p=>{
@@ -633,7 +882,7 @@ function refreshSedeAssets(sede){
     // pieza se coloca completa, como un ícono suelto, y de ahí salen la escala y la posición de
     // los aros y de todas las placas, que se corren hacia afuera de la pared.
     if(p.col.apila && p.modo !== 'cubierta' && (p.col.pilaSoloPrimera || piezas.length > 1)){
-      colocarAsset(piezas[0], p.modo, p.factor, g, p.turno, totalPorModo[p.modo]);
+      colocarAsset(piezas[0], p.modo, p.factor, g, p.turno, totalPorModo[p.modo], p.hueco);
       let anillos = null;
       if(p.col.pilaSoloPrimera){
         anillos = build(getSubproductoColor(visibles[0].sub));
@@ -643,15 +892,25 @@ function refreshSedeAssets(sede){
         p.col.pilaLateral ? { anchoMax: g.cuerpoW * FILA_ANCHO_MAX } : null);
       if(r.anillos) container.add(r.anillos);
       r.placas.userData.sobrePuerto = p.modo === 'portico' || p.modo === 'puerto';
+      // La fila de candados del frente es fija: lo demás de esa pared se acomoda a su lado.
+      if(p.col.pilaLateral) r.placas.userData.bloqueaFrente = true;
+      else if(piezas[0].userData.pared) r.placas.userData.pared = piezas[0].userData.pared; // pila de WAF/DNS: se mueve entera
       container.add(r.placas);
       return;
     }
     const asset = piezas.length < 2 ? piezas[0]
       : (p.col.pilaVertical ? construirPilaVertical(piezas, p.col.pilaVertical) : construirPila(piezas));
-    colocarAsset(asset, p.modo, p.factor, g, p.turno, totalPorModo[p.modo]);
+    colocarAsset(asset, p.modo, p.factor, g, p.turno, totalPorModo[p.modo], p.hueco);
     asset.userData.sobrePuerto = p.modo === 'portico' || p.modo === 'puerto';
     container.add(asset);
   });
+
+  // 2ª pasada (25/09, Dei): íconos DISTINTOS nunca se pisan. Los del techo se reparten en un
+  // anillo tan grande como haga falta; los de cada pared, en fila. Las pilas (mismo ícono) y lo
+  // que envuelve al edificio (aros del candado, escudo) quedan como estaban.
+  repartirCubierta(container.children.filter(o=> o.userData.techo), g);
+  repartirParedes(container.children.filter(o=> o.userData.pared), g,
+    container.children.filter(o=> o.userData.bloqueaFrente));
 
   sede.group.add(container);
   // La etiqueta de nombre tapaba lo que está parado sobre el "+" (arco de Acceso, ícono de Datos):

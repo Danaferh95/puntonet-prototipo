@@ -40,6 +40,26 @@ const ICONOS_ESCALA = 1;
 // T07: brillo propio de los íconos (sin bloom). base = emisivo del cuerpo; glow = del rasgo de glow.
 const ICONOS_BRILLO = { base: 0.18, glow: 1.8 };
 
+/* 25/09 (Dei/cliente): glows de los íconos, "ícono por ícono", en el orden del menú. El cliente
+   siente los colores lavados: el rasgo de glow se aclaraba ×1.5 hacia el blanco y su emisivo (1.8)
+   saturaba, así que se leía blanquecino y sin color. Cada assetKey puede tener su look propio:
+     glow     — emisivo del rasgo de glow (mat_glow).
+     base     — emisivo del cuerpo (mat_base).
+     aclarar  — cuánto se aclara el color del rasgo de glow (1 = el color puro del catálogo).
+     bloom    — el rasgo de glow entra al post-proceso (§3C): gana un halo de SU color, puntual,
+                como los edificios. El resto del ícono tapa el halo que queda detrás (no suma luz).
+     bloomBase — también el cuerpo entra al halo (para íconos sin rasgo de glow, como el globo).
+     fuerza   — cuánta luz del color puro aporta al halo (1 = el color tal cual).
+   Los que no están en la tabla quedan exactamente como antes (ICONOS_LOOK_DEFECTO). */
+const ICONOS_LOOK_DEFECTO = { base: ICONOS_BRILLO.base, glow: ICONOS_BRILLO.glow, aclarar: 1.5, bloom: false, bloomBase: false, fuerza: 1 };
+const ICONOS_LOOK = {
+  // Conectividad (primer bloque del menú)
+  enlace: { glow: 1.1, aclarar: 1.0, base: 0.25, bloom: true, fuerza: 0.4 },  // Datos: la cara luminosa de cada paquete
+  nodo:   { glow: 1.25, aclarar: 1.0, base: 0.25, bloom: true, fuerza: 0.7 }, // SD-WAN: los conectores entre cubos
+  globo:  { base: 0.25, bloom: true, bloomBase: true, fuerza: 0.35 },          // Internet: solo trae cuerpo (el alambre)
+};
+function lookIcono(assetKey){ return Object.assign({}, ICONOS_LOOK_DEFECTO, ICONOS_LOOK[assetKey] || {}); }
+
 // assetKey (mismo que en PRODUCTOS/SUBPRODUCTOS, §1) -> archivo (sin .glb). Va creciendo tanda a
 // tanda; los assetKeys que faltan acá siguen con su primitiva de AssetRegistry (§5).
 // Claves opcionales de cada entrada:
@@ -97,12 +117,29 @@ const ICONOS_DIM_OBJETIVO = 0.58;
 
 const IconLibrary = (()=>{
   const plantillas = {};          // archivo -> THREE.Group crudo (geometría cacheada, SIN material asignado)
-  const materialesPorColor = {};  // color (int) -> { base, glow, translucido, receso } — compartidos entre assetKeys
+  const materialesPorColor = {};  // color|look -> { base, glow, translucido, receso } — compartidos entre assetKeys con el mismo look
+  const ocultosEnBrillo = new Set(); // materiales de íconos con bloom que tapan el halo sin sumarle luz (ver brillo.js)
+  const mallasBrillo = new Set();    // mallas de íconos que SÍ suman al halo (se les cambia el material en la fuente)
+  const materialesBrillo = {};       // color|fuerza -> MeshBasicMaterial del color puro
+  /* Lo que un ícono aporta al halo es SOLO su color, plano: si la fuente usara el material que se
+     ve en pantalla, entrarían también los reflejos blancos del metal y el halo saldría blanquecino
+     (probado: el globo azul daba un halo celeste casi blanco). Igual que el emisivo negro+color de
+     las entidades (§3B). */
+  function materialBrilloDe(color, fuerza){
+    const clave = color + '|' + fuerza;
+    if(materialesBrillo[clave]) return materialesBrillo[clave];
+    const m = new THREE.MeshBasicMaterial({ color });
+    m.color.convertSRGBToLinear().multiplyScalar(fuerza);
+    marcarCompartido(m);
+    return (materialesBrillo[clave] = m);
+  }
   let estado = 'pendiente';       // 'pendiente' | 'listo' | 'parcial' | 'sin_modelos'
   const errores = {};             // archivo -> mensaje
 
-  function materialesDeColor(color){
-    if(materialesPorColor[color]) return materialesPorColor[color];
+  function materialesDeColor(color, look){
+    look = look || ICONOS_LOOK_DEFECTO;
+    const clave = color + '|' + look.base + '|' + look.glow + '|' + look.aclarar;
+    if(materialesPorColor[clave]) return materialesPorColor[clave];
     // Mismo environment que las entidades (ModelLibrary, §3B): antes los íconos no tenían envMap
     // y por eso no mostraban ningún reflejo aunque el material ya fuera metálico. `receso` queda
     // sin envMap a propósito: es un hueco/sombra, un reflejo ahí contradice la lectura de "hundido".
@@ -110,8 +147,8 @@ const IconLibrary = (()=>{
     const set = {
       // T07 (24/09, Dei): "que brillen un poquito". El cuerpo suma un emisivo leve de su propio
       // color y el rasgo de glow sube de 1.35 a ICONOS_BRILLO.glow. Siguen fuera del bloom.
-      base:        new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:ICONOS_BRILLO.base, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.3 }),
-      glow:        new THREE.MeshStandardMaterial({ color: lightenColor(color, 1.5), emissive:color, emissiveIntensity:ICONOS_BRILLO.glow, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.9 }),
+      base:        new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:look.base, metalness:0.6, roughness:0.32, envMap: entorno, envMapIntensity:1.3 }),
+      glow:        new THREE.MeshStandardMaterial({ color: look.aclarar === 1 ? color : lightenColor(color, look.aclarar), emissive:color, emissiveIntensity:look.glow, metalness:0.15, roughness:0.3, envMap: entorno, envMapIntensity:0.9 }),
       translucido: new THREE.MeshStandardMaterial({ color, transparent:true, opacity:0.45, depthWrite:false, metalness:0.1, roughness:0.25, side:THREE.DoubleSide, envMap: entorno, envMapIntensity:1.2 }),
       receso:      new THREE.MeshStandardMaterial({ color: darkenColor(color, 0.45), metalness:0.2, roughness:0.75 }),
     };
@@ -123,7 +160,7 @@ const IconLibrary = (()=>{
       m.color.convertSRGBToLinear();
       if(m.emissive) m.emissive.convertSRGBToLinear();
     });
-    materialesPorColor[color] = set;
+    materialesPorColor[clave] = set;
     marcarCompartido(...Object.values(set)); // caché por color: lo usan todos los íconos de ese color
     return set;
   }
@@ -253,16 +290,31 @@ const IconLibrary = (()=>{
     if(!plantilla) return null;
     const objeto = plantilla.clone(true);
     if(def.materialesPropios) return objeto; // clone(true) comparte los materiales del .glb
-    const mats = materialesDeColor(color);
+    const look = lookIcono(assetKey);
+    const mats = materialesDeColor(color, look);
     objeto.traverse(o=>{
       if(!o.isMesh) return;
       o.material = mats[o.userData.slot] || mats.base;
+      if(!look.bloom) return;
+      // Todo el ícono entra a la capa del brillo: lo que brilla suma su color al halo, y el resto
+      // se dibuja ahí sin color (colorWrite:false desde brillo.js) solo para tapar lo de atrás.
+      o.layers.enable(CAPA_BRILLO);
+      const brilla = o.userData.slot === 'glow' || (look.bloomBase && o.userData.slot === 'base');
+      if(!brilla){ ocultosEnBrillo.add(o.material); return; }
+      o.userData.matBrillo = materialBrilloDe(color, look.fuerza);
+      mallasBrillo.add(o);
     });
     return objeto;
   }
 
   return {
     precargar, instanciar,
+    ocultosEnBrillo: ()=> ocultosEnBrillo,
+    // Las que ya no cuelgan de la escena (sede borrada, íconos rehechos) se descartan acá.
+    mallasBrillo: ()=>{
+      mallasBrillo.forEach(o=>{ let r = o; while(r.parent) r = r.parent; if(r !== scene) mallasBrillo.delete(o); });
+      return mallasBrillo;
+    },
     estado: ()=> estado,
     errores: ()=> Object.assign({}, errores),
   };

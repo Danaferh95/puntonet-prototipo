@@ -78,22 +78,25 @@
 .pdf-salud__inicial{margin-top:10px;color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
 .pdf-salud__inicial strong{color:var(--pn-color-white);font-weight:700;}
 
-/* Estado inicial (cliente, 25/09): captura del canvas al guardar el inicio + score de ese momento.
-   La caja es 16:9, igual que CAPTURA_INICIO en js/reporte/estructura.js. */
-.pdf-inicio{display:flex;align-items:center;gap:24px;margin-bottom:20px;padding:16px 20px;border:1px solid var(--pn-color-border);
+/* Estado inicial vs final (cliente, 25/09): las dos capturas del canvas lado a lado, cada una con
+   su salud, y los conteos inicio → final debajo. Cada caja es 16:9, igual que CAPTURA_ESTRUCTURA
+   en js/reporte/estructura.js (320 × 180 px de página: entra justo en cada columna). */
+.pdf-comparacion{margin-bottom:20px;padding:16px 20px;border:1px solid var(--pn-color-border);
   border-radius:var(--pn-layout-radius18);background:var(--pn-gradient-detail);}
-.pdf-inicio__caja{display:flex;flex:none;align-items:center;justify-content:center;width:320px;height:180px;
+.pdf-comparacion__fila{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px;}
+.pdf-comparacion__lado{min-width:0;}
+.pdf-comparacion__caja{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:16/9;
   border:1px solid rgba(48,99,164,.55);border-radius:12px;overflow:hidden;}
-.pdf-inicio__img{display:block;width:100%;height:100%;}
-.pdf-inicio__sin-img{color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
-.pdf-inicio__texto{flex:1;min-width:0;}
-.pdf-inicio__valor{margin-top:6px;color:var(--pn-color-white);font:300 40px/44px var(--font-sans);}
-.pdf-inicio__pct{font-size:20px;}
-.pdf-inicio__desc{margin-top:2px;color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
-.pdf-inicio__conteos{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:12px;}
-.pdf-inicio__conteo{display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid rgba(48,99,164,.45);font:400 10px/14px var(--font-sans);}
-.pdf-inicio__conteo dt{color:var(--pn-color-muted);}
-.pdf-inicio__conteo dd{color:var(--pn-color-white);font-weight:500;}
+.pdf-comparacion__img{display:block;width:100%;height:100%;}
+.pdf-comparacion__sin-img{color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);}
+.pdf-comparacion__pie{display:flex;align-items:baseline;justify-content:space-between;margin-top:8px;}
+.pdf-comparacion__titulo{color:var(--pn-color-muted);font:400 10px/14px var(--font-sans);letter-spacing:1px;text-transform:uppercase;}
+.pdf-comparacion__valor{color:var(--pn-color-white);font:300 26px/30px var(--font-sans);}
+.pdf-comparacion__pct{font-size:14px;}
+.pdf-comparacion__conteos{display:grid;grid-template-columns:repeat(4, 1fr);gap:6px 18px;margin-top:12px;}
+.pdf-comparacion__conteo{display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid rgba(48,99,164,.45);font:400 10px/14px var(--font-sans);}
+.pdf-comparacion__conteo dt{color:var(--pn-color-muted);}
+.pdf-comparacion__conteo dd{color:var(--pn-color-white);font-weight:500;}
 
 .pdf-categorias{display:grid;grid-template-columns:1fr 1fr;gap:18px 34px;margin-bottom:18px;}
 .pdf-categoria{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:6px 10px;color:var(--pn-color-cyan);}

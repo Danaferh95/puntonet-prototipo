@@ -186,11 +186,16 @@ const Brillo = (()=>{
   // en el finally, falle lo que falle.
   function renderizarFuente(){
     const bases = Object.values(ModelLibrary.materiales()).map(m=>m.base);
+    // 25/09: los íconos con bloom (ICONOS_LOOK) también tapan el halo con su cuerpo, sin sumarle.
+    if(typeof IconLibrary !== 'undefined' && IconLibrary.ocultosEnBrillo) IconLibrary.ocultosEnBrillo().forEach(m=> bases.push(m));
     const capasPrevias = camera.layers.mask;
     renderer.getClearColor(clearPrevio);
     const alfaPrevio = renderer.getClearAlpha();
+    const iconos = (typeof IconLibrary !== 'undefined' && IconLibrary.mallasBrillo) ? [...IconLibrary.mallasBrillo()] : [];
+    const materialesPrevios = iconos.map(o=> o.material);
     try{
       bases.forEach(m=>{ m.colorWrite = false; });
+      iconos.forEach(o=>{ o.material = o.userData.matBrillo; }); // solo su color plano (ver iconos.js)
       camera.layers.set(CAPA_BRILLO);
       renderer.setRenderTarget(fuente);
       renderer.setClearColor(0x000000, 0);
@@ -198,6 +203,7 @@ const Brillo = (()=>{
       renderer.render(scene, camera);
     } finally {
       bases.forEach(m=>{ m.colorWrite = true; });
+      iconos.forEach((o, i)=>{ o.material = materialesPrevios[i]; });
       camera.layers.mask = capasPrevias;
       renderer.setClearColor(clearPrevio, alfaPrevio);
     }

@@ -381,6 +381,12 @@ const E = (w, expr) => w.eval(expr);
     cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 1);
   check('el reporte muestra el bloque inicio → final', /Estructura: inicio y final/.test(doc.getElementById('reportBody').textContent) &&
     /1 → 3/.test(doc.getElementById('reportBody').textContent));
+  // Cliente 25/09: cada guardado lleva su captura, no solo el inicio → el reporte compara imágenes.
+  const imgs = E(wE,'[state.estructuras.inicial.imagen, state.estructuras.actual.imagen]');
+  check('inicio y final llevan cada uno su captura del canvas (data URL)',
+    imgs.every(x=> typeof x === 'string' && x.startsWith('data:image/')), imgs.map(x=> typeof x));
+  check('el reporte muestra las dos capturas lado a lado (inicio y final)',
+    doc.querySelectorAll('#reportBody .report-estructura__captura img').length === 2);
   const wE2 = ventana({});
   await E(wE2,'modelosListos');
   E(wE2,'createSede(30, 3, 1); openReport()');

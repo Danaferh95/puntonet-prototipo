@@ -27,7 +27,7 @@ function webp(p){
 }
 
 const assets = {
-  logo: svg('logos/puntonet-logo.svg'),
+  logo: svg('logos/puntonet-logo-blanco.svg'), // 25/09: versión toda en blanco (cliente)
   renders: {
     sede: webp('renders-sm/sede.webp'),
     matriz: webp('renders-sm/matriz.webp'),

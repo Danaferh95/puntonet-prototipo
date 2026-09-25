@@ -335,6 +335,113 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
     SVG_LINEUP.every(k=> !/aipgf|AdobeIllustrator|<metadata/i.test(svgs[k])),
     SVG_LINEUP.filter(k=>/aipgf|AdobeIllustrator|<metadata/i.test(svgs[k]||'')));
 
+  console.log('\nI-bis. Íconos del techo a la escala del candado (cliente, 25/09)');
+  const medTecho = E(w, `(function(){
+    const m = createMatriz(6, -6);
+    ['edr','zona_wireless','sdwan','internet_corporativo'].forEach((id, i)=>{
+      const sub = getSubproducto(id), pr = getProducto(sub.productoNivel2Id);
+      m.instancias.push({ instanciaId:'inst_techo_'+i, subproductoId:id, verticalId:pr.verticalId, valores:{} });
+    });
+    refreshSedeAssets(m);
+    m.group.updateMatrixWorld(true);
+    const c = m.group.getObjectByName('assetsContainer');
+    const lado = o=>{ const t = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()); return Math.max(t.x, t.y, t.z); };
+    const placa = c.getObjectByName('pilaFachada');
+    const techo = c.children.filter(o=> ['inst_techo_1','inst_techo_2','inst_techo_3'].includes(o.userData.instanciaId));
+    const g = geometriaEntidad(m);
+    return { placa: placa ? lado(placa.children[0]) : 0, techo: techo.map(lado), ref: tamanoCandado(g),
+      pos: techo.map(o=>[o.position.x, o.position.z]) };
+  })()`);
+  check('los íconos del techo miden lo mismo que la placa del candado (±15 %)',
+    medTecho.techo.length === 3 && medTecho.placa > 0 && medTecho.techo.every(v=> Math.abs(v/medTecho.placa - 1) < 0.15), medTecho);
+  check('…y ninguno queda sobre el puerto (+) del centro del techo',
+    medTecho.pos.every(([x, z])=> Math.hypot(x, z) > 0.3), medTecho.pos);
+  // 25/09 (cliente): los íconos de fachada chocaban con el anexo de la pared derecha de la Matriz.
+  const anexo = E(w, `(function(){
+    const m = createMatriz(-8, 6);
+    // Ofimática toma la pared del frente; Conferencia cae en la derecha (+X), la del anexo.
+    ['ofimatica', 'conferencia'].forEach(id=>{
+      const sub = getSubproducto(id), pr = getProducto(sub.productoNivel2Id);
+      m.instancias.push({ instanciaId:'inst_anexo_'+id, subproductoId:id, verticalId:pr.verticalId, valores:{} });
+    });
+    refreshSedeAssets(m);
+    m.group.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(m.group.matrixWorld).invert();
+    const local = o=> new THREE.Box3().setFromObject(o).applyMatrix4(inv);
+    const shell = m.group.getObjectByName('shell_b');
+    const icono = m.group.getObjectByName('assetsContainer').children.find(o=> o.userData.instanciaId === 'inst_anexo_conferencia');
+    return shell ? { anexoX: local(shell).max.x, iconoMinX: local(icono).min.x } : null;
+  })()`);
+  check('un ícono de fachada en la pared derecha de la Matriz queda delante del anexo, no atravesado',
+    !anexo || anexo.iconoMinX >= anexo.anexoX - 0.02, anexo);
+  // 25/09 (Dei): los íconos del techo de una Sede miden lo mismo que en la Matriz, aunque se salgan
+  // de su techo. El resto (candado, paredes, plataforma) sigue a la medida de la Sede.
+  const tamanos = E(w, `(function(){
+    const lista = ['edr','zona_wireless','internet_corporativo','ofimatica'];
+    const medir = ent=>{
+      lista.forEach((id, i)=>{ const sub = getSubproducto(id), pr = getProducto(sub.productoNivel2Id);
+        ent.instancias.push({ instanciaId:'inst_tam_'+ent.id+'_'+i, subproductoId:id, verticalId:pr.verticalId, valores:{} }); });
+      refreshSedeAssets(ent);
+      ent.group.updateMatrixWorld(true);
+      const c = ent.group.getObjectByName('assetsContainer');
+      const lado = o=>{ const t = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()); return +Math.max(t.x, t.y, t.z).toFixed(3); };
+      const placa = c.getObjectByName('pilaFachada');
+      return [placa ? lado(placa.children[0]) : 0,
+        ...[1,2,3].map(i=> lado(c.children.find(o=> o.userData.instanciaId === 'inst_tam_'+ent.id+'_'+i)))];
+    };
+    return { matriz: medir(createMatriz(10, 10)), sede: medir(createSede(30, -10, 10)) };
+  })()`);
+  // [0] placa del candado, [1] Punto de Acceso y [2] Internet (techo), [3] Ofimática (pared).
+  check('una Sede chica muestra los íconos del TECHO al tamaño de la Matriz',
+    [1,2].every(i=> tamanos.sede[i] > 0 && Math.abs(tamanos.sede[i] / tamanos.matriz[i] - 1) < 0.03), tamanos);
+  check('…pero el candado y los de las paredes siguen a la medida de la Sede (más chicos)',
+    [0,3].every(i=> tamanos.sede[i] > 0 && tamanos.sede[i] < tamanos.matriz[i] * 0.95), tamanos);
+  // 25/09 (Dei): íconos DISTINTOS no se pisan, aunque la sede sea chica y tenga de todo. Las pilas
+  // (mismo ícono) cuentan como uno; los aros del candado y el escudo envuelven y no cuentan.
+  const solapes = E(w, `(function(){
+    const s = createSede(10, 14, -14);
+    ['internet_corporativo','internet_startup','internet_teleworking','sdwan','tunel_ipsec','zona_wireless',
+     'portal_cautivo','iaas','edr','ofimatica','waf','conferencia','firewall_on_premise','collocation'].forEach((id, i)=>{
+      const sub = getSubproducto(id), pr = getProducto(sub.productoNivel2Id);
+      s.instancias.push({ instanciaId:'inst_sol_'+i, subproductoId:id, verticalId:pr.verticalId, valores:{} });
+    });
+    refreshSedeAssets(s);
+    s.group.updateMatrixWorld(true);
+    const c = s.group.getObjectByName('assetsContainer');
+    const cajas = c.children.filter(o=> o.userData.techo || o.userData.pared || o.userData.bloqueaFrente)
+      .map(o=> ({ o, b: new THREE.Box3().setFromObject(o) }));
+    const malos = [];
+    cajas.forEach((a, i)=> cajas.forEach((b, j)=>{
+      if(j <= i) return;
+      const ix = Math.min(a.b.max.x, b.b.max.x) - Math.max(a.b.min.x, b.b.min.x);
+      const iy = Math.min(a.b.max.y, b.b.max.y) - Math.max(a.b.min.y, b.b.min.y);
+      const iz = Math.min(a.b.max.z, b.b.max.z) - Math.max(a.b.min.z, b.b.min.z);
+      if(ix > 0.02 && iy > 0.02 && iz > 0.02) malos.push([i, j, ix, iz]);
+    }));
+    const porCara = {};
+    c.children.filter(o=> o.userData.pared).forEach(o=>{ const k = o.userData.pared.cara.nx + ',' + o.userData.pared.cara.nz; porCara[k] = (porCara[k]||0) + 1; });
+    return { n: cajas.length, techo: cajas.filter(x=> x.o.userData.techo).length, malos, porCara };
+  })()`);
+  check('Sede chica con 14 productos: los íconos del techo y de las paredes no se pisan entre sí',
+    solapes.techo >= 5 && solapes.n >= 9 && solapes.malos.length === 0, solapes);
+  // 25/09 (Dei): máximo 2 por pared (la fila de candados cuenta como uno en el frente) y nunca atrás.
+  check('…y en las paredes hay como máximo 2 por lado, contando la fila de candados, y ninguno atrás (-Z)',
+    !solapes.porCara['0,-1'] && (solapes.porCara['0,1']||0) <= 1 && Object.values(solapes.porCara).every(v=> v <= 2), solapes.porCara);
+  check('el disco oscuro del piso ya no está en la escena (queda solo la grilla)', !E(w, 'scene.getObjectByName("piso")'));
+
+  console.log('\nI-ter. Glow de los íconos (ICONOS_LOOK, 25/09)');
+  const glow = E(w, `(function(){
+    const brillo = new THREE.Layers(); brillo.set(CAPA_BRILLO);
+    const capa = o=>{ let en = false, sum = false;
+      o.traverse(m=>{ if(!m.isMesh) return; if(m.layers.test(brillo)) en = true; if(m.userData.matBrillo) sum = true; });
+      return { en, sum }; };
+    const r = {};
+    ['enlace','nodo','globo','escudo','rack'].forEach(k=>{ const o = IconLibrary.instanciar(k, 0x3366ff); r[k] = o ? capa(o) : null; });
+    return r;
+  })()`);
+  check('Conectividad (Datos, SD-WAN, Internet) entra al halo con su color; los que no están en ICONOS_LOOK siguen fuera',
+    ['enlace','nodo','globo'].every(k=> glow[k] && glow[k].en && glow[k].sum) && ['escudo','rack'].every(k=> glow[k] && !glow[k].en), glow);
+
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que smoke-test-modelos.js: líneas (no ocurrencias) que contienen '.style.'
   const nEstilos = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;

@@ -25,9 +25,10 @@
 
 /* Encuadre y aspecto del esquema de la portada. */
 const ESQUEMA_PDF = {
-  // Elevación de la cámara. Algo más alta que la vista por defecto (35°): los cables se tapan
-  // menos con los edificios y se leen todas las conexiones. La órbita horizontal es la de siempre.
-  elevacion: THREE.MathUtils.degToRad(44),
+  // Elevación de la cámara. 25/09 (cliente): la foto del reporte se veía "muy desde arriba"
+  // (44°). Ahora usa la misma elevación que la vista por defecto del configurador (~35°), la de
+  // la captura que mandó el cliente. El encuadre (encuadrarEsquema) sigue metiendo toda la infra.
+  elevacion: DEFAULT_CAM_ANGLE_X,
   margen: 0.88,        // fracción del cuadro que ocupa el contenido (el resto es aire)
   grosorCables: 2.2,   // los cables se ven más gruesos solo en la foto: a esa escala el grosor de pantalla desaparece
   zoomMax: 2.2,        // tope para escenas chicas: con una sola entidad no se acerca hasta llenar la portada
@@ -337,7 +338,7 @@ function datosReportePDF(config){
   const entidadesConServicios = [...state.matrices, ...state.sedes, ...state.nubes, ...(state.datacenter.activo ? [state.datacenter] : [])];
   // Estado inicial (cliente, 25/09): la foto del primer "Guardar estado actual" (T06), con su
   // captura del canvas y su salud. Ya no se pide un score a mano.
-  const ini = config.estructuras.inicial;
+  const ini = config.estructuras.inicial, fin = config.estructuras.actual;
   const inicial = ini && ini.resumen ? ini.resumen.saludGlobal : null;
   return {
     cliente: config.nombreCliente, clienteLogo: config.clienteLogo, fecha: fechaLargaPDF(config.generadoEn),
@@ -348,6 +349,8 @@ function datosReportePDF(config){
     },
     salud: { actual: config.salud.actual, inicial, porVertical: saludPorVertical() },
     inicio: ini ? { imagen: ini.imagen || null, hora: horaFoto(ini), resumen: ini.resumen } : null,
+    // 25/09: la captura del final (el guardado automático al abrir el reporte) para comparar.
+    final: fin ? { imagen: fin.imagen || null, hora: horaFoto(fin) } : null,
     enlaces: enlacesDelReporte(),
     entidades: entidadesDelReporte(),
   };
@@ -555,34 +558,45 @@ function armarResumenPDF(ctx){
   });
 }
 
-/* Estado inicial (cliente, 25/09): la captura del canvas y el score del momento en que se guardó
-   el inicio de la sesión, con los conteos de ese momento frente a los actuales. */
-function bloqueInicioPDF(d){
-  const box = pdfEl('div', 'pdf-inicio');
-  const caja = pdfEl('div', 'pdf-inicio__caja');
-  if(d.inicio.imagen){
-    const img = pdfEl('img', 'pdf-inicio__img');
-    img.src = d.inicio.imagen; img.alt = 'Estructura al inicio de la sesión';
+/* Estado inicial vs final (cliente, 25/09): las capturas del canvas del inicio de la sesión y del
+   final (al generar el reporte), lado a lado, cada una con su salud, y debajo los conteos
+   inicio → final. Si falta una captura queda el hueco con "Sin captura". */
+function ladoComparacionPDF(titulo, hora, imagen, salud){
+  const lado = pdfEl('figure', 'pdf-comparacion__lado');
+  const caja = pdfEl('div', 'pdf-comparacion__caja');
+  if(imagen){
+    const img = pdfEl('img', 'pdf-comparacion__img');
+    img.src = imagen; img.alt = `Estructura: ${titulo.toLowerCase()} de la sesión`;
     caja.appendChild(img);
   } else {
-    caja.appendChild(pdfEl('span', 'pdf-inicio__sin-img', 'Sin captura'));
+    caja.appendChild(pdfEl('span', 'pdf-comparacion__sin-img', 'Sin captura'));
   }
-  const texto = pdfEl('div', 'pdf-inicio__texto');
-  texto.appendChild(pdfEl('div', 'pdf-salud__overline', `Estado inicial · guardado ${d.inicio.hora}`));
-  const valor = pdfEl('div', 'pdf-inicio__valor', String(d.salud.inicial));
-  valor.appendChild(pdfEl('span', 'pdf-inicio__pct', '%'));
-  texto.append(valor, pdfEl('p', 'pdf-inicio__desc', 'Salud de infraestructura al inicio de la sesión.'));
+  const pie = pdfEl('figcaption', 'pdf-comparacion__pie');
+  pie.appendChild(pdfEl('span', 'pdf-comparacion__titulo', hora ? `${titulo} · ${hora}` : titulo));
+  const valor = pdfEl('span', 'pdf-comparacion__valor', String(salud));
+  valor.appendChild(pdfEl('span', 'pdf-comparacion__pct', '%'));
+  pie.appendChild(valor);
+  lado.append(caja, pie);
+  return lado;
+}
+function bloqueInicioPDF(d){
+  const box = pdfEl('div', 'pdf-comparacion');
+  box.appendChild(pdfEl('div', 'pdf-salud__overline', 'Estructura · inicio y final de la sesión'));
+  const fila = pdfEl('div', 'pdf-comparacion__fila');
+  fila.append(
+    ladoComparacionPDF('Inicio', d.inicio.hora, d.inicio.imagen, d.salud.inicial),
+    ladoComparacionPDF('Final', d.final && d.final.hora, d.final && d.final.imagen, d.salud.actual));
+  box.appendChild(fila);
   const r = d.inicio.resumen;
   const conteos = [[r.sedes, d.cifras.sedes, 'Sedes'], [r.matrices, d.cifras.matrices, 'Matrices'],
     [r.nubes, d.cifras.nubes, 'Nubes'], [r.productos, d.cifras.servicios, 'Servicios']];
-  const lista = pdfEl('dl', 'pdf-inicio__conteos');
+  const lista = pdfEl('dl', 'pdf-comparacion__conteos');
   conteos.forEach(([a, b, t])=>{
-    const item = pdfEl('div', 'pdf-inicio__conteo');
+    const item = pdfEl('div', 'pdf-comparacion__conteo');
     item.append(pdfEl('dt', null, t), pdfEl('dd', null, `${a} → ${b}`));
     lista.appendChild(item);
   });
-  texto.appendChild(lista);
-  box.append(caja, texto);
+  box.appendChild(lista);
   return box;
 }
 

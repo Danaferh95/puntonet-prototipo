@@ -26,7 +26,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | `escena/` | `recursos.js` | Liberar memoria de la GPU al sacar objetos de la escena |
 | | `base.js` | Escena, cámara, renderer, fábricas de malla, puerto de techo |
 | | `color-luces.js` | §3A-ter pipeline de color, luces, etiquetas de nombre, grilla |
-| | `piso.js` | §3A-bis piso oscuro con glow bajo cada entidad |
+| | `piso.js` | §3A-bis glow bajo cada entidad (sin disco oscuro desde el 25/09) |
 | | `modelos.js` | §3B `ModelLibrary` (entidades .glb) y env map del metal |
 | | `iconos.js` | §3D `IconLibrary` (íconos de producto .glb) |
 | | `brillo.js` | §3C bloom (post-proceso) |
