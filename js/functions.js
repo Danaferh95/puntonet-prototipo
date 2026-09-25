@@ -435,7 +435,6 @@ function byId(id){ return document.getElementById(id); }
 const state = {
   clienteNombre: '',
   clienteLogo: null,     // dataURL (base64) del logo del cliente, opcional — se incluye en el PDF
-  saludInicial: null,    // score 0-100 ingresado a mano por el vendedor: "así estaba antes de Puntonet"
   estructuras: { inicial:null, actual:null }, // T06: inicio de la sesión (primer guardado) y estado actual (ver fotoEstructura)
   sedes: [],            // { id, nombre, tipo, gx, gz, group(THREE.Group), instancias:[], herenciaIds:[] }
   matrices: [],          // { id, nombre, tipo:'matriz', gx, gz, group(THREE.Group), instancias:[] } — igual que
@@ -6360,7 +6359,9 @@ function buildConfiguracionCliente(){
     estructuras: { inicial: state.estructuras.inicial, actual: state.estructuras.actual },
     generadoEn: new Date().toISOString(),
     salud: {
-      inicial: state.saludInicial, // ingresado a mano por el vendedor, o null si no se completó
+      // Cliente 25/09: ya no se carga a mano; es la salud del inicio de la sesión (primer
+      // "Guardar estado actual"), o null si no se guardó.
+      inicial: saludDelInicio(),
       actual: saludGlobal(),
       // v15 (T05): cobertura de ubicaciones — `cubiertas` de `elegibles` (Sedes + Matrices) — en
       // lugar de `asignados`/`total` productos del catálogo.
@@ -6447,11 +6448,12 @@ function conexionesTexto(entityId){
   }).join(' + ');
 }
 
-const saludInicialInput = byId('saludInicialInput');
-saludInicialInput.addEventListener('input', ()=>{
-  const v = saludInicialInput.value;
-  state.saludInicial = v==='' ? null : Math.max(0, Math.min(100, parseInt(v,10)||0));
-});
+/* Salud del inicio de la sesión (cliente, 25/09): antes el asesor la escribía a mano en el
+   reporte; ahora sale sola de la foto que se tomó con el primer "Guardar estado actual". */
+function saludDelInicio(){
+  const ini = state.estructuras.inicial;
+  return ini && ini.resumen ? ini.resumen.saludGlobal : null;
+}
 
 /* =========================================================================
    T06 (reunión 22/09): ESTRUCTURA INICIAL vs ACTUAL
@@ -6466,7 +6468,33 @@ saludInicialInput.addEventListener('input', ()=>{
    Una foto es una copia profunda de lo que exporta buildConfiguracionCliente (entidades,
    productos, conexiones, salud) sin los datos del cliente ni las propias fotos, más un resumen
    con los conteos que usa el reporte. Es un dato congelado: no se vuelve a calcular.
+   Cliente (25/09): la foto del inicio guarda además la captura del canvas en ese momento
+   (`imagen`, PNG en data URL), con el mismo encuadre que el esquema del PDF. El PDF la muestra
+   junto al score de ese momento; ya no se pide el score a mano.
    ========================================================================= */
+/* Tamaño de la captura del inicio, en px de página del PDF (se toma × PDF_ESCALA). Tiene que
+   coincidir con el aspecto de .pdf-inicio__caja en styles.css (16:9). */
+const CAPTURA_INICIO = { ancho: 320, alto: 180 };
+/* La captura se toma fuera del PDF, así que el estilo de las etiquetas se mide en una página
+   temporal fuera de pantalla (las variables y la tipografía son las de .pdf-pagina). */
+function capturaEstructuraInicial(){
+  const escenario = pdfEl('div', 'pdf-escenario');
+  escenario.setAttribute('aria-hidden', 'true');
+  const pagina = pdfEl('section', 'pdf-pagina');
+  const figura = pdfEl('figure', 'pdf-esquema');
+  pagina.appendChild(figura);
+  escenario.appendChild(pagina);
+  document.body.appendChild(escenario);
+  try {
+    const estilo = estiloEtiquetaEsquema(figura);
+    return captureHeroSnapshot(CAPTURA_INICIO.ancho*PDF_ESCALA, CAPTURA_INICIO.alto*PDF_ESCALA, estilo, PDF_ESCALA);
+  } catch(err){
+    console.warn('[estructura] no se pudo capturar el canvas del inicio:', err);
+    return null;
+  } finally {
+    escenario.remove();
+  }
+}
 function fotoEstructura(){
   const cfg = JSON.parse(JSON.stringify(buildConfiguracionCliente()));
   ['version', 'nombreCliente', 'clienteLogo', 'generadoEn', 'estructuras'].forEach(k=> delete cfg[k]);
@@ -6495,14 +6523,17 @@ function renderBotonesEstructura(){
 function guardarEstructura(fijarInicio){
   const foto = fotoEstructura();
   const esPrimero = fijarInicio && !state.estructuras.inicial;
-  if(esPrimero) state.estructuras.inicial = JSON.parse(JSON.stringify(foto));
+  if(esPrimero){
+    state.estructuras.inicial = JSON.parse(JSON.stringify(foto));
+    state.estructuras.inicial.imagen = capturaEstructuraInicial();
+  }
   state.estructuras.actual = foto;
   renderBotonesEstructura();
   return esPrimero;
 }
 byId('btnEstructuraActual').addEventListener('click', ()=>{
   const esPrimero = guardarEstructura(true);
-  showToast(esPrimero ? 'Estado guardado: queda como inicio de la sesión.' : 'Estado actual guardado.');
+  showToast(esPrimero ? `Estado guardado como inicio de la sesión (captura y salud ${state.estructuras.inicial.resumen.saludGlobal}%).` : 'Estado actual guardado.');
 });
 
 /* Bloque del reporte: inicio vs final, con los conteos del resumen y la salud por categoría.
@@ -6522,6 +6553,15 @@ function renderBloqueEstructuras(config){
     row.innerHTML = `<div class="rline1"><span>${etiqueta}</span><span class="muted-small">${valor}</span></div>`;
     box.appendChild(row);
   };
+  if(ini && ini.imagen){
+    const captura = document.createElement('div');
+    captura.className = 'report-inst report-estructura__captura';
+    const img = document.createElement('img');
+    img.className = 'report-estructura__img';
+    img.src = ini.imagen; img.alt = 'Captura de la estructura al inicio de la sesión';
+    captura.appendChild(img);
+    box.appendChild(captura);
+  }
   if(!ini){
     const aviso = document.createElement('div');
     aviso.className = 'report-inst muted-small';
@@ -6547,7 +6587,6 @@ function openReport(){
   guardarEstructura(false);
   const config = buildConfiguracionCliente();
   reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
-  saludInicialInput.value = state.saludInicial===null || state.saludInicial===undefined ? '' : state.saludInicial;
   reportBody.innerHTML='';
 
   // --- Bloque de Salud de infraestructura: estado actual (barras por vertical + score global)
@@ -6556,8 +6595,8 @@ function openReport(){
   const saludBox = document.createElement('div');
   saludBox.className = 'report-sede';
   const saludHeader = document.createElement('h3');
-  const antesTxt = (state.saludInicial===null || state.saludInicial===undefined) ? '' :
-    `<span class="muted-meta"> · Estado inicial: ${state.saludInicial}%</span>`;
+  const inicial = saludDelInicio();
+  const antesTxt = inicial===null ? '' : `<span class="muted-meta"> · Inicio de la sesión: ${inicial}%</span>`;
   saludHeader.innerHTML = `<span>Salud de infraestructura — ${config.salud.actual}%</span>${antesTxt}`;
   saludBox.appendChild(saludHeader);
   config.salud.porVertical.forEach(v=>{
@@ -7096,11 +7135,10 @@ function entidadesDelReporte(){
 
 function datosReportePDF(config){
   const entidadesConServicios = [...state.matrices, ...state.sedes, ...state.nubes, ...(state.datacenter.activo ? [state.datacenter] : [])];
-  // Estado inicial de la salud: el valor que carga el asesor en el reporte; si no lo cargó, la
-  // salud del inicio de la sesión (T06, primer "Guardar estado actual").
+  // Estado inicial (cliente, 25/09): la foto del primer "Guardar estado actual" (T06), con su
+  // captura del canvas y su salud. Ya no se pide un score a mano.
   const ini = config.estructuras.inicial;
-  const inicial = (state.saludInicial!==null && state.saludInicial!==undefined) ? state.saludInicial
-    : (ini && ini.resumen ? ini.resumen.saludGlobal : null);
+  const inicial = ini && ini.resumen ? ini.resumen.saludGlobal : null;
   return {
     cliente: config.nombreCliente, clienteLogo: config.clienteLogo, fecha: fechaLargaPDF(config.generadoEn),
     cifras: {
@@ -7109,6 +7147,7 @@ function datosReportePDF(config){
       servicios: entidadesConServicios.reduce((n, e)=> n + (e.instancias || []).length, 0),
     },
     salud: { actual: config.salud.actual, inicial, porVertical: saludPorVertical() },
+    inicio: ini ? { imagen: ini.imagen || null, hora: horaFoto(ini), resumen: ini.resumen } : null,
     enlaces: enlacesDelReporte(),
     entidades: entidadesDelReporte(),
   };
@@ -7251,13 +7290,14 @@ function armarResumenPDF(ctx){
     pdfEl('p', 'pdf-salud__desc', 'Promedio de cobertura de las cuatro categorías de servicios en las ubicaciones del cliente.'));
   if(d.salud.inicial!==null && d.salud.inicial!==undefined){
     const cambio = d.salud.actual - d.salud.inicial;
-    const p = pdfEl('p', 'pdf-salud__inicial', 'Estado inicial registrado: ');
+    const p = pdfEl('p', 'pdf-salud__inicial', 'Estado inicial: ');
     p.append(pdfEl('strong', null, `${d.salud.inicial}%`), document.createTextNode(' · Cambio: '),
       pdfEl('strong', null, `${cambio>0 ? '+' : ''}${cambio} ${Math.abs(cambio)===1 ? 'punto' : 'puntos'}`));
     texto.appendChild(p);
   }
   salud.append(valor, texto);
   bloques.push({ nodo: salud });
+  if(d.inicio) bloques.push({ nodo: bloqueInicioPDF(d) });
 
   const categorias = pdfEl('div', 'pdf-categorias');
   const pintarCategorias = [];
@@ -7279,7 +7319,7 @@ function armarResumenPDF(ctx){
   });
   bloques.push({ nodo: categorias, alColocar: ()=> pintarCategorias.forEach(f=>f()) });
 
-  bloques.push({ nodo: pdfEl('p', 'pdf-nota', 'Este indicador refleja qué categorías de servicio cubren a cada ubicación del cliente (Sedes y Matrices). No representa disponibilidad, un SLA ni una auditoría de seguridad. El estado inicial, cuando existe, es el valor registrado por el asesor.') });
+  bloques.push({ nodo: pdfEl('p', 'pdf-nota', 'Este indicador refleja qué categorías de servicio cubren a cada ubicación del cliente (Sedes y Matrices). No representa disponibilidad, un SLA ni una auditoría de seguridad. El estado inicial, cuando existe, es la salud calculada al guardar el inicio de la sesión.') });
 
   const cabeceraTabla = ()=>{
     const f = pdfEl('div', 'pdf-tabla__fila pdf-tabla__fila--cabeza');
@@ -7313,6 +7353,37 @@ function armarResumenPDF(ctx){
     cuerpo.appendChild(encabezadoSeccionPDF(continua ? '01 / Resumen · Continuación' : '01 / Resumen', 'La configuración,', 'en perspectiva.', true));
     return cuerpo;
   });
+}
+
+/* Estado inicial (cliente, 25/09): la captura del canvas y el score del momento en que se guardó
+   el inicio de la sesión, con los conteos de ese momento frente a los actuales. */
+function bloqueInicioPDF(d){
+  const box = pdfEl('div', 'pdf-inicio');
+  const caja = pdfEl('div', 'pdf-inicio__caja');
+  if(d.inicio.imagen){
+    const img = pdfEl('img', 'pdf-inicio__img');
+    img.src = d.inicio.imagen; img.alt = 'Estructura al inicio de la sesión';
+    caja.appendChild(img);
+  } else {
+    caja.appendChild(pdfEl('span', 'pdf-inicio__sin-img', 'Sin captura'));
+  }
+  const texto = pdfEl('div', 'pdf-inicio__texto');
+  texto.appendChild(pdfEl('div', 'pdf-salud__overline', `Estado inicial · guardado ${d.inicio.hora}`));
+  const valor = pdfEl('div', 'pdf-inicio__valor', String(d.salud.inicial));
+  valor.appendChild(pdfEl('span', 'pdf-inicio__pct', '%'));
+  texto.append(valor, pdfEl('p', 'pdf-inicio__desc', 'Salud de infraestructura al inicio de la sesión.'));
+  const r = d.inicio.resumen;
+  const conteos = [[r.sedes, d.cifras.sedes, 'Sedes'], [r.matrices, d.cifras.matrices, 'Matrices'],
+    [r.nubes, d.cifras.nubes, 'Nubes'], [r.productos, d.cifras.servicios, 'Servicios']];
+  const lista = pdfEl('dl', 'pdf-inicio__conteos');
+  conteos.forEach(([a, b, t])=>{
+    const item = pdfEl('div', 'pdf-inicio__conteo');
+    item.append(pdfEl('dt', null, t), pdfEl('dd', null, `${a} → ${b}`));
+    lista.appendChild(item);
+  });
+  texto.appendChild(lista);
+  box.append(caja, texto);
+  return box;
 }
 
 function tarjetaServicioNodoPDF(s){
