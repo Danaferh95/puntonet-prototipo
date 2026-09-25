@@ -660,8 +660,40 @@ function esperarImagenesPDF(raiz){
    las imágenes, y pasa cada página por html2canvas. Es async: el botón queda deshabilitado
    mientras tanto y un aviso indica que se está generando. */
 let pdfEnCurso = false;
+/* Librerías del PDF (jsPDF + html2canvas, ~550 KB). Solo hacen falta al exportar, pero antes se
+   cargaban con <script> al abrir la app y demoraban el arranque. Ahora main.js las pide cuando el
+   navegador queda libre, así ya están listas antes del primer clic; si todavía no llegaron (o
+   fallaron por falta de red), downloadPDF las espera o las vuelve a pedir. */
+const LIBRERIAS_PDF = [
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+];
+let libreriasPDF = null;
+function cargarLibreriasPDF(){
+  if(libreriasPDF) return libreriasPDF;
+  const cargar = src=> new Promise(resolver=>{
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = ()=> resolver(true);
+    s.onerror = ()=>{ s.remove(); resolver(false); };
+    document.head.appendChild(s);
+  });
+  libreriasPDF = Promise.all(LIBRERIAS_PDF.map(cargar)).then(ok=>{
+    const todas = ok.every(Boolean);
+    if(!todas) libreriasPDF = null; // el próximo intento las vuelve a pedir
+    return todas;
+  });
+  return libreriasPDF;
+}
+
 async function downloadPDF(){
   if(pdfEnCurso) return;
+  if(!window.html2canvas || !window.jspdf){
+    pdfEnCurso = true; // evita un segundo clic mientras llegan las librerías
+    await cargarLibreriasPDF();
+    pdfEnCurso = false;
+  }
   if(!window.html2canvas || !window.jspdf || !window.PN_REPORTE_ASSETS){
     showToast('No se pudo generar el PDF: faltan librerías o imágenes del reporte.');
     return;

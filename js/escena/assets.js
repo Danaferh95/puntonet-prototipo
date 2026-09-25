@@ -330,7 +330,11 @@ function updateSedeNameSprite(sede){
 
 /* --- Puerto de conexión: un "botón" cuadrado con un "+", siempre de frente a la cámara
    (sprite), para que se lea claro como punto de conexión desde cualquier ángulo de la órbita. --- */
-function makePortSprite(){
+/* El dibujo del puerto es el mismo en todas las entidades: se pinta y se sube a la GPU una sola
+   vez y todos los sprites lo comparten (antes cada puerto creaba su propio canvas y su textura). */
+let texturaPuerto = null;
+function texturaDelPuerto(){
+  if(texturaPuerto) return texturaPuerto;
   const canvas = document.createElement('canvas');
   canvas.width = 96; canvas.height = 96;
   const ctx = canvas.getContext('2d');
@@ -361,6 +365,12 @@ function makePortSprite(){
   // de salida (§3A-ter) le aplica gamma una segunda vez: el puerto salía lavado y casi blanco.
   texture.encoding = THREE.sRGBEncoding;
   texture.needsUpdate = true;
+  texturaPuerto = texture;
+  marcarCompartido(texture);
+  return texture;
+}
+function makePortSprite(){
+  const texture = texturaDelPuerto();
   const material = new THREE.SpriteMaterial({ map:texture, transparent:true, depthWrite:false, depthTest:false });
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(PORT_BASE_SCALE, PORT_BASE_SCALE, 1);

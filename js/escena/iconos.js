@@ -124,6 +124,7 @@ const IconLibrary = (()=>{
       if(m.emissive) m.emissive.convertSRGBToLinear();
     });
     materialesPorColor[color] = set;
+    marcarCompartido(...Object.values(set)); // caché por color: lo usan todos los íconos de ese color
     return set;
   }
 
@@ -216,6 +217,7 @@ const IconLibrary = (()=>{
     envoltorio.add(raiz);
     envoltorio.scale.setScalar(factor);
     plantillas[archivo] = envoltorio;
+    marcarCompartido(envoltorio); // los clones de instanciar() comparten su geometría (recursos.js)
   }
 
   function precargar(){

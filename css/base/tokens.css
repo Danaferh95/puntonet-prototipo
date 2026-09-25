@@ -74,7 +74,7 @@
   --pn-gradient-shell:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-navy) 100%);
   --pn-gradient-detail:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-panel) 35%,var(--pn-color-deep) 100%);
 
-  /* Assets del design system (rutas relativas a css/) */
+  /* Assets del design system (rutas relativas a este archivo) */
   --pn-img-background:url("../../assets/ui/renders/background.png");
   --pn-img-rail:url("../../assets/ui/renders/rail.png");
   --pn-img-panel:url("../../assets/ui/renders/panel.png");

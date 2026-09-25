@@ -388,6 +388,37 @@ const E = (w, expr) => w.eval(expr);
     /No se guardó el estado durante la sesión/.test(wE2.document.getElementById('reportBody').textContent) &&
     !!E(wE2,'state.estructuras.actual') && E(wE2,'state.estructuras.inicial') === null);
 
+  console.log('\nK. Memoria de la GPU (js/escena/recursos.js)');
+  const wM = ventana({});
+  await E(wM,'modelosListos');
+  // Escena mínima: una sede con Canal de Conexión al Datacenter → un cable con su partícula.
+  const sK = E(wM,'createSede(5, 3, 2)');  // pequeña: a 90 empleados cambia de tamaño
+  const subDC = E(wM,"SUBPRODUCTOS.find(x=>x.conexion==='datacenter').id");
+  E(wM,`(function(){ const s=state.sedes[0]; s.instancias.push({ instanciaId:'inst_k1', subproductoId:'${subDC}', verticalId:getSubproducto('${subDC}').verticalId, valores:{} }); ensureConexionAutomatica(s.id, '${subDC}', 'inst_k1'); refreshSedeAssets(s); rebuildConnections(); })()`);
+  const liberados = new Set();
+  const escuchar = (obj)=>{ const mats = obj.material ? [].concat(obj.material) : [];
+    [obj.geometry, ...mats].forEach(r=>{ if(r) r.addEventListener('dispose', ()=> liberados.add(r)); }); };
+  const cablesViejos = []; E(wM,'connectionsGroup').traverse(o=>{ if(o.geometry){ cablesViejos.push(o); escuchar(o); } });
+  const modeloViejo = sK.group.getObjectByName('modeloGLB'); let mallaModelo = null;
+  modeloViejo.traverse(o=>{ if(!mallaModelo && o.isMesh) mallaModelo = o; });
+  escuchar(mallaModelo);
+  E(wM,'rebuildConnections()');
+  check('rearmar los cables libera la geometría y el material de los anteriores',
+    cablesViejos.length > 0 && cablesViejos.every(o=> liberados.has(o.geometry) && [].concat(o.material).every(m=> liberados.has(m))),
+    [cablesViejos.length, liberados.size]);
+  const puertoViejo = sK.group.getObjectByName('connPort');
+  escuchar(puertoViejo);
+  const texturaPuerto = puertoViejo.material.map;
+  texturaPuerto.addEventListener('dispose', ()=> liberados.add(texturaPuerto));
+  E(wM,`setSedeEmpleados(state.sedes[0], 90)`);
+  const sK2 = E(wM,'state.sedes[0]');
+  check('al cambiar de tamaño, la sede vieja se libera pero NO la geometría compartida del .glb',
+    !liberados.has(mallaModelo.geometry) && !liberados.has(mallaModelo.material) && liberados.has(puertoViejo.material), [liberados.has(mallaModelo.geometry), liberados.has(mallaModelo.material), liberados.has(puertoViejo.material)]);
+  check('todos los puertos comparten una sola textura y nunca se libera',
+    sK2.group.getObjectByName('connPort').material.map === texturaPuerto && !liberados.has(texturaPuerto));
+  E(wM,'deleteSede(state.sedes[0])');
+  check('borrar la sede sigue funcionando y no deja errores de script', E(wM,'state.sedes.length') === 0 && wM.__erroresScript.length === 0, wM.__erroresScript);
+
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que la doc de v13–v15: líneas con `.style.` (son 64 ocurrencias en 59 líneas, igual que v39)
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;

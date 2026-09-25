@@ -183,7 +183,7 @@ let dcY = 0;
    (aplicarModelosAEscena). datacenterGroup NO se reemplaza — hay referencias a él en todo el
    archivo —: se vacía y se vuelve a llenar, conservando el anillo de productos. */
 function construirDatacenter(){
-  datacenterGroup.children.filter(o=>o.name!=='assetsContainer').forEach(o=>datacenterGroup.remove(o));
+  datacenterGroup.children.filter(o=>o.name!=='assetsContainer').forEach(o=>{ datacenterGroup.remove(o); liberarObjeto3D(o); });
   const modelo = ModelLibrary.instanciar('datacenter');
   let w, d;
   if(modelo){

@@ -198,6 +198,7 @@ const ModelLibrary = (()=>{
     base.name = 'pn_' + look + '_base';
     glow.name = 'pn_' + look + '_glow';
     materiales[look] = { base, glow };
+    marcarCompartido(base, glow);
     return materiales[look];
   }
 
@@ -264,6 +265,7 @@ const ModelLibrary = (()=>{
     envoltorio.scale.setScalar(escala);
     const tam = caja.getSize(new THREE.Vector3()).multiplyScalar(escala);
     plantillas[archivo] = { objeto:envoltorio, dims:{ w:tam.x, h:tam.y, d:tam.z } };
+    marcarCompartido(envoltorio); // los clones de instanciar() comparten todo esto (recursos.js)
   }
 
   function precargar(){

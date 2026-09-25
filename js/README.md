@@ -23,7 +23,8 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | `core/` | `catalogo.js` | §1 Verticales, Productos y Subproductos |
 | | `utilidades.js` | Color por producto, tamaños de sede, sliders |
 | | `estado.js` | §2 `state`, `byId`, búsquedas de entidades, reglas de conexión |
-| `escena/` | `base.js` | Escena, cámara, renderer, fábricas de malla, puerto de techo |
+| `escena/` | `recursos.js` | Liberar memoria de la GPU al sacar objetos de la escena |
+| | `base.js` | Escena, cámara, renderer, fábricas de malla, puerto de techo |
 | | `color-luces.js` | §3A-ter pipeline de color, luces, etiquetas de nombre, grilla |
 | | `piso.js` | §3A-bis piso oscuro con glow bajo cada entidad |
 | | `modelos.js` | §3B `ModelLibrary` (entidades .glb) y env map del metal |
@@ -50,7 +51,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | | `deseleccionar.js` | §8 deseleccionar |
 | `reporte/` | `reporte.js` | §9 cliente, logo, reporte y exportar JSON |
 | | `estructura.js` | T06 estructura inicial vs actual |
-| | `pdf.js` | §9-bis PDF |
+| | `pdf.js` | §9-bis PDF (y carga diferida de jsPDF/html2canvas) |
 | | `main.js` | §10 arranque y estado inicial |
 
 Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que generan los scripts de
@@ -62,6 +63,21 @@ Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que genera
 - **Una función nueva:** en el archivo de su tema. Si no encaja en ninguno, un archivo nuevo en la
   carpeta que corresponda, agregado a `index.html` antes de `main.js`.
 - **Algo que corre al cargar:** en `main.js`.
+- **Algo que se saca de la escena para no volver** (una malla, un grupo, un cable): pásalo por
+  `liberarObjeto3D()` después del `remove()`, o usa `vaciarGrupo()` en vez de `group.clear()`. Si
+  creas un caché de geometrías o materiales que usan varias entidades, regístralo con
+  `marcarCompartido()`. Ver el comentario de `escena/recursos.js`.
+
+## Rendimiento
+
+- **Memoria de la GPU estable.** Antes cada rearmado de cables, cambio de tamaño o borrado dejaba
+  geometrías y materiales huérfanos en la GPU (medido: +12 geometrías por cada rearmado de cables).
+  Ahora se liberan y la cuenta queda plana en sesiones largas. Lo verifica `tests/smoke-modelos.js`
+  (sección K).
+- **Los puertos (+) comparten una sola textura** en vez de pintar un canvas por entidad.
+- **jsPDF y html2canvas (~550 KB) ya no frenan el arranque:** se piden cuando la app ya está
+  dibujada y el navegador queda libre. Si todavía no llegaron al exportar, el PDF las espera.
+- **Inter se carga con `<link>`** en vez de `@import` dentro del CSS.
 
 ## Tests
 

@@ -119,6 +119,7 @@ function rebuildSedeMeshIfNeeded(sede, newTamanoId, forzar){
   const pos = sede.group.position.clone();
   const wasSelected = state.selectedSedeIds.includes(sede.id);
   scene.remove(sede.group);
+  liberarObjeto3D(sede.group);
   const group = buildSedeMesh(newTamanoId);
   group.position.copy(pos);
   Object.assign(group.userData, { sedeId: sede.id, isSedeRoot:true });
@@ -141,7 +142,7 @@ function setSedeEmpleados(sede, empleados){
   rebuildConnections();
 }
 
-function removeSedeVisual(sede){ scene.remove(sede.group); removeNameLabel(sede.id); }
+function removeSedeVisual(sede){ scene.remove(sede.group); liberarObjeto3D(sede.group); removeNameLabel(sede.id); }
 
 /* Elimina una sede por completo: su geometría 3D, todos sus productos propios, cualquier
    conexión que la involucre (con la Matriz o el Datacenter), y la limpia de la selección. */
@@ -168,6 +169,7 @@ function deleteSede(sede){
 function deleteMatriz(matriz){
   conexionesDe(matriz.id).forEach(c=> eliminarConexion(c.id));
   scene.remove(matriz.group);
+  liberarObjeto3D(matriz.group);
   removeNameLabel(matriz.id);
   state.matrices = state.matrices.filter(m=>m.id!==matriz.id);
   state.selectedSedeIds = state.selectedSedeIds.filter(id=>id!==matriz.id);

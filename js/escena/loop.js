@@ -42,6 +42,7 @@ function reconstruirGrupoEntidad(entity, build){
   const group = build();
   group.position.copy(entity.group.position);
   scene.remove(entity.group);
+  liberarObjeto3D(entity.group);
   scene.add(group);
   entity.group = group;
   tagEntityGroup(group, entity.id);

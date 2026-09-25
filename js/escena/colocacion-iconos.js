@@ -438,6 +438,7 @@ function partirPorComponentes(geo){
   };
   const r = { grandes: armar(grandes), chicas: armar(chicas) };
   _partidas.set(geo.uuid, r);
+  marcarCompartido(r.grandes, r.chicas); // caché: la reusan todas las instancias (recursos.js)
   return r;
 }
 
@@ -456,7 +457,7 @@ function construirPilaFachada(piezas, soloPrimera, anillos, lateral){
       if(esMixta(o)) o.geometry = partirPorComponentes(o.geometry).grandes;
       else fuera.push(o);
     });
-    fuera.forEach(o=>o.parent.remove(o));
+    fuera.forEach(o=>{ o.parent.remove(o); liberarObjeto3D(o); });
     anillos.scale.copy(base.scale);
     anillos.rotation.copy(base.rotation);
     anillos.position.copy(base.position);
@@ -558,7 +559,7 @@ function etiquetarAssetDeSede(asset, sede, m){
 function refreshSedeAssets(sede){
   // limpiar assets previos
   const old = sede.group.getObjectByName('assetsContainer');
-  if(old) sede.group.remove(old);
+  if(old){ sede.group.remove(old); liberarObjeto3D(old); }
   const container = new THREE.Group();
   container.name = 'assetsContainer';
 

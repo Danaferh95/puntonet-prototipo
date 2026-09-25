@@ -51,6 +51,7 @@ function createNube(nombreProveedor, gx, gz){
 function deleteNube(nube){
   conexionesDe(nube.id).forEach(c=> eliminarConexion(c.id));
   scene.remove(nube.group);
+  liberarObjeto3D(nube.group);
   removeNameLabel(nube.id);
   state.nubes = state.nubes.filter(n=>n.id!==nube.id);
   state.selectedSedeIds = state.selectedSedeIds.filter(id=>id!==nube.id);
@@ -151,7 +152,7 @@ function playWrapEffect(entityId, subproductoId, onDone){
     mat.opacity = pulse * 0.4;
     edgesMat.opacity = pulse * 0.9;
     if(t<1){ requestAnimationFrame(tick); }
-    else { entity.group.remove(wrapMesh); onDone(); }
+    else { entity.group.remove(wrapMesh); liberarObjeto3D(wrapMesh); onDone(); }
   }
   requestAnimationFrame(tick);
 }

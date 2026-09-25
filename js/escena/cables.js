@@ -128,7 +128,7 @@ function buildTubeMeshes(curve, radius, material, dashed){
    momento (ESQUEMA_PDF.grosorCables, §9-bis) porque a esa escala el cable fino desaparece. */
 let grosorCables = 1;
 function rebuildConnections(){
-  connectionsGroup.clear();
+  vaciarGrupo(connectionsGroup); // libera los tubos, partículas y badges anteriores (recursos.js)
   connectionAnims = [];
   // Puede haber más de una conexión entre el mismo par de entidades (p.ej. Canal de Conexión Y
   // Sdwan entre las mismas 2 sedes, o varios productos `conexion:'datacenter'` hacia el mismo
