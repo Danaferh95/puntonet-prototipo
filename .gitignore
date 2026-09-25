@@ -1,1 +1,4 @@
 node_modules/
+
+# Capturas, reportes y notas de trabajo: no son parte de la app
+Claude outputs/
