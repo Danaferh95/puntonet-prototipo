@@ -1,0 +1,90 @@
+/* ---------- 6. Visor 3D ----------
+   ScreenTitle arriba a la izquierda, Deseleccionar arriba a la derecha, controles (IconButton
+   48 px) abajo a la derecha, hint en Body/Small subtle, EntityLabel en cápsula con punto cian,
+   PlacementNotice en cápsula de 64 px, toasts y tooltip sobre panel. */
+#canvasWrap{grid-column:2;grid-row:2;position:relative;touch-action:none;}
+#canvasWrap canvas{display:block;width:100%;height:100%;position:relative;z-index:1;}
+/* Marca de agua (T07, pedido de Dei 24/09): el toggle de la marca, fijo en el centro del visor y
+   DETRÁS del canvas, así que queda por debajo de la grilla y de todo el 3D. No sigue a la cámara.
+   Tamaño y opacidad: --marca-agua-ancho / --marca-agua-opacidad. v29 (25/09, Dei): de 34% a 60% del
+   visor; max-height evita que se salga por arriba y abajo en pantallas bajas (el SVG va en contain). */
+.marca-agua{--marca-agua-ancho:60%;--marca-agua-opacidad:.5;position:absolute;left:50%;top:50%;z-index:0;
+  width:var(--marca-agua-ancho);max-height:85%;aspect-ratio:816/467;transform:translate(-50%,-50%);
+  background:url("../../assets/ui/marca/marca-agua.svg") center/contain no-repeat;
+  opacity:var(--marca-agua-opacidad);pointer-events:none;user-select:none;}
+/* Etiquetas de nombre como overlay HTML (no texturas 3D): mismo tamaño de letra a cualquier zoom. */
+#labelLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;}
+
+.screen-title{position:absolute;left:2.125rem;top:1.375rem;z-index:6;margin:0;pointer-events:none;user-select:none;}
+.screen-title__light{display:block;color:var(--pn-color-white);font:300 2.8125rem/3.375rem var(--font-sans);letter-spacing:.1px;}
+.screen-title__strong{display:block;color:var(--pn-color-cyan);font:700 3.75rem/4.125rem var(--font-sans);letter-spacing:-1.2px;}
+.viewer-deselect{position:absolute;top:2.125rem;right:1.5rem;z-index:15;height:3rem;padding:0 1.5rem;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);
+  color:var(--pn-color-white);font:500 1.125rem/1.5rem var(--font-sans);cursor:pointer;}
+.viewer-deselect:hover{border-color:var(--pn-color-focus);}
+.viewer-deselect:active{opacity:.8;}
+.viewer-deselect:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+
+#zoomControls{position:absolute;bottom:1.25rem;right:1.5rem;z-index:15;display:flex;align-items:center;gap:0.875rem;}
+.zoom-sep{width:1px;height:1.75rem;background:var(--pn-color-border);}
+/* IconButton cuadrado de 48 px: controles del visor, quitar producto, editar / quitar conexión */
+.zoom-btn, .inst-delete, .connArrow, .connDelete, #herenciaBox .herenciaRemove{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:3rem;height:3rem;padding:0;border:1px solid var(--pn-color-border);border-radius:0.875rem;
+  background:var(--pn-gradient-control);color:var(--pn-color-muted);font:400 1.5rem/1 var(--font-sans);cursor:pointer;}
+.zoom-btn:hover, .inst-delete:hover, .connArrow:hover, .connDelete:hover, #herenciaBox .herenciaRemove:hover{
+  border-color:var(--pn-color-focus);color:var(--pn-color-white);}
+.zoom-btn:active, .inst-delete:active, .connArrow:active, .connDelete:active{opacity:.8;}
+.zoom-btn:focus-visible, .inst-delete:focus-visible, .connArrow:focus-visible, .connDelete:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+.zoom-btn svg{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.zoom-btn.is-active{border:2px solid var(--pn-color-focus);color:var(--pn-color-cyan);box-shadow:var(--pn-glow-focus);}
+#fullscreenToggle .fs-exit{display:none;}
+#fullscreenToggle.is-active .fs-enter{display:none;}
+#fullscreenToggle.is-active .fs-exit{display:inline;}
+
+#sceneHint{position:absolute;left:2.125rem;bottom:1.25rem;z-index:6;max-width:min(32.5rem, 55%);margin:0;
+  color:var(--pn-color-subtle);font:400 0.8125rem/1.25rem var(--font-sans);pointer-events:none;}
+
+.name-label{position:absolute;transform:translate(-50%,-100%);display:inline-flex;align-items:center;gap:0.4375rem;
+  height:2.0625rem;padding:0 1rem 0 0.75rem;white-space:nowrap;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+  background:var(--pn-color-panel);color:var(--pn-color-white);font:400 1rem/1.5rem var(--font-sans);will-change:transform;}
+.name-label::before{content:"";flex:none;width:0.375rem;height:0.375rem;border-radius:50%;background:var(--pn-color-cyan);}
+.name-label.is-selected{border:1.5px solid var(--pn-color-cyan);padding-left:11.5px;box-shadow:var(--pn-glow-focus);}
+
+#tooltip{position:absolute;z-index:20;display:none;max-width:16.25rem;padding:0.625rem 0.875rem;pointer-events:none;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius12);background:var(--pn-color-panel);
+  color:var(--pn-color-white);font:400 13px/20px var(--font-sans);box-shadow:var(--pn-glow-blue);}
+#tooltip .t-title{font-weight:500;font-size:1rem;line-height:1.5rem;}
+#tooltip .t-sub{color:var(--pn-color-muted);}
+#tooltip .t-heredado{color:var(--pn-color-cyan);font-weight:400;}
+/* T07: tooltip agrupado (varios servicios del mismo producto en una entidad), con viñetas
+   del color de su categoría. */
+#tooltip .t-lista{list-style:none;margin:0.375rem 0 0;padding:0;display:flex;flex-direction:column;gap:0.25rem;}
+#tooltip .t-item{display:flex;align-items:center;gap:0.5rem;--t-bullet:var(--pn-color-cyan);}
+#tooltip .t-bullet{flex:none;width:0.5rem;height:0.5rem;border-radius:50%;background:var(--t-bullet);box-shadow:0 0 6px var(--t-bullet);}
+#tooltip .t-item--conectividad{--t-bullet:var(--pn-color-mint);}
+#tooltip .t-item--cloud{--t-bullet:var(--pn-color-cyan);}
+#tooltip .t-item--ciberseguridad{--t-bullet:var(--pn-color-coral);}
+#tooltip .t-item--colaboracion{--t-bullet:var(--pn-color-lime);}
+
+/* Toasts debajo del título; el aviso de colocación abajo, sobre los controles, para no taparse. */
+#toastStack{position:absolute;top:10rem;left:50%;transform:translateX(-50%);z-index:30;
+  display:flex;flex-direction:column;gap:0.5rem;align-items:center;pointer-events:none;}
+.toast{max-width:26.25rem;padding:0.75rem 1.25rem;text-align:center;border:1px solid var(--pn-color-coral);border-radius:var(--pn-layout-pill);
+  background:var(--pn-color-panel);color:var(--pn-color-white);font:400 16px/24px var(--font-sans);box-shadow:var(--pn-glow-coral);
+  opacity:0;transform:translateY(-0.5rem);transition:opacity .18s ease, transform .18s ease;}
+.toast.show{opacity:1;transform:translateY(0);}
+
+#placingHint{position:absolute;left:50%;bottom:5.5rem;transform:translateX(-50%);z-index:20;display:none;align-items:center;gap:1rem;
+  max-width:min(41.25rem, 92%);min-height:4rem;padding:0.5rem 0.5rem 0.5rem 1.5rem;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-color-panel);
+  color:var(--pn-color-white);font:400 19px/28px var(--font-sans);letter-spacing:-.15px;box-shadow:var(--pn-glow-focus);}
+#placingHintText{flex:1;}
+#placingHint button{flex:none;height:3rem;padding:0 1.5rem;border:1px solid var(--pn-color-border);
+  border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);color:var(--pn-color-white);
+  font:500 1.125rem/1.5rem var(--font-sans);cursor:pointer;}
+#placingHint button:hover{border-color:var(--pn-color-focus);}
+
+/* Etiqueta que sigue al dedo al arrastrar en pantallas táctiles (el color lo pone el JS (js/)) */
+.touch-drag-ghost{position:fixed;z-index:200;pointer-events:none;transform:translate(-50%,-135%);
+  padding:0.5rem 1rem;border-radius:var(--pn-layout-pill);color:var(--pn-color-navy);font:500 0.8125rem/1.25rem var(--font-sans);
+  white-space:nowrap;opacity:.96;box-shadow:var(--pn-glow-focus);}

@@ -5,7 +5,7 @@
    con index.html abierto por doble clic en file://). Va en un archivo y una carpeta separados de
    los de las 6 entidades — window.PN_MODELOS_GLB / assets/glb/ — a propósito: smoke-test-modelos.js
    valida que PN_MODELOS_GLB traiga EXACTAMENTE los archivos de MODELOS (las 6 entidades), así que
-   mezclar los íconos ahí rompería ese test. IconLibrary (functions.js §3D) lee PN_ICONOS_GLB.
+   mezclar los íconos ahí rompería ese test. IconLibrary (js/escena/iconos.js) lee PN_ICONOS_GLB.
    Los .glb de assets/glb-iconos/ siguen siendo la fuente de verdad: este archivo se regenera, no
    se edita. */
 const fs = require('fs');
@@ -29,7 +29,7 @@ const lineas = archivos.map(f => {
 const cabecera =
   '/* ARCHIVO GENERADO por tools/empaquetar-iconos.js — NO EDITAR A MANO.\n' +
   '   Contiene los .glb de assets/glb-iconos/ en base64 (' + archivos.length + ' archivos, ' +
-  (total / 1024).toFixed(0) + ' KB originales). Ver functions.js §3D (IconLibrary). */\n';
+  (total / 1024).toFixed(0) + ' KB originales). Ver js/escena/iconos.js (IconLibrary). */\n';
 
 fs.writeFileSync(salida, cabecera + 'window.PN_ICONOS_GLB = {\n' + lineas.join(',\n') + '\n};\n');
 console.log('OK: ' + path.relative(raiz, salida) + ' con ' + archivos.length + ' íconos (' + (total/1024).toFixed(0) + ' KB)');

@@ -1,0 +1,28 @@
+/* ---------- 4. Header: logo · divisor · subtítulo · cliente, + logo, Generar Reporte ---------- */
+#header{grid-column:1/4;grid-row:1;display:flex;align-items:center;gap:0.75rem;padding:0.25rem 1.75rem 0;}
+#header .header-logo{flex:none;display:block;width:9rem;height:2.3125rem;}
+#header .header-divider{flex:none;width:1px;height:2rem;margin:0 0.375rem 0 1.125rem;background:var(--pn-color-border);}
+#header .header-title{margin:0;color:var(--pn-color-muted);font:400 1rem/1.5rem var(--font-sans);white-space:nowrap;}
+.spacer{flex:1;}
+#logoFileInput{display:none;}
+#clienteInput{flex:none;width:14.125rem;height:3rem;padding:0 1rem;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);
+  color:var(--pn-color-white);font:400 1rem/1.5rem var(--font-sans);}
+#clienteInput::placeholder{color:var(--pn-color-muted);opacity:1;}
+#clienteInput:focus{outline:none;border:2px solid var(--pn-color-focus);padding:0 15px;box-shadow:var(--pn-glow-focus);}
+#logoUploadBtn{flex:none;display:flex;align-items:center;justify-content:center;width:6.25rem;height:3rem;padding:0;overflow:hidden;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-control);
+  color:var(--pn-color-white);font:500 1.125rem/1.5rem var(--font-sans);cursor:pointer;transition:border-color .15s;}
+#logoUploadBtn:hover{border-color:var(--pn-color-focus);}
+#logoUploadBtn:active{opacity:.8;}
+#logoUploadBtn:focus-visible{outline:none;border:2px solid var(--pn-color-focus);}
+#logoUploadBtn.has-logo{padding:0.25rem 0.75rem;}
+#logoUploadBtn img{width:100%;height:100%;object-fit:contain;background:#fff;border-radius:var(--pn-layout-pill);}
+#btnReport{justify-content:space-between;gap:1rem;width:15.125rem;margin-left:-2px;}
+#header .btn-arrow{font-size:1.375rem;line-height:1;}
+/* T06: Guardar estado actual. Más compacto que el Button base para que el header entre en
+   1366×768; al guardar se marca en cian y muestra la hora de la foto. */
+.btn-estructura{flex:none;gap:0.5rem;padding:0 1.125rem;font-size:0.9375rem;}
+.btn-estructura.is-saved{border-color:var(--pn-color-cyan);}
+.btn-estructura__hora{color:var(--pn-color-cyan);font-size:0.8125rem;font-weight:400;}
+.btn-estructura__hora:empty{display:none;}

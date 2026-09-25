@@ -1,0 +1,32 @@
+/* ---------- 11. Reporte ----------
+   Cada entidad es una tarjeta deep (radio 18) con cabecera panel; cada producto lleva su
+   pictograma, la categoría en su color (mint / cyan / coral / lime) y sus propiedades como chips. */
+#reportOverlay .modal-head .desc{font-size:0.8125rem;}
+.report-sede{margin:0 0 1rem;overflow:hidden;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius18);
+  background:var(--pn-color-deep);}
+.report-sede h3{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.25rem 0.75rem;margin:0;padding:1rem 1.25rem;
+  background:var(--pn-color-panel);color:var(--pn-color-white);font:500 1.1875rem/1.75rem var(--font-sans);letter-spacing:-.15px;}
+.report-sede h3 .muted-meta{color:var(--pn-color-muted);font:400 0.8125rem/1.25rem var(--font-sans);letter-spacing:0;}
+.report-inst{padding:0.875rem 1.25rem;border-top:1px solid rgba(48,99,164,.45);}
+.report-estructura__img{display:block;width:100%;max-width:320px;aspect-ratio:16/9;border:1px solid var(--pn-color-border);border-radius:12px;}
+.report-inst .rline1{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.25rem 1rem;
+  color:var(--pn-color-white);font:400 1rem/1.5rem var(--font-sans);}
+.report-inst .rname{display:inline-flex;align-items:center;gap:0.75rem;min-width:0;}
+.report-inst .ricon{flex:none;width:1.5rem;height:1.5rem;}
+.report-inst .rcat{color:var(--pn-color-cyan);font:400 0.8125rem/1.25rem var(--font-sans);}
+.report-inst .rcat--conectividad{color:var(--pn-color-mint);}
+.report-inst .rcat--cloud{color:var(--pn-color-cyan);}
+.report-inst .rcat--ciberseguridad{color:var(--pn-color-coral);}
+.report-inst .rcat--colaboracion{color:var(--pn-color-lime);}
+.report-inst .muted-small{color:var(--pn-color-muted);font:400 0.8125rem/1.25rem var(--font-sans);}
+.report-inst .rmeta{margin-top:0.25rem;padding-left:2.25rem;color:var(--pn-color-muted);font:400 0.8125rem/1.25rem var(--font-sans);}
+.report-inst .rprops{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem;padding-left:2.25rem;}
+.report-inst .rprop{padding:2px 0.75rem;border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);
+  background:var(--pn-gradient-control);color:var(--pn-color-white);font:400 0.8125rem/1.25rem var(--font-sans);}
+.report-inst .rnotes{margin-top:0.5rem;padding-left:2.25rem;color:var(--pn-color-subtle);font:italic 400 0.8125rem/1.25rem var(--font-sans);}
+.report-inst--empty{color:var(--pn-color-muted);font:400 0.8125rem/1.25rem var(--font-sans);}
+/* Concentrador: no es un producto contratado sino capacidad agregada → borde izquierdo cian */
+.report-concentrador{border-left:3px solid var(--pn-color-cyan);} /*keep-px*/
+.report-concentrador .rmeta, .report-concentrador .rprops{padding-left:0;}
+.report-concentrador .muted-small{color:var(--pn-color-cyan);font:700 1.1875rem/1.75rem var(--font-sans);}
+.report-empty{padding:1rem;text-align:center;color:var(--pn-color-muted);font:400 1rem/1.5rem var(--font-sans);}

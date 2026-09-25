@@ -1,0 +1,75 @@
+/* ---------- 5. Catálogo ----------
+   Panel sobre el render "rail" (316×830) estirado al alto disponible. Tiles de
+   infraestructura 90×108 (la descripción larga va en el tooltip); categorías en cápsula de
+   64 px con medallón metálico y halo; desplegable con productos en cápsula de 60 px. */
+#left{grid-column:1;grid-row:2;overflow-y:auto;padding:1.25rem 0.75rem 1.25rem 1.4375rem;
+  background:var(--pn-img-rail) 0 0 / 100% 100% no-repeat;scrollbar-width:none;}
+#left::-webkit-scrollbar{display:none;}
+#left h2{margin:0 0 0.75rem 0.3125rem;color:var(--pn-color-muted);font:400 0.75rem/1.125rem var(--font-sans);letter-spacing:2px;text-transform:uppercase;}
+
+#left .infra-tiles{display:flex;flex-wrap:wrap;gap:0.3125rem;margin-bottom:1rem;}
+#left .infra-tile{position:relative;display:block;width:5.625rem;height:6.75rem;padding:0;overflow:hidden;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-radius24);background:var(--pn-gradient-control);
+  color:var(--pn-color-white);cursor:grab;user-select:none;-webkit-user-select:none;transition:border-color .15s, box-shadow .15s;}
+#left .infra-tile:hover{border-color:var(--pn-color-focus);box-shadow:var(--pn-glow-focus);}
+#left .infra-tile:active{cursor:grabbing;opacity:.8;}
+#left .infra-tile--restore{cursor:pointer;}
+#left .infra-tile__img{position:absolute;left:0;top:0.25rem;width:5.625rem;height:4.5rem;background:center / contain no-repeat;pointer-events:none;}
+#left .infra-tile__img--sede{background-image:url("../../assets/ui/renders-sm/sede.webp");}
+#left .infra-tile__img--matriz{background-image:url("../../assets/ui/renders-sm/matriz.webp");}
+#left .infra-tile__img--nube{background-image:url("../../assets/ui/renders-sm/nube.webp");}
+#left .infra-tile__img--epicentro{background-image:url("../../assets/ui/renders-sm/epicentro.webp");}
+#left .infra-tile__label{position:absolute;left:0;right:0;top:5rem;text-align:center;
+  font:400 1rem/1.5rem var(--font-sans);white-space:nowrap;pointer-events:none;}
+#left .infra-tile--restore .infra-tile__label{font-size:0.8125rem;}
+#datacenterRestoreWrap{display:none;} /* solo visible si se eliminó el Datacenter (ver syncDatacenterRestoreUI) */
+
+#left .legend{margin-top:0.25rem;}
+#productLegend{display:flex;flex-direction:column;gap:0.5rem;padding-bottom:0.5rem;}
+.catalog-vertical{position:relative;}
+.catalog-vertical-header{position:relative;display:flex;align-items:center;width:100%;height:4rem;margin:0;padding:0 1.3125rem 0 0;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-capsule);
+  color:var(--pn-color-white);font:400 1.1875rem/1.75rem var(--font-sans);letter-spacing:-.15px;text-align:left;
+  cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent;}
+.catalog-vertical-header::before{content:"";position:absolute;inset:-1.1875rem;opacity:.65;pointer-events:none;
+  background:var(--pn-img-halo-off) center / 100% 100% no-repeat;}
+.catalog-vertical-header:hover{border-color:var(--pn-color-focus);}
+.catalog-vertical-header:active{opacity:.8;}
+.catalog-vertical-header:focus-visible{border:2px solid var(--pn-color-focus);}
+.catalog-vertical.open .catalog-vertical-header{border:2px solid var(--pn-color-focus);padding-right:1.25rem;}
+.catalog-vertical.open .catalog-vertical-header::before{inset:-1.25rem;background-image:var(--pn-img-halo-on);}
+.catalog-medallion{position:relative;flex:none;width:3.375rem;height:3.375rem;margin:0 0.875rem 0 0.25rem;background:center / contain no-repeat;}
+.catalog-vertical.open .catalog-medallion{margin-left:0.1875rem;}
+.catalog-medallion--conectividad{background-image:url("../../assets/ui/medallions/medallion-conectividad.svg");}
+.catalog-medallion--cloud{background-image:url("../../assets/ui/medallions/medallion-cloud.svg");}
+.catalog-medallion--ciberseguridad{background-image:url("../../assets/ui/medallions/medallion-ciberseguridad.svg");}
+.catalog-medallion--colaboracion{background-image:url("../../assets/ui/medallions/medallion-colaboracion.svg");}
+.catalog-vertical-name{position:relative;flex:1;min-width:0;}
+.catalog-vertical-arrow{position:relative;flex:none;color:var(--pn-color-muted);font-size:1.375rem;line-height:1;}
+.catalog-vertical.open .catalog-vertical-arrow{margin-top:-0.625rem;}
+
+.catalog-vertical-body{display:none;}
+.catalog-vertical.open .catalog-vertical-body{display:flex;flex-direction:column;gap:0.75rem;max-height:20.0625rem;
+  margin:0.75rem 0 0.5rem 0.1875rem;padding:0.75rem 0.625rem;overflow-y:auto;background:var(--pn-color-deep);border-radius:var(--pn-layout-radius18);
+  scrollbar-color:var(--pn-color-subtle) var(--pn-color-disabled);}
+.catalog-producto{display:flex;flex-direction:column;gap:0.5rem;}
+.catalog-producto-label{margin:0 0 0 0.25rem;color:var(--pn-color-subtle);font:400 0.625rem/1.25rem var(--font-sans);
+  letter-spacing:.5px;text-transform:uppercase;}
+.catalog-chips{display:flex;flex-direction:column;gap:0.5rem;}
+.catalog-chip-item{position:relative;}
+.catalog-chip{display:flex;align-items:center;gap:0.75rem;width:100%;height:3.75rem;padding:0 0.9375rem;
+  border:1px solid var(--pn-color-border);border-radius:var(--pn-layout-pill);background:var(--pn-gradient-capsule);
+  color:var(--pn-color-white);font:400 1rem/1.5rem var(--font-sans);cursor:grab;user-select:none;-webkit-user-select:none;
+  transition:border-color .15s, box-shadow .15s;}
+.catalog-chip:hover{border-color:var(--pn-color-focus);box-shadow:var(--pn-glow-focus);}
+.catalog-chip:active{cursor:grabbing;opacity:.8;}
+.catalog-chip-icon{flex:none;display:block;width:1.875rem;height:1.875rem;pointer-events:none;}
+.catalog-chip-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Agarre ⋮⋮ dibujado con puntos (2 columnas × 3 filas) */
+.catalog-chip-grip{flex:none;width:0.5rem;height:0.875rem;opacity:.6;pointer-events:none;
+  background:radial-gradient(circle, var(--pn-color-muted) 1.2px, transparent 1.6px) 0 0 / 0.25rem 0.3125rem;}
+/* Mini badges DC / NUBE: a qué entidades especiales se puede arrastrar el producto */
+.chip-badges{position:absolute;top:-0.375rem;right:0.875rem;display:flex;gap:0.25rem;pointer-events:none;}
+.chip-dc-badge{padding:1px 0.375rem;border-radius:var(--pn-layout-pill);background:var(--pn-color-cyan);color:var(--pn-color-navy);
+  font:700 9px/13px var(--font-sans);letter-spacing:.5px;box-shadow:var(--pn-glow-focus);}
+.chip-dc-badge.badge-nube{background:var(--pn-color-white);}

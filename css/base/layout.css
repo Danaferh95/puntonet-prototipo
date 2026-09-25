@@ -1,0 +1,35 @@
+/* ---------- 2. Escala, base y layout ---------- */
+/* Tamaño raíz según el viewport: 16px a 1920×1080 (0.83334vw ≈ 16/1920, 1.6vh ≈ 16/1000 para
+   dejar algo de aire vertical a las barras del navegador), nunca menos de 0.625rem ni más de 1rem.
+   Todo lo que está en rem escala con esto; el canvas 3D no se ve afectado. */
+html{font-size:clamp(10px, min(0.83334vw, 1.6vh), 16px);} /*keep-px*/
+
+*{box-sizing:border-box;}
+[hidden]{display:none !important;}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--pn-color-navy);
+  color:var(--pn-color-white);font-family:var(--font-sans);}
+
+/* Forzar horizontal en móvil: si el dispositivo está en vertical se rota el documento 90° por CSS
+   (iOS Safari no permite bloquear la orientación por JS). Solo en pantallas angostas. */
+@media screen and (max-width: 992px) and (orientation: portrait){
+  html{transform:rotate(-90deg);transform-origin:left top;width:100vh;height:100vw;
+    overflow-x:hidden;position:absolute;top:100%;left:0;}
+}
+
+/* Scrollbar acorde al UI (Chrome/Edge/Safari + Firefox) */
+*{scrollbar-width:thin;scrollbar-color:var(--pn-color-border) transparent;}
+*::-webkit-scrollbar{width:9px;height:9px;}
+*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner{background:transparent;}
+*::-webkit-scrollbar-thumb{background:var(--pn-color-border);border-radius:5px;border:2px solid var(--pn-color-deep);background-clip:padding-box;}
+*::-webkit-scrollbar-thumb:hover{background:var(--pn-color-cyan);}
+
+/* Layout de pantalla: header 80 · catálogo 316 · detalle 281 · salud 142 (medidas a 1920×1080).
+   El visor 3D (columna central) absorbe el espacio sobrante. Fondo = render "background". */
+#app{display:grid;height:100vh;
+  grid-template-columns:19.75rem minmax(0,1fr) 17.5625rem;grid-template-rows:5rem minmax(0,1fr) 8.875rem;
+  background:var(--pn-color-navy) var(--pn-img-background) center / cover no-repeat;}
+
+/* Texto secundario dentro de una línea (panel derecho, tooltip, reporte) */
+.muted-inline{color:var(--pn-color-muted);font-weight:400;}
+.muted-meta{color:var(--pn-color-muted);font-weight:400;font-size:0.8125rem;}
+.muted-small{color:var(--pn-color-muted);font-size:0.8125rem;}

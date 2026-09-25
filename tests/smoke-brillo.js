@@ -1,6 +1,6 @@
-/* Smoke test v17 / prototipo v45 — bloom selectivo de los emisivos (§3C de functions.js).
-   Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-brillo.js
-   Carga index.html + three r128 + GLTFLoader + postproceso-r128 + modelos-glb + functions.js en
+/* Smoke test v17 / prototipo v45 — bloom selectivo de los emisivos (js/escena/brillo.js).
+   Uso (desde la raíz del proyecto):  npm install   y luego   npm test   o   node tests/smoke-brillo.js
+   Carga index.html + three r128 + GLTFLoader + postproceso-r128 + modelos-glb + el código de js/ en
    jsdom. El WebGLRenderer es un doble que REGISTRA cada render (destino, capas de cámara, estado
    de los materiales), así se verifica la secuencia del post-proceso sin GPU. Cómo se VE el brillo
    se validó aparte en Chromium con WebGL. */
@@ -9,11 +9,10 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const util = require('util');
 
-const R = __dirname;
+const { RAIZ: R, APP, FUNCS } = require('./app-scripts');
 const leer = p => fs.readFileSync(path.join(R, p), 'utf8');
 const THREE_SRC = fs.readFileSync(require.resolve('three/build/three.min.js'), 'utf8');
 const HTML = leer('index.html');
-const FUNCS = leer('js/functions.js');
 const LOADER = leer('js/vendor/GLTFLoader.js');
 const POST = leer('js/vendor/postproceso-r128.js');
 const DATOS = leer('js/modelos-glb.js');
@@ -40,7 +39,7 @@ function ventana(op = {}){
   w.addEventListener('error', e=> errores.push(e.message));
   const run = code => { const s = w.document.createElement('script'); s.textContent = code; w.document.body.appendChild(s); };
   run(THREE_SRC);
-  // Capacidades de GPU simuladas: el doble las expone tal cual las pida functions.js. Por defecto
+  // Capacidades de GPU simuladas: el doble las expone tal cual las pida la app. Por defecto
   // WebGL1 pelado (que es lo que asumían las pruebas de v44); op.webgl2/op.extensiones las suben
   // para ejercitar el camino de media precisión de §3C sin GPU.
   run(`window.__webgl2 = ${!!op.webgl2}; window.__extensiones = ${JSON.stringify(op.extensiones || [])};`);
@@ -66,7 +65,7 @@ function ventana(op = {}){
   run(LOADER);
   if(op.post !== false) run(POST);
   run(DATOS);
-  run(FUNCS);
+  APP.forEach(s => run(s.codigo));
   w.__erroresScript = errores;
   return w;
 }
@@ -160,7 +159,7 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
     E(wSolo2,'Brillo.precision()') === E(wSolo2,'THREE.UnsignedByteType'), E(wSolo2,'Brillo.precision()'));
   check('BRILLO.precisionAlta = false devuelve el pipeline de v44 (primera guarda de tipoRenderTarget)',
     /if\(!BRILLO\.precisionAlta\) return THREE\.UnsignedByteType;/.test(FUNCS) && E(w,'BRILLO.precisionAlta') === true);
-  check('el vendor sigue intacto: la precisión se aplica desde functions.js, no editando postproceso-r128.js',
+  check('el vendor sigue intacto: la precisión se aplica desde js/escena/brillo.js, no editando postproceso-r128.js',
     !/HalfFloatType/.test(POST) && /rt\.texture\.type = tipoRT/.test(FUNCS));
 
   console.log('\nE. Interruptor y PDF');
@@ -192,11 +191,11 @@ function frame(w, conBrillo = true){ w.__renders = []; E(w, `renderizarFrame(${c
 
   console.log('\nG. Reglas del proyecto');
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
+  check('el código de la app (js/) no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
   const i = f=>HTML.indexOf(f);
-  check('index.html: three → GLTFLoader → postproceso → modelos-glb → functions',
+  check('index.html: three → GLTFLoader → postproceso → modelos-glb → app (js/core/catalogo.js … js/main.js)',
     i('three.min.js') > 0 && i('three.min.js') < i('js/vendor/GLTFLoader.js') && i('js/vendor/GLTFLoader.js') < i('js/vendor/postproceso-r128.js') &&
-    i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/functions.js'));
+    i('js/vendor/postproceso-r128.js') < i('js/modelos-glb.js') && i('js/modelos-glb.js') < i('js/core/catalogo.js'));
   check('index.html muestra Prototipo v47 en el título (la etiqueta de versión salió del header en el rediseño)', (HTML.match(/Prototipo v47/g)||[]).length === 1);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail ? `  (${fail} fallan)` : ''));

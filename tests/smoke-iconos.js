@@ -4,8 +4,8 @@
    Tanda 3 (v21, Colaboración): pantalla/Conferencia, documento/Ofimática, puerta/Portal Cautivo,
    antena/Zona Wireless. Tanda 4 (v23, Conectividad): enlace/Datos, nodo/SD-WAN, globo/Internet
    — con ella el catálogo queda sin primitivas visibles salvo firewall_virtual.
-   Ver functions.js §3D (IconLibrary) y AssetRegistry (§5).
-   Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-iconos.js
+   Ver js/escena/iconos.js (IconLibrary) y js/escena/assets.js (AssetRegistry).
+   Uso (desde la raíz del proyecto):  npm install   y luego   npm test   o   node tests/smoke-iconos.js
    Mismo doble de jsdom que smoke-test-modelos.js / smoke-test-brillo.js: WebGLRenderer y canvas 2D
    sustituidos, sin GPU. Lo visual (materiales, color) se valida por estructura, no por render real. */
 const fs = require('fs');
@@ -13,11 +13,10 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const util = require('util');
 
-const R = __dirname;
+const { RAIZ: R, APP, FUNCS } = require('./app-scripts');
 const leer = p => fs.readFileSync(path.join(R, p), 'utf8');
 const THREE_SRC = fs.readFileSync(require.resolve('three/build/three.min.js'), 'utf8');
 const HTML = leer('index.html');
-const FUNCS = leer('js/functions.js');
 const LOADER = leer('js/vendor/GLTFLoader.js');
 const MODELOS_DATOS = leer('js/modelos-glb.js');
 const ICONOS_DATOS = leer('js/iconos-glb.js');
@@ -53,7 +52,7 @@ function ventana(op = {}){
   run(MODELOS_DATOS);
   if(op.iconos !== false) run(ICONOS_DATOS);
   if(op.filtrarIconos) op.filtrarIconos(w.PN_ICONOS_GLB);
-  run(FUNCS);
+  APP.forEach(s => run(s.codigo));
   w.__erroresScript = errores;
   return w;
 }
@@ -196,7 +195,7 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   const subsPerim = subs.filter(s=>s.productoNivel2Id===pPerim.id);
   check('hay más de un subproducto para comparar colores en Perimetral', subsPerim.length >= 1, subsPerim.length);
   const colorA = E(w, `getSubproductoColor(SUBPRODUCTOS.find(s=>s.id==='${subsPerim[0].id}'))`);
-  // functions.js §3A-ter guarda los colores de superficie en lineal; para comparar contra el hex
+  // js/escena/color-luces.js (§3A-ter) guarda los colores de superficie en lineal; para comparar contra el hex
   // del catálogo hay que deshacer la conversión. La ida y vuelta es exacta.
   const aSRGB = mat => mat.color.clone().convertLinearToSRGB().getHex();
   const i1 = iconoDe(w, subsPerim[0].id, pPerim.verticalId);
@@ -339,10 +338,10 @@ function esMalla(o){ let mesh=null; o.traverse(x=>{ if(!mesh && x.isMesh) mesh=x
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que smoke-test-modelos.js: líneas (no ocurrencias) que contienen '.style.'
   const nEstilos = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', nEstilos <= 51, nEstilos);
+  check('el código de la app (js/) no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', nEstilos <= 51, nEstilos);
   const idxGLTF = HTML.indexOf('GLTFLoader.js'), idxModelos = HTML.indexOf('modelos-glb.js'),
-        idxIconos = HTML.indexOf('iconos-glb.js'), idxFuncs = HTML.indexOf('functions.js');
-  check('index.html: GLTFLoader → modelos-glb → iconos-glb → functions',
+        idxIconos = HTML.indexOf('iconos-glb.js'), idxFuncs = HTML.indexOf('js/core/catalogo.js');
+  check('index.html: GLTFLoader → modelos-glb → iconos-glb → app (js/core/catalogo.js … js/main.js)',
     idxGLTF>0 && idxGLTF<idxModelos && idxModelos<idxIconos && idxIconos<idxFuncs);
 
   console.log(`\n${ok}/${ok+fail} verificaciones OK` + (fail? `  (${fail} fallan)`:''));

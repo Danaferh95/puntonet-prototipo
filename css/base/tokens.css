@@ -1,0 +1,83 @@
+/* =============================================================================
+   CONFIGURADOR DE INFRAESTRUCTURA · PUNTONET — estilos
+   Basado en el design system "Puntonet · Atomic v1" (artefacto "Punto Net").
+
+   Escala: todas las medidas están en rem y el tamaño raíz (html font-size) se
+   calcula según el viewport. 1rem = 1rem en una pantalla de 1920×1080 (la
+   medida de diseño) y baja proporcionalmente en pantallas más chicas o más
+   bajas, con un mínimo de 0.625rem. Bordes de 1–2px quedan fijos en px.
+
+   Archivos (cargados en este orden desde index.html; ver css/README.md)
+     base/tokens.css            1. Tokens del design system
+     base/layout.css            2. Escala, base y layout
+     componentes/boton.css      3. Botón base
+     componentes/header.css     4. Header
+     componentes/catalogo.css   5. Catálogo (tiles de infraestructura, categorías y productos)
+     componentes/visor.css      6. Visor 3D (título, controles, etiquetas, avisos)
+     componentes/panel-detalle.css  7. Panel de detalle
+     componentes/campos.css     8. Campos, slider y checkbox (compartidos por panel y modales)
+     componentes/salud.css      9. Salud de infraestructura
+     componentes/modales.css   10. Modales: formulario de producto y diálogo
+     reporte/reporte.css       11. Reporte
+     reporte/pdf.css           12. Reporte PDF (T08)
+   ============================================================================= */
+
+
+
+/* ---------- 1. Tokens del design system ----------
+   Los componentes usan los semánticos --pn-color-*; las --pn-palette-* solo alimentan a
+   los semánticos. */
+:root{
+  /* Paleta (primitivos) */
+  --pn-palette-navy:#021027; --pn-palette-deep:#041027; --pn-palette-panel:#061c43;
+  --pn-palette-blue:#123ffc; --pn-palette-royal:#243bba; --pn-palette-cyan:#00d7ff;
+  --pn-palette-mint:#00ffc1; --pn-palette-coral:#ff675b; --pn-palette-lime:#e5f933;
+  --pn-palette-white:#f8fcff; --pn-palette-muted:#a9c9ed; --pn-palette-subtle:#7fa8d8;
+  --pn-palette-border:#3063a4; --pn-palette-focus:#54dfff; --pn-palette-disabled:#18314b;
+  --pn-palette-danger:#f3b7cb;
+  --pn-palette-capsuleTop:#234bbd; --pn-palette-capsuleDark:#071a49; --pn-palette-capsuleMid:#062557;
+  --pn-palette-capsuleLight:#387af0; --pn-palette-ctaTop:#1bdfff; --pn-palette-ctaDark:#007daa;
+  --pn-palette-silverLight:#faffff; --pn-palette-silverDark:#374a62;
+
+  /* Semánticos (modo Aprobado) */
+  --pn-color-navy:var(--pn-palette-navy); --pn-color-deep:var(--pn-palette-deep); --pn-color-panel:var(--pn-palette-panel);
+  --pn-color-blue:var(--pn-palette-blue); --pn-color-royal:var(--pn-palette-royal); --pn-color-cyan:var(--pn-palette-cyan);
+  --pn-color-mint:var(--pn-palette-mint); --pn-color-coral:var(--pn-palette-coral); --pn-color-lime:var(--pn-palette-lime);
+  --pn-color-white:var(--pn-palette-white); --pn-color-muted:var(--pn-palette-muted); --pn-color-subtle:var(--pn-palette-subtle);
+  --pn-color-border:var(--pn-palette-border); --pn-color-focus:var(--pn-palette-focus); --pn-color-disabled:var(--pn-palette-disabled);
+  --pn-color-danger:var(--pn-palette-danger);
+  --pn-color-capsuleTop:var(--pn-palette-capsuleTop); --pn-color-capsuleDark:var(--pn-palette-capsuleDark);
+  --pn-color-capsuleMid:var(--pn-palette-capsuleMid); --pn-color-capsuleLight:var(--pn-palette-capsuleLight);
+  --pn-color-ctaTop:var(--pn-palette-ctaTop); --pn-color-ctaDark:var(--pn-palette-ctaDark);
+  --pn-color-silverLight:var(--pn-palette-silverLight); --pn-color-silverDark:var(--pn-palette-silverDark);
+
+  /* Tipografía */
+  --font-sans:"Inter", system-ui, sans-serif;
+
+  /* Espaciado, alturas, radios */
+  --pn-layout-space4:0.25rem; --pn-layout-space8:0.5rem; --pn-layout-space12:0.75rem; --pn-layout-space16:1rem;
+  --pn-layout-space24:1.5rem; --pn-layout-space32:2rem; --pn-layout-space48:3rem;
+  --pn-layout-height48:3rem; --pn-layout-height60:3.75rem; --pn-layout-height64:4rem;
+  --pn-layout-radius12:0.75rem; --pn-layout-radius18:1.125rem; --pn-layout-radius24:1.5rem; --pn-layout-pill:999px;
+
+  /* Glows (la luz va detrás del elemento) */
+  --pn-glow-blue:0 2px 14px 0 rgba(18,64,255,.28);
+  --pn-glow-focus:0 2px 14px 0 rgba(0,217,255,.28);
+  --pn-glow-mint:0 2px 14px 0 rgba(0,255,194,.28);
+  --pn-glow-coral:0 2px 14px 0 rgba(255,102,92,.28);
+  --pn-glow-lime:0 2px 14px 0 rgba(230,250,51,.28);
+
+  /* Degradados de marca (de arriba hacia abajo) */
+  --pn-gradient-primary:linear-gradient(180deg,var(--pn-color-ctaTop) 0%,var(--pn-color-ctaDark) 70%,var(--pn-color-cyan) 100%);
+  --pn-gradient-capsule:linear-gradient(180deg,var(--pn-color-capsuleTop) 0%,var(--pn-color-capsuleDark) 13%,var(--pn-color-capsuleMid) 55%,var(--pn-color-blue) 87%,var(--pn-color-capsuleLight) 100%);
+  --pn-gradient-control:linear-gradient(180deg,var(--pn-color-deep) 0%,var(--pn-color-panel) 100%);
+  --pn-gradient-shell:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-navy) 100%);
+  --pn-gradient-detail:linear-gradient(180deg,var(--pn-color-panel) 0%,var(--pn-color-panel) 35%,var(--pn-color-deep) 100%);
+
+  /* Assets del design system (rutas relativas a css/) */
+  --pn-img-background:url("../../assets/ui/renders/background.png");
+  --pn-img-rail:url("../../assets/ui/renders/rail.png");
+  --pn-img-panel:url("../../assets/ui/renders/panel.png");
+  --pn-img-halo-off:url("../../assets/ui/renders/halo_off.png");
+  --pn-img-halo-on:url("../../assets/ui/renders/halo_on.png");
+}

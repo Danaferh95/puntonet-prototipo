@@ -1,6 +1,6 @@
 /* Smoke test v16 / prototipo v40 — integración de los modelos .glb de entidades (sigue vigente en v41).
-   Uso (desde la raíz del proyecto):  npm i jsdom three@0.128.0   y luego   node smoke-test-modelos.js
-   Carga index.html + three r128 + js/vendor/GLTFLoader.js + js/modelos-glb.js + js/functions.js
+   Uso (desde la raíz del proyecto):  npm install   y luego   npm test   o   node tests/smoke-modelos.js
+   Carga index.html + three r128 + js/vendor/GLTFLoader.js + js/modelos-glb.js + el código de js/
    en jsdom, con el WebGLRenderer y el canvas 2D sustituidos por dobles (no hay GPU en node).
    Lo visual (materiales, iluminación, snapshot del PDF) se validó aparte en Chromium con WebGL. */
 const fs = require('fs');
@@ -8,11 +8,10 @@ const path = require('path');
 const { JSDOM } = require('jsdom');
 const util = require('util');
 
-const R = __dirname;
+const { RAIZ: R, APP, FUNCS } = require('./app-scripts');
 const leer = p => fs.readFileSync(path.join(R, p), 'utf8');
 const THREE_SRC = fs.readFileSync(require.resolve('three/build/three.min.js'), 'utf8');
 const HTML = leer('index.html');
-const FUNCS = leer('js/functions.js');
 const LOADER = leer('js/vendor/GLTFLoader.js');
 const DATOS = leer('js/modelos-glb.js');
 
@@ -39,7 +38,7 @@ function ventana(op = {}){
   w.addEventListener('error', e=> errores.push(e.message));
   const run = code => { const s = w.document.createElement('script'); s.textContent = code; w.document.body.appendChild(s); };
   run(THREE_SRC);
-  // doble del renderer: misma API que usa functions.js, sin WebGL
+  // doble del renderer: misma API que usa la app, sin WebGL
   run(`THREE.WebGLRenderer = function(){ this.domElement = document.createElement('canvas');
     this.setPixelRatio = ()=>{}; this.setSize = ()=>{}; this.render = ()=>{};
     this.getClearColor = c=>c; this.setClearColor = ()=>{}; this.getClearAlpha = ()=>0;
@@ -49,7 +48,7 @@ function ventana(op = {}){
   if(op.datos !== false) run(DATOS);
   if(op.filtrarDatos) op.filtrarDatos(w.PN_MODELOS_GLB);
   if(op.antesDeFunciones) run(op.antesDeFunciones);
-  run(FUNCS);
+  APP.forEach(s => run(s.codigo));
   w.__erroresScript = errores;
   return w;
 }
@@ -71,7 +70,7 @@ const E = (w, expr) => w.eval(expr);
   const mats = E(w,'ModelLibrary').materiales();
   check('una familia de materiales por tipo de entidad (4)', Object.keys(mats).sort().join() === 'datacenter,matriz,nube,sede', Object.keys(mats));
   check('metal = MeshStandardMaterial (PBR), glow emisivo', Object.values(mats).every(m=> m.base.isMeshStandardMaterial && m.glow.emissive.getHex() !== 0));
-  // Desde el pipeline de color (functions.js §3A-ter) los colores de superficie se guardan en
+  // Desde el pipeline de color (js/escena/color-luces.js, §3A-ter) los colores de superficie se guardan en
   // LINEAL, así que getHex() ya no devuelve el hex de catálogo: hay que volver a sRGB para
   // comparar. Lo que se verifica sigue siendo lo mismo — que el acento violeta es el de v39.
   const aSRGB = color => color.clone().convertLinearToSRGB().getHex();
@@ -392,9 +391,11 @@ const E = (w, expr) => w.eval(expr);
   console.log('\nJ. Reglas del proyecto');
   // misma métrica que la doc de v13–v15: líneas con `.style.` (son 64 ocurrencias en 59 líneas, igual que v39)
   const inline = FUNCS.split('\n').filter(l=>l.includes('.style.')).length;
-  check('functions.js no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
-  const iGL = HTML.indexOf('js/vendor/GLTFLoader.js'), iDat = HTML.indexOf('js/modelos-glb.js'), iFn = HTML.indexOf('js/functions.js'), iThree = HTML.indexOf('three.min.js');
-  check('index.html: three → GLTFLoader → modelos-glb → functions', iThree>0 && iThree < iGL && iGL < iDat && iDat < iFn);
+  check('el código de la app (js/) no suma líneas con .style. (rediseño design system: bajó de 59 a 51 — ningún estilo inline nuevo)', inline <= 51, inline);
+  const iGL = HTML.indexOf('js/vendor/GLTFLoader.js'), iDat = HTML.indexOf('js/modelos-glb.js'), iFn = HTML.indexOf('js/core/catalogo.js'), iThree = HTML.indexOf('three.min.js');
+  check('index.html: three → GLTFLoader → modelos-glb → app (js/core/catalogo.js … js/main.js)', iThree>0 && iThree < iGL && iGL < iDat && iDat < iFn);
+  check('index.html: la app carga en archivos separados y js/main.js (el arranque) va último',
+    APP.length > 1 && APP[APP.length-1].archivo === 'js/main.js' && !/functions\.js/.test(HTML), APP.map(s=>s.archivo));
   const versiones = HTML.match(/Prototipo v\d+/g) || [];
   check('index.html muestra la versión en el título (' + versiones[0] + '; la etiqueta salió del header en el rediseño)', versiones.length === 1 && parseInt(versiones[0].slice(11)) >= 40, versiones);
 

@@ -1,0 +1,12 @@
+{
+  "name": "puntonet-prototipo",
+  "private": true,
+  "description": "Prototipo interactivo Puntonet (MATTE). La app no necesita build: se abre index.html directo en el navegador.",
+  "scripts": {
+    "test": "node tests/run-all.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1",
+    "three": "0.128.0"
+  }
+}

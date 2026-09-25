@@ -26,7 +26,7 @@ const lineas = archivos.map(f => {
 const cabecera =
   '/* ARCHIVO GENERADO por tools/empaquetar-modelos.js — NO EDITAR A MANO.\n' +
   '   Contiene los .glb de assets/glb/ en base64 (' + archivos.length + ' archivos, ' +
-  (total / 1024).toFixed(0) + ' KB originales). Ver functions.js §3B (ModelLibrary). */\n';
+  (total / 1024).toFixed(0) + ' KB originales). Ver js/escena/modelos.js (ModelLibrary). */\n';
 
 fs.writeFileSync(salida, cabecera + 'window.PN_MODELOS_GLB = {\n' + lineas.join(',\n') + '\n};\n');
 console.log('OK: ' + path.relative(raiz, salida) + ' con ' + archivos.length + ' modelos (' + (total/1024).toFixed(0) + ' KB)');

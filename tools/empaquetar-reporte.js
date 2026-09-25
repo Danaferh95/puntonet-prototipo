@@ -34,7 +34,7 @@ const assets = {
     nube: webp('renders-sm/nube.webp'),
     datacenter: webp('renders-sm/epicentro.webp'),
   },
-  // Mismos símbolos que el panel de Salud (styles.css, .salud-row--<vertical>).
+  // Mismos símbolos que el panel de Salud (css/componentes/salud.css, .salud-row--<vertical>).
   categorias: {
     conectividad: svg('icons/categoria_conectividad.svg'),
     cloud: svg('icons/categoria_cloud.svg'),
@@ -46,6 +46,6 @@ const assets = {
 const cuerpo = JSON.stringify(assets, null, 1);
 const cabecera =
   '/* ARCHIVO GENERADO por tools/empaquetar-reporte.js — NO EDITAR A MANO.\n' +
-  '   Imágenes del reporte PDF como data: URI (' + (cuerpo.length/1024).toFixed(0) + ' KB). Ver functions.js §9-bis. */\n';
+  '   Imágenes del reporte PDF como data: URI (' + (cuerpo.length/1024).toFixed(0) + ' KB). Ver js/reporte/pdf.js. */\n';
 fs.writeFileSync(salida, cabecera + 'window.PN_REPORTE_ASSETS = ' + cuerpo + ';\n');
 console.log('OK: ' + path.relative(raiz, salida) + ' (' + (cuerpo.length/1024).toFixed(0) + ' KB)');
