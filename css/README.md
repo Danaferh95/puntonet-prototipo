@@ -9,7 +9,8 @@ archivo propio. Las reglas son las mismas, en el mismo orden.
   es la cascada, igual que cuando todo estaba en un solo archivo.
 - Sin `@import` entre archivos: `@import` hace que el navegador espere a leer un CSS para recién
   pedir el siguiente. Con `<link>` los pide todos en paralelo.
-- La fuente Inter se carga con `<link>` en `index.html` (antes era un `@import` al inicio del CSS).
+- La fuente Inter es local: `@font-face` al inicio de `base/tokens.css`, archivos en `assets/fonts/`.
+  No se pide nada a Google Fonts (la app tiene que funcionar offline).
 - Las rutas de imágenes son relativas a cada archivo: desde `css/<carpeta>/` los assets están en
   `../../assets/`.
 

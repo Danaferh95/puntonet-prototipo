@@ -4,11 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Configurador de Infraestructura · Puntonet · Prototipo v47</title>
-<!-- Inter (design system Puntonet · Atomic v1). Antes era un @import dentro del CSS: como <link>
-     el navegador la pide en paralelo con los estilos en vez de esperar a leerlos. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap">
+<!-- Inter (design system Puntonet · Atomic v1): se declara con @font-face en css/base/tokens.css
+     desde assets/fonts/. Nada se pide a internet: la app funciona offline. -->
 <!-- Estilos: el orden importa (cascada). Ver css/README.md. -->
 <link rel="stylesheet" href="css/base/tokens.css">
 <link rel="stylesheet" href="css/base/mascaras.css">
@@ -210,7 +207,8 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- three.js r128, copiado de node_modules/three/build (npm three@0.128.0). Local: offline. -->
+<script src="js/vendor/three.min.js"></script>
 <!-- jsPDF y html2canvas ya no se cargan acá: los pide js/reporte/pdf.js (cargarLibreriasPDF) cuando la app ya arrancó. -->
 <script src="js/vendor/GLTFLoader.js"></script>
 <script src="js/vendor/postproceso-r128.js"></script>

@@ -54,7 +54,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | | `pdf.js` | §9-bis PDF (y carga diferida de jsPDF/html2canvas) |
 | | `main.js` | §10 arranque y estado inicial |
 
-Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que generan los scripts de
+Sin tocar: `vendor/` (three.js r128, GLTFLoader, post-proceso, jsPDF 4.2.1, html2canvas 1.4.1) y los datos embebidos que generan los scripts de
 `tools/` (`modelos-glb.js`, `iconos-glb.js`, `reporte-assets.js`).
 
 ## Dónde va cada cosa nueva
@@ -77,7 +77,8 @@ Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que genera
 - **Los puertos (+) comparten una sola textura** en vez de pintar un canvas por entidad.
 - **jsPDF y html2canvas (~550 KB) ya no frenan el arranque:** se piden cuando la app ya está
   dibujada y el navegador queda libre. Si todavía no llegaron al exportar, el PDF las espera.
-- **Inter se carga con `<link>`** en vez de `@import` dentro del CSS.
+- **Todo es local (offline):** three.js, jsPDF, html2canvas e Inter viven en `js/vendor/` y
+  `assets/fonts/`, con versiones fijadas en `package.json`. Ninguna petición sale a internet.
 
 ## Tests
 

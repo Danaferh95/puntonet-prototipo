@@ -676,11 +676,13 @@ function esperarImagenesPDF(raiz){
 let pdfEnCurso = false;
 /* Librerías del PDF (jsPDF + html2canvas, ~550 KB). Solo hacen falta al exportar, pero antes se
    cargaban con <script> al abrir la app y demoraban el arranque. Ahora main.js las pide cuando el
-   navegador queda libre, así ya están listas antes del primer clic; si todavía no llegaron (o
-   fallaron por falta de red), downloadPDF las espera o las vuelve a pedir. */
+   navegador queda libre, así ya están listas antes del primer clic; si todavía no llegaron,
+   downloadPDF las espera o las vuelve a pedir.
+   Desde la etapa Android offline (28/09/2026) son copias locales en js/vendor/ (versiones fijadas
+   en package.json: jspdf 4.2.1, html2canvas 1.4.1). No se pide nada a internet. */
 const LIBRERIAS_PDF = [
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'js/vendor/jspdf.umd.min.js',
+  'js/vendor/html2canvas.min.js',
 ];
 let libreriasPDF = null;
 function cargarLibreriasPDF(){
