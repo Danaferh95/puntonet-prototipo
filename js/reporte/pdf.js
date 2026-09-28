@@ -752,8 +752,11 @@ async function downloadPDF(){
       doc.addImage(lienzo.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
     }
     const fecha = new Date().toISOString().slice(0, 10);
-    doc.save(`reporte-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
+    // Capa de plataforma: descarga en el navegador; en Android abre el menú de compartir.
+    await Plataforma.guardarArchivo({ nombre: `reporte-${safeFileName(config.nombreCliente)}-${fecha}.pdf`,
+      mime: 'application/pdf', blob: doc.output('blob') });
   } catch(err){
+    if(esCancelacionCompartir(err)) return; // cerró el menú de compartir: el PDF ya se generó
     console.error('[pdf] no se pudo generar el reporte:', err);
     showToast('No se pudo generar el PDF. Revisa la consola para más detalle.');
   } finally {

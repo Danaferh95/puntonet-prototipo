@@ -309,32 +309,67 @@ function onPointerUp(e){
   isOrbiting = false;
 }
 
-renderer.domElement.addEventListener('mousedown', onPointerDown);
-window.addEventListener('mousemove', onPointerMove);
-window.addEventListener('mouseup', onPointerUp);
+/* --- Pointer Events: mouse, dedo y lápiz por el mismo camino (etapa Android offline, Fase 3) ---
+   Antes había dos juegos de listeners: mouse (mousedown/mousemove/mouseup) y táctil (touchstart…
+   traducido a la forma de un evento de mouse). Con Pointer Events un solo juego cubre los dos, y
+   el navegador ya no dispara el mousedown/mouseup "de compatibilidad" después de un toque, que
+   repetía el clic de selección.
+   - Un dedo (o el mouse): exactamente la lógica de siempre (onPointerDown/Move/Up).
+   - Dos dedos: pellizcar = zoom, mover los dos a la vez = desplazar la cámara. Al apoyar el
+     segundo dedo se cancela lo que el primero estaba haciendo (orbitar, mover una sede, estirar
+     un cable), y hasta levantar todos los dedos no empieza otro gesto de un dedo.
+   El canvas tiene touch-action:none (css/componentes/visor.css): el navegador no hace scroll ni
+   zoom de la página con estos gestos. */
+const punterosTactiles = new Map(); // pointerId → { x, y } de cada dedo apoyado sobre el canvas
+let gestoMultitactil = false;        // true desde que hay 2 dedos hasta que se levantan todos
+let dosDedosPrevio = null;           // { dist, cx, cy } del último cuadro del gesto de dos dedos
 
-/* --- Equivalente táctil: el drag-and-drop nativo (HTML5) no dispara con dedos en móviles, pero
-   estos gestos (orbitar, tocar para seleccionar, arrastrar una sede, arrastrar un puerto para
-   conectar) están hechos a mano con mouse events — así que basta con traducir el primer punto
-   de contacto a la misma forma de evento y reusar exactamente la misma lógica de arriba. --- */
-function touchPoint(e){
-  const t = e.touches[0] || e.changedTouches[0];
-  return { clientX:t.clientX, clientY:t.clientY, button:0, shiftKey:false };
+function medirDosDedos(){
+  const [a, b] = [...punterosTactiles.values()];
+  return { dist: Math.hypot(b.x-a.x, b.y-a.y), cx: (a.x+b.x)/2, cy: (a.y+b.y)/2 };
 }
-renderer.domElement.addEventListener('touchstart', (e)=>{
-  if(e.touches.length!==1) return; // dejamos pasar gestos de 2 dedos (por si el navegador hace algo con ellos)
-  onPointerDown(touchPoint(e));
-}, { passive:true });
-window.addEventListener('touchmove', (e)=>{
-  if(!pointerDownInfo || e.touches.length!==1) return;
-  if(e.cancelable) e.preventDefault(); // evita que la página haga scroll mientras se interactúa con el canvas
-  onPointerMove(touchPoint(e));
-}, { passive:false });
-window.addEventListener('touchend', (e)=>{
-  if(!pointerDownInfo) return;
-  onPointerUp(touchPoint(e));
+function aplicarDosDedos(){
+  if(punterosTactiles.size < 2) return;
+  const ahora = medirDosDedos();
+  if(dosDedosPrevio){
+    if(dosDedosPrevio.dist > 0 && ahora.dist > 0) applyZoom(zoomLevel * (ahora.dist / dosDedosPrevio.dist));
+    panCamera(ahora.cx - dosDedosPrevio.cx, ahora.cy - dosDedosPrevio.cy);
+  }
+  dosDedosPrevio = ahora;
+}
+
+renderer.domElement.addEventListener('pointerdown', (e)=>{
+  if(e.pointerType === 'touch'){
+    punterosTactiles.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if(punterosTactiles.size >= 2){
+      if(!gestoMultitactil) cancelActiveGesture();
+      gestoMultitactil = true;
+      dosDedosPrevio = punterosTactiles.size === 2 ? medirDosDedos() : null;
+      return;
+    }
+    if(gestoMultitactil) return;
+  }
+  onPointerDown(e);
 });
-window.addEventListener('touchcancel', cancelActiveGesture);
+window.addEventListener('pointermove', (e)=>{
+  if(e.pointerType === 'touch' && punterosTactiles.has(e.pointerId)){
+    punterosTactiles.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if(gestoMultitactil){ aplicarDosDedos(); return; }
+  }
+  onPointerMove(e);
+});
+function soltarPuntero(e, cancelado){
+  const eraTactil = e.pointerType === 'touch' && punterosTactiles.delete(e.pointerId);
+  if(eraTactil && gestoMultitactil){
+    dosDedosPrevio = punterosTactiles.size === 2 ? medirDosDedos() : null;
+    if(punterosTactiles.size === 0) gestoMultitactil = false;
+    return;
+  }
+  if(cancelado) cancelActiveGesture();
+  else onPointerUp(e);
+}
+window.addEventListener('pointerup', e=> soltarPuntero(e, false));
+window.addEventListener('pointercancel', e=> soltarPuntero(e, true));
 
 /* T07 — Instancias de la entidad (propias y heredadas de una Matriz) que son del mismo Producto
    (N2) que `inst`, en el orden en que se agregaron. Es el grupo que muestra el tooltip. */
@@ -375,11 +410,11 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
       if(grupo.length > 1){
         const producto = getProducto(getSubproducto(inst.subproductoId).productoNivel2Id);
         tooltipEl.innerHTML = `<div class="t-title">${escapeHtml(producto.nombre)}</div>
-          <div class="t-sub">${vertical.nombre} · ${grupo.length} servicios</div>
+          <div class="t-sub">${escapeHtml(vertical.nombre)} · ${grupo.length} servicios</div>
           <ul class="t-lista">${grupo.map(g=>`<li class="t-item t-item--${g.inst.verticalId}"><span class="t-bullet" aria-hidden="true"></span>${escapeHtml(g.inst.nombreSubproducto)}${g.heredado?' <span class="t-heredado">(heredado)</span>':''}</li>`).join('')}</ul>`;
       } else {
-        tooltipEl.innerHTML = `<div class="t-title">${inst.nombreSubproducto}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
-          <div class="t-sub">${vertical.nombre}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
+        tooltipEl.innerHTML = `<div class="t-title">${escapeHtml(inst.nombreSubproducto)}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
+          <div class="t-sub">${escapeHtml(vertical.nombre)}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
       }
     }
   } else {

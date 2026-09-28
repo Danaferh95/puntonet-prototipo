@@ -20,6 +20,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 
 | Carpeta | Archivo | Qué tiene |
 |---|---|---|
+| `plataforma/` | `plataforma.js` | Capa de plataforma: almacén local y guardar/compartir archivos (navegador o Android). Va antes que todo |
 | `core/` | `catalogo.js` | §1 Verticales, Productos y Subproductos |
 | | `utilidades.js` | Color por producto, tamaños de sede, sliders |
 | | `estado.js` | §2 `state`, `byId`, búsquedas de entidades, reglas de conexión |
@@ -52,6 +53,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | `reporte/` | `reporte.js` | §9 cliente, logo, reporte y exportar JSON |
 | | `estructura.js` | T06 estructura inicial vs actual |
 | | `pdf.js` | §9-bis PDF (y carga diferida de jsPDF/html2canvas) |
+| `core/` | `persistencia.js` | Guardar/restaurar la sesión en el equipo y "Nueva sesión". Se carga justo antes de `main.js` |
 | | `main.js` | §10 arranque y estado inicial |
 
 Sin tocar: `vendor/` (three.js r128, GLTFLoader, post-proceso, jsPDF 4.2.1, html2canvas 1.4.1) y los datos embebidos que generan los scripts de
@@ -79,6 +81,16 @@ Sin tocar: `vendor/` (three.js r128, GLTFLoader, post-proceso, jsPDF 4.2.1, html
   dibujada y el navegador queda libre. Si todavía no llegaron al exportar, el PDF las espera.
 - **Todo es local (offline):** three.js, jsPDF, html2canvas e Inter viven en `js/vendor/` y
   `assets/fonts/`, con versiones fijadas en `package.json`. Ninguna petición sale a internet.
+
+## Plataforma (navegador, Android y, a futuro, Windows)
+
+- El código de la app **no pregunta en qué plataforma corre**. Todo lo que depende de ella pasa
+  por `Plataforma` (`plataforma/plataforma.js`): guardar el estado (`Plataforma.almacen`) y
+  exportar archivos (`Plataforma.guardarArchivo`: descarga en el navegador, menú de compartir en
+  Android). Si mañana entra Windows (Tauri), se agrega una implementación ahí y nada más cambia.
+- **Sin red:** ni la app ni esta capa hacen peticiones. `tests/offline.js` lo verifica.
+- **Gestos:** el canvas usa Pointer Events (`interaccion/raycasting.js`). Un dedo = mouse; dos
+  dedos = pellizcar para zoom y arrastrar para desplazar.
 
 ## Tests
 

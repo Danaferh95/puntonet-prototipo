@@ -212,7 +212,7 @@ function openReport(){
         ? ' No suma al concentrador: es el respaldo del mismo canal, no capacidad adicional.' : '';
       backupRow.innerHTML = `
         <div class="rline1"><span class="rname">${iconHtml}<span>${inst.nombreSubproducto} (Backup) <span class="muted-inline">→ ${escapeHtml(nombreEntidad(otroExtremo(backupConexion, backupConexion.ownerId)))}</span></span></span>${catHtml}</div>
-        <div class="rmeta">Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${inst.nombreSubproducto}).${notaConcentrador}</div>
+        <div class="rmeta">Enlace de respaldo en paralelo — hereda las propiedades del canal principal (misma contratación que ${escapeHtml(inst.nombreSubproducto)}).${notaConcentrador}</div>
         ${propsHtml ? `<div class="rprops">${propsHtml}</div>` : ''}
       `;
       container.appendChild(backupRow);
@@ -340,15 +340,15 @@ function safeFileName(nombreCliente){
 function downloadJSON(){
   const config = buildConfiguracionCliente();
   const blob = new Blob([JSON.stringify(config, null, 2)], { type:'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const fecha = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `configuracion-${safeFileName(config.nombreCliente)}-${fecha}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Capa de plataforma: descarga en el navegador; en Android abre el menú de compartir.
+  Plataforma.guardarArchivo({ nombre: `configuracion-${safeFileName(config.nombreCliente)}-${fecha}.json`,
+    mime: 'application/json', blob })
+    .catch(err=>{ if(!esCancelacionCompartir(err)){ console.error('[json] no se pudo exportar:', err); showToast('No se pudo exportar el JSON.'); } });
+}
+/* El usuario cerró el menú de compartir de Android sin elegir app: no es un error. */
+function esCancelacionCompartir(err){
+  return !!err && /cancel/i.test(String(err.message || err));
 }
 byId('btnExportFromReport').addEventListener('click', downloadJSON);
 

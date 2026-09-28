@@ -41,6 +41,12 @@ renderLogoButton();          // reporte/reporte.js
   renderRightPanel();
 })();
 
+/* Sesión guardada en este equipo (core/persistencia.js): se restaura después del estado inicial
+   y desde ahí se guarda sola. */
+avisarErrorDeRestauracion();
+restaurarSesion();
+iniciarAutoguardado();
+
 /* Librerías del PDF: se piden cuando el navegador queda libre, sin demorar el arranque
    (ver cargarLibreriasPDF en reporte/pdf.js). El tope de 3 s es para equipos lentos, donde el
    loop de render puede no dejar nunca un momento "libre". */

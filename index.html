@@ -32,6 +32,7 @@
     <input id="clienteInput" type="text" placeholder="Nombre del cliente…">
     <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
     <input id="logoFileInput" type="file" accept="image/*">
+    <button class="btn ghost btn-nueva-sesion" id="btnNuevaSesion" type="button" title="Borrar la configuración guardada en este equipo y empezar de cero">Nueva sesión</button>
     <button class="btn btn-estructura" id="btnEstructuraActual" type="button" title="Guardar estado actual: el primer guardado queda como inicio de la sesión; los siguientes actualizan el estado (el reporte lo guarda solo)">Guardar estado actual<span class="btn-estructura__hora" id="estructuraActualHora"></span></button>
     <button class="btn primary" id="btnReport"><span>Generar Reporte</span><span class="btn-arrow" aria-hidden="true">→</span></button>
   </div>
@@ -84,7 +85,10 @@
       <span class="screen-title__strong">Infraestructura</span>
     </h2>
     <button class="viewer-deselect" id="btnDeselect" type="button">Deseleccionar</button>
-    <div id="sceneHint">Arrastrar fondo: orbitar · Ctrl/Cmd + arrastrar (o botón ✋): desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</div>
+    <div id="sceneHint">
+      <span class="scene-hint--raton">Arrastrar fondo: orbitar · Ctrl/Cmd + arrastrar (o botón ✋): desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</span>
+      <span class="scene-hint--tactil">Un dedo sobre el fondo: orbitar · Pellizcar: zoom · Dos dedos: desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Tocar: ver/editar detalle</span>
+    </div>
     <div id="placingHint">
       <span id="placingHintText"></span>
       <button id="placingHintCancel" type="button" title="Cancelar">Cancelar</button>
@@ -216,6 +220,7 @@
 <script src="js/iconos-glb.js"></script>
 <script src="js/reporte-assets.js"></script>
 <!-- App: el orden importa (ver js/README.md). main.js va último: es el único que arranca la app. -->
+<script src="js/plataforma/plataforma.js"></script>
 <script src="js/core/catalogo.js"></script>
 <script src="js/core/utilidades.js"></script>
 <script src="js/core/estado.js"></script>
@@ -248,6 +253,7 @@
 <script src="js/reporte/reporte.js"></script>
 <script src="js/reporte/estructura.js"></script>
 <script src="js/reporte/pdf.js"></script>
+<script src="js/core/persistencia.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
