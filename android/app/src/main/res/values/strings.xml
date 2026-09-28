@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Configurador Puntonet</string>
+    <string name="title_activity_main">Configurador Puntonet</string>
+    <string name="package_name">com.puntonet.configurador</string>
+    <string name="custom_url_scheme">com.puntonet.configurador</string>
+</resources>

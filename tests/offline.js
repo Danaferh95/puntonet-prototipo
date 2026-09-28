@@ -24,7 +24,7 @@ function archivos(dir, ext){
 }
 
 console.log('\nA. Sin URLs remotas (index.html, css/, js/ propio)');
-const PROPIOS = ['index.html', ...archivos('css', ['.css']), ...archivos('js', ['.js']).filter(f=> !f.startsWith('js/vendor/'))];
+const PROPIOS = ['index.html', 'capacitor.config.json', ...archivos('css', ['.css']), ...archivos('js', ['.js']).filter(f=> !f.startsWith('js/vendor/'))];
 const NAMESPACES = /^https?:\/\/www\.w3\.org\//;
 const remotas = [];
 for(const f of PROPIOS){
@@ -73,6 +73,27 @@ for(const f of PROPIOS.filter(f=> f.endsWith('.js'))){
   if(/\beval\s*\(|new\s+Function\s*\(/.test(src)) peligrosos.push(f);
 }
 check('ni eval( ni new Function( en js/ (fuera de vendor/)', peligrosos.length === 0, peligrosos);
+
+console.log('\nE. Android (Capacitor): permisos mínimos y datos que no salen del equipo (controles 10 y 11)');
+if(fs.existsSync(path.join(RAIZ, 'android/app/src/main/AndroidManifest.xml'))){
+  const manifiesto = leer('android/app/src/main/AndroidManifest.xml');
+  const permisos = [...manifiesto.matchAll(/<uses-permission[^>]*android:name="([^"]+)"([^>]*)>/g)];
+  check('ningún permiso pedido (solo remociones tools:node="remove")', permisos.every(m=> /tools:node="remove"/.test(m[2])), permisos.map(m=>m[1]));
+  check('INTERNET removido explícitamente', permisos.some(m=> m[1]==='android.permission.INTERNET' && /tools:node="remove"/.test(m[2])));
+  check('allowBackup="false"', /android:allowBackup="false"/.test(manifiesto));
+  check('dataExtractionRules excluye nube y traspaso', /android:dataExtractionRules="@xml\/data_extraction_rules"/.test(manifiesto) &&
+    /<cloud-backup>[\s\S]*domain="sharedpref"[\s\S]*<\/cloud-backup>[\s\S]*<device-transfer>[\s\S]*domain="sharedpref"/.test(leer('android/app/src/main/res/xml/data_extraction_rules.xml')));
+  check('usesCleartextTraffic="false"', /android:usesCleartextTraffic="false"/.test(manifiesto));
+  check('orientación sensorLandscape', /android:screenOrientation="sensorLandscape"/.test(manifiesto));
+  const rutas = leer('android/app/src/main/res/xml/file_paths.xml').replace(/<!--[\s\S]*?-->/g, '');
+  check('FileProvider expone solo la caché de la app', /<cache-path/.test(rutas) && !/external-path|files-path|root-path/.test(rutas));
+  const cfg = JSON.parse(leer('capacitor.config.json'));
+  check('capacitor.config.json: webDir www, sin server.url (nada remoto)', cfg.webDir === 'www' && !(cfg.server && cfg.server.url));
+  const ignorados = leer('.gitignore');
+  check('.gitignore: www/, keystore y claves de firma', /^www\/$/m.test(ignorados) && /\*\.jks/.test(ignorados) && /keystore\.properties/.test(ignorados));
+} else {
+  console.log('  (sin carpeta android/: se omite)');
+}
 
 console.log(`\n${ok} ok · ${fail} con falla`);
 process.exit(fail ? 1 : 0);

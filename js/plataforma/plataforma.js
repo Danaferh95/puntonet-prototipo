@@ -17,7 +17,9 @@
    manifiesto evita que viajen a una copia de respaldo).
 
    Sin red: nada de esta capa hace peticiones. Los plugins nativos se leen de
-   window.Capacitor.Plugins, que Capacitor inyecta en la WebView (no hay bundler ni import).
+   window.Capacitor.Plugins: el lado Android de Capacitor (JSExport.getPluginJS) inyecta ahí un
+   objeto por plugin instalado, con sus métodos, antes de que carguen nuestros scripts. Por eso
+   no hace falta bundler, import ni registerPlugin.
    ========================================================================= */
 const Plataforma = (function(){
   const cap = window.Capacitor;
@@ -71,7 +73,7 @@ const Plataforma = (function(){
     if(!Filesystem || !Share) throw new Error('Faltan los plugins Filesystem/Share de Capacitor');
     const data = await blobABase64(blob);
     const escrito = await Filesystem.writeFile({ path: nombre, data, directory: 'CACHE' });
-    await Share.share({ title: nombre, url: escrito.uri, dialogTitle: 'Compartir ' + nombre });
+    await Share.share({ title: nombre, files: [escrito.uri], dialogTitle: 'Compartir ' + nombre });
   }
 
   return {

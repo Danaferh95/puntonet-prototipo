@@ -1,0 +1,9 @@
+{
+  "appId": "com.puntonet.configurador",
+  "appName": "Configurador Puntonet",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false
+  }
+}
