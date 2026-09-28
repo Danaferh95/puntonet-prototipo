@@ -54,7 +54,9 @@ USB, abrir `chrome://inspect/#devices` en Chrome de la PC y tocar **inspect**.
 Checklist (anotar cada falla en una lista):
 - Arrastrar Sede, Matriz y Nube con el dedo; arrastrar productos sobre sedes; tocar para armar y tocar para colocar.
 - Un dedo orbita; **pellizcar** hace zoom; **dos dedos** desplazan la cámara. Mover una sede. Estirar un cable desde el (+).
-- Popups, selección, panel derecho, teclado en pantalla al escribir nombres.
+- Botón **Seleccionar varias** (junto al ✋): cada toque suma o quita una sede/Matriz.
+- **Mantener el dedo** sobre un ícono de producto: aparece su tooltip y no cambia la selección.
+- Popups (el aviso de datos personales bajo "Notas del vendedor"), panel derecho, teclado en pantalla al escribir nombres.
 - Rendimiento con 20+ sedes.
 - Reporte y PDF.
 - Horizontal a 1024×768 y 1180×820 (o la resolución real de la tablet).

@@ -71,6 +71,22 @@ function selectConexionInline(conexionId){
   renderRightPanel();
 }
 
+/* --- Modo "Seleccionar varias" (etapa Android offline): en táctil no hay tecla Shift. Con el
+   botón activo, cada toque suma o quita una entidad de la selección, igual que Shift + clic, y
+   tocar el fondo no borra lo elegido. Sirve también con mouse. "Deseleccionar" limpia la
+   selección; apagar el botón la conserva. --- */
+let modoSeleccionMultiple = false;
+const multiSelectBtn = byId('multiSelectToggle');
+function setModoSeleccionMultiple(activo){
+  modoSeleccionMultiple = activo;
+  multiSelectBtn.classList.toggle('is-active', activo); // apariencia: .zoom-btn.is-active (visor.css)
+  multiSelectBtn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+}
+multiSelectBtn.addEventListener('click', ()=>{
+  setModoSeleccionMultiple(!modoSeleccionMultiple);
+  if(modoSeleccionMultiple) showToast('Seleccionar varias: toca cada sede o Matriz para sumarla o quitarla.');
+});
+
 function handleCanvasClick(hit, shiftKey){
   if(hit.conexion){
     selectConexionInline(hit.conexion);
@@ -299,8 +315,9 @@ function onPointerUp(e){
         else if(state.placing.tipo==='nube') placeNubeAtClientPoint(e.clientX, e.clientY);
         else if(state.placing.tipo==='subproducto') assignSubproductoAtClientPoint(state.placing.id, e.clientX, e.clientY);
         disarmPlacing();
-      } else {
-        handleCanvasClick(pointerDownInfo.hit, e.shiftKey);
+      } else if(!pointerDownInfo.pulsacionLarga){
+        // una pulsación larga ya mostró el tooltip: no cuenta como toque de selección
+        handleCanvasClick(pointerDownInfo.hit, e.shiftKey || modoSeleccionMultiple);
       }
     }
   }
@@ -338,8 +355,18 @@ function aplicarDosDedos(){
   dosDedosPrevio = ahora;
 }
 
+/* Pulsación larga (táctil): en una tablet no hay "pasar el mouse por encima", así que mantener
+   el dedo quieto ~0,5 s sobre un ícono de producto muestra su tooltip. Si el dedo se mueve antes,
+   es un arrastre normal (orbitar, mover la sede, estirar un cable). */
+const PULSACION_LARGA_MS = 500;
+let temporizadorPulsacion = null, temporizadorOcultarTooltip = null;
+function cancelarPulsacionLarga(){ clearTimeout(temporizadorPulsacion); temporizadorPulsacion = null; }
+
 renderer.domElement.addEventListener('pointerdown', (e)=>{
   if(e.pointerType === 'touch'){
+    cancelarPulsacionLarga();
+    clearTimeout(temporizadorOcultarTooltip);
+    ocultarTooltip();
     punterosTactiles.set(e.pointerId, { x:e.clientX, y:e.clientY });
     if(punterosTactiles.size >= 2){
       if(!gestoMultitactil) cancelActiveGesture();
@@ -348,6 +375,15 @@ renderer.domElement.addEventListener('pointerdown', (e)=>{
       return;
     }
     if(gestoMultitactil) return;
+    const punto = { clientX:e.clientX, clientY:e.clientY };
+    temporizadorPulsacion = setTimeout(()=>{
+      temporizadorPulsacion = null;
+      if(!pointerDownInfo || pointerMode !== null || gestoMultitactil) return;
+      if(mostrarTooltipEn(punto)){
+        pointerDownInfo.pulsacionLarga = true;
+        temporizadorOcultarTooltip = setTimeout(ocultarTooltip, 3000);
+      }
+    }, PULSACION_LARGA_MS);
   }
   onPointerDown(e);
 });
@@ -357,8 +393,10 @@ window.addEventListener('pointermove', (e)=>{
     if(gestoMultitactil){ aplicarDosDedos(); return; }
   }
   onPointerMove(e);
+  if(pointerMode !== null) cancelarPulsacionLarga(); // se convirtió en arrastre
 });
 function soltarPuntero(e, cancelado){
+  cancelarPulsacionLarga();
   const eraTactil = e.pointerType === 'touch' && punterosTactiles.delete(e.pointerId);
   if(eraTactil && gestoMultitactil){
     dosDedosPrevio = punterosTactiles.size === 2 ? medirDosDedos() : null;
@@ -383,7 +421,9 @@ function grupoDelTooltip(entity, inst){
 
 /* --- Tooltip on hover sobre assets --- */
 const tooltipEl = byId('tooltip');
-renderer.domElement.addEventListener('mousemove', (e)=>{
+/* Muestra el tooltip del producto bajo el punto (mouse encima, o pulsación larga en táctil).
+   Devuelve true si había un producto ahí; si no, lo oculta. */
+function mostrarTooltipEn(e){
   raycaster.setFromCamera(pointerNDC(e), camera);
   const intersects = raycaster.intersectObjects(scene.children, true);
   let found = null;
@@ -416,10 +456,15 @@ renderer.domElement.addEventListener('mousemove', (e)=>{
         tooltipEl.innerHTML = `<div class="t-title">${escapeHtml(inst.nombreSubproducto)}${found.isHeredadoAsset?' <span class="t-heredado">(heredado)</span>':''}</div>
           <div class="t-sub">${escapeHtml(vertical.nombre)}${inst.marca?' · '+escapeHtml(inst.marca):''}</div>`;
       }
+      return true;
     }
-  } else {
-    tooltipEl.style.display='none';
   }
-});
-renderer.domElement.addEventListener('mouseleave', ()=>{ tooltipEl.style.display='none'; });
+  ocultarTooltip();
+  return false;
+}
+function ocultarTooltip(){ tooltipEl.style.display='none'; }
+// Hover solo con mouse: pointermove no incluye los mousemove "de compatibilidad" que el navegador
+// dispara después de un toque (que dejaban el tooltip abierto al tocar un ícono).
+renderer.domElement.addEventListener('pointermove', e=>{ if(e.pointerType === 'mouse') mostrarTooltipEn(e); });
+renderer.domElement.addEventListener('pointerleave', e=>{ if(e.pointerType === 'mouse') ocultarTooltip(); });
 
