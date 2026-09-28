@@ -9,8 +9,12 @@ const path = require('path');
 const raiz = path.join(__dirname, '..');
 const destino = path.join(raiz, 'www');
 const INCLUIR = ['index.html', 'css', 'js', 'assets'];
-// Documentación interna que no tiene por qué viajar en el APK.
-const EXCLUIR = /(^|[\\/])README\.md$/i;
+// No viajan en el APK:
+// - la documentación interna (README.md);
+// - los renders grandes de entidades (assets/ui/renders/{sede,matriz,nube,epicentro}.png, ~7.5 MB):
+//   son el original del que salen los .webp chicos de assets/ui/renders-sm/, que es lo que usan el
+//   CSS y el PDF (tools/empaquetar-reporte.js). Nada de index.html, css/ ni js/ los referencia.
+const EXCLUIR = /(^|[\\/])README\.md$|[\\/]ui[\\/]renders[\\/](sede|matriz|nube|epicentro)\.png$/i;
 
 fs.rmSync(destino, { recursive: true, force: true });
 fs.mkdirSync(destino);
