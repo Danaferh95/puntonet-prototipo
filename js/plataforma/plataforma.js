@@ -8,9 +8,11 @@
      Plataforma.almacen.leer(clave)        → string | null
      Plataforma.almacen.escribir(clave, v) → true si se guardó; false si no hay espacio o no hay almacén
      Plataforma.almacen.borrar(clave)
-     Plataforma.guardarArchivo({ nombre, mime, blob })  → Promise
+     Plataforma.guardarArchivo({ nombre, mime, blob })  → Promise<{ compartir? }>
          Navegador: descarga el archivo. Capacitor: lo escribe en la caché de la app y abre el
-         menú de compartir de Android (ver guardarArchivoCapacitor, Fase 4).
+         "Guardar como" de Android (plugin propio GuardarArchivo, en android/app/src/main/java/…)
+         para que el vendedor elija carpeta y nombre. Devuelve `compartir()`, para ofrecer además
+         el menú de compartir. Si el plugin no está, cae al menú de compartir directo.
 
    Almacén: localStorage en todas las plataformas. Dentro de la app Android vive en los datos
    privados de la app, que se borran al desinstalar (control 11; allowBackup=false en el
@@ -66,21 +68,26 @@ const Plataforma = (function(){
   }
 
   /* Android: escribe en Directory.Cache (privado de la app, se borra al desinstalar) y abre el
-     menú de compartir para que el vendedor elija dónde mandarlo. Una vez compartido, el archivo
-     queda fuera de la app (en la app que el usuario eligió): eso se documenta en docs/android.md. */
+     "Guardar como" del sistema. Lo que el vendedor guarda o comparte queda fuera de la app (en la
+     carpeta o app que eligió): eso se documenta en docs/android.md.
+     Antes se abría directo el menú de compartir; en la tablet de prueba (28/09) el camino
+     "Imprimir → Guardar como PDF" de ese menú dejaba el archivo en 0 B. */
   async function guardarArchivoCapacitor({ nombre, mime, blob }){
-    const { Filesystem, Share } = cap.Plugins;
+    const { Filesystem, Share, GuardarArchivo } = cap.Plugins;
     if(!Filesystem || !Share) throw new Error('Faltan los plugins Filesystem/Share de Capacitor');
     const data = await blobABase64(blob);
     const escrito = await Filesystem.writeFile({ path: nombre, data, directory: 'CACHE' });
-    await Share.share({ title: nombre, files: [escrito.uri], dialogTitle: 'Compartir ' + nombre });
+    const compartir = ()=> Share.share({ title: nombre, files: [escrito.uri], dialogTitle: 'Compartir ' + nombre });
+    if(!GuardarArchivo){ await compartir(); return {}; }
+    await GuardarArchivo.guardar({ ruta: escrito.uri, nombre, mime });
+    return { compartir };
   }
 
   return {
     nombre: esCapacitor ? 'capacitor' : 'navegador',
     almacen,
     guardarArchivo(opts){
-      return esCapacitor ? guardarArchivoCapacitor(opts) : descargarEnNavegador(opts);
+      return esCapacitor ? guardarArchivoCapacitor(opts) : descargarEnNavegador(opts).then(()=> ({}));
     },
   };
 })();

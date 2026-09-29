@@ -341,14 +341,29 @@ function downloadJSON(){
   const config = buildConfiguracionCliente();
   const blob = new Blob([JSON.stringify(config, null, 2)], { type:'application/json' });
   const fecha = new Date().toISOString().slice(0,10);
-  // Capa de plataforma: descarga en el navegador; en Android abre el menú de compartir.
-  Plataforma.guardarArchivo({ nombre: `configuracion-${safeFileName(config.nombreCliente)}-${fecha}.json`,
-    mime: 'application/json', blob })
+  // Capa de plataforma: descarga en el navegador; en Android, "Guardar como" y luego compartir.
+  const nombreJSON = `configuracion-${safeFileName(config.nombreCliente)}-${fecha}.json`;
+  Plataforma.guardarArchivo({ nombre: nombreJSON, mime: 'application/json', blob })
+    .then(guardado=> ofrecerCompartir(guardado, 'JSON guardado', nombreJSON))
     .catch(err=>{ if(!esCancelacionCompartir(err)){ console.error('[json] no se pudo exportar:', err); showToast('No se pudo exportar el JSON.'); } });
 }
-/* El usuario cerró el menú de compartir de Android sin elegir app: no es un error. */
+/* El usuario cerró el "Guardar como" o el menú de compartir de Android sin elegir nada: no es un
+   error. */
 function esCancelacionCompartir(err){
   return !!err && /cancel/i.test(String(err.message || err));
+}
+/* Android: el archivo ya se guardó donde eligió el vendedor; se ofrece además compartirlo
+   (correo, WhatsApp, Drive…). En el navegador no hay nada que ofrecer: fue una descarga. */
+function ofrecerCompartir(guardado, titulo, nombre){
+  if(!guardado || !guardado.compartir) return;
+  showDialog({ title: titulo, body: `"${nombre}" quedó guardado en la carpeta que elegiste. ¿Quieres compartirlo también?`,
+    confirmText: 'Compartir', cancelText: 'Listo' })
+    .then(r=>{
+      if(!r.ok) return;
+      guardado.compartir().catch(err=>{
+        if(!esCancelacionCompartir(err)){ console.error('[compartir]', err); showToast('No se pudo abrir el menú de compartir.'); }
+      });
+    });
 }
 byId('btnExportFromReport').addEventListener('click', downloadJSON);
 

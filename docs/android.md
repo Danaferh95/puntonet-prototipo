@@ -58,7 +58,7 @@ Checklist (anotar cada falla en una lista):
 - **Mantener el dedo** sobre un ícono de producto: aparece su tooltip y no cambia la selección.
 - Popups (el aviso de datos personales bajo "Notas del vendedor"), panel derecho, teclado en pantalla al escribir nombres.
 - Rendimiento con 20+ sedes.
-- Reporte y PDF.
+- Reporte → Descargar PDF: se abre "Guardar como"; guardar en Descargas y abrirlo desde Archivos. Luego "Compartir".
 - Horizontal a 1024×768 y 1180×820 (o la resolución real de la tablet).
 - Cerrar Chrome desde la multitarea y volver a abrir: la sesión tiene que volver ("Se recuperó la sesión anterior").
 
@@ -142,7 +142,7 @@ Android Studio. Anotar el modelo de tablet y la versión de Android. Esto alimen
 | Permiso | ¿Lo pide? | Por qué |
 |---|---|---|
 | Internet | **No** (se quita explícitamente) | La web va dentro del APK. Capacitor la sirve en `https://localhost` interceptando las peticiones dentro de la app; no sale a la red. |
-| Almacenamiento | No | El PDF se escribe en la caché privada de la app y se entrega con el menú de compartir de Android (FileProvider), que no necesita permisos. |
+| Almacenamiento | No | El PDF se escribe en la caché privada de la app y se guarda con el "Guardar como" de Android (plugin propio `GuardarArchivo`, Storage Access Framework): el usuario elige carpeta y nombre, y Android le da acceso solo a ese archivo. Compartir usa FileProvider. Ninguno de los dos necesita permisos. |
 | Cámara, ubicación, contactos, etc. | No | La app no los usa. |
 
 La app no necesita privilegios de administrador en la tablet ni en la PC.
@@ -157,8 +157,11 @@ La app no necesita privilegios de administrador en la tablet ni en la PC.
   otro equipo.
 - **Cuándo se borra:** con **Nueva sesión** (botón del encabezado), con Ajustes → Apps → Borrar
   datos, y **al desinstalar** la app.
-- **Lo que sale de la app:** un PDF o JSON **compartido** queda en la app que el vendedor eligió
-  (correo, Drive, WhatsApp, Archivos…) y ya no depende de esta app ni se borra al desinstalarla.
+- **Lo que sale de la app:** "Descargar PDF" abre el "Guardar como" de Android y después ofrece
+  compartir. Un PDF o JSON **guardado** en una carpeta (Descargas, Documentos…) o **compartido**
+  (correo, Drive, WhatsApp…) queda fuera de la app y no se borra al desinstalarla.
+  No usar "Imprimir → Guardar como PDF" del menú de compartir: en la tablet de prueba (POWMUS L60,
+  Android 14) generaba un archivo de 0 B.
   Las restricciones para compartir son una decisión pendiente con Puntonet.
 
 ## 9. Instalación, actualización y desinstalación (control 13)
