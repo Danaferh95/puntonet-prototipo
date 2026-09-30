@@ -80,7 +80,10 @@ function saludGlobal(){
    "2/8" de cada categoría, el tooltip "Conectividad: 2 de 8 productos (25%)" y el % global del
    título: quedan el símbolo, el nombre y la barra. Los números siguen calculándose
    (saludPorVertical / saludGlobal) porque los usan el reporte y el JSON exportado. Desde T05 la
-   barra mide cobertura de ubicaciones (ver 3.5), no productos del catálogo. */
+   barra mide cobertura de ubicaciones (ver 3.5), no productos del catálogo.
+
+   Pedido del cliente (29/09): se vuelve a mostrar el % de cada categoría, arriba a la derecha de
+   su barra (.salud-pct), y se actualiza a medida que la barra carga. */
 
 const saludBarsEl = byId('saludBars');
 function renderSaludPanel(){
@@ -93,7 +96,10 @@ function renderSaludPanel(){
     row.innerHTML = `
       <span class="salud-icon" aria-hidden="true"></span>
       <span class="salud-main">
-        <span class="salud-label">${v.vertical.nombre}</span>
+        <span class="salud-head">
+          <span class="salud-label">${v.vertical.nombre}</span>
+          <span class="salud-pct">${v.pct}%</span>
+        </span>
         <span class="salud-bar-track"><span class="salud-bar-fill" style="width:${v.pct}%;"></span></span>
       </span>`;
     saludBarsEl.appendChild(row);

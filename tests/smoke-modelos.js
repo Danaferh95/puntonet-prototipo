@@ -436,16 +436,19 @@ const E = (w, expr) => w.eval(expr);
   const versiones = HTML.match(/Prototipo v\d+/g) || [];
   check('index.html muestra la versión en el título (' + versiones[0] + '; la etiqueta salió del header en el rediseño)', versiones.length === 1 && parseInt(versiones[0].slice(11)) >= 40, versiones);
 
-  // T03 (reunión 22/09): la Salud en pantalla no muestra números — ni contador por categoría, ni
-  // tooltip, ni % global. Se prueba con productos asignados, que es cuando antes aparecían.
+  // T03 (reunión 22/09): la Salud en pantalla no muestra contador por categoría, ni tooltip, ni %
+  // global. Pedido del cliente 29/09: cada categoría sí muestra su % (arriba a la derecha de la
+  // barra) y es el único número del panel.
   const wS = ventana({});
   await E(wS,'modelosListos');
   E(wS, `(()=>{ const s = createSede(30, 2, 1);
     s.instancias.push({ instanciaId:'t03a', subproductoId:'internet_corporativo' }, { instanciaId:'t03b', subproductoId:'puntonet_space' });
     renderSaludPanel(); })()`);
   const pie = wS.document.getElementById('saludFooter');
-  check('Salud: ningún número en el panel (T03), aunque haya productos asignados',
-    !/\d/.test(pie.textContent) && pie.querySelectorAll('[title]').length === 0 && pie.querySelectorAll('.salud-row').length === 4,
+  const pcts = [...pie.querySelectorAll('.salud-row .salud-pct')].map(e=>e.textContent);
+  const sinPct = pie.cloneNode(true); sinPct.querySelectorAll('.salud-pct').forEach(e=>e.remove());
+  check('Salud: cada categoría muestra su % (29/09) y no hay otros números en el panel (T03)',
+    pcts.join(' ') === '100% 0% 0% 0%' && !/\d/.test(sinPct.textContent) && pie.querySelectorAll('[title]').length === 0 && pie.querySelectorAll('.salud-row').length === 4,
     pie.textContent.replace(/\s+/g, ' '));
   // T05: la barra mide cobertura de ubicaciones; la única Sede tiene Internet → Conectividad al 100 %.
   check('…y la barra sigue reflejando la cobertura', pie.querySelector('.salud-row--conectividad .salud-bar-fill').style.width === '100%');
