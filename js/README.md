@@ -89,6 +89,8 @@ Sin tocar: `vendor/` (three.js r128, GLTFLoader, post-proceso, jsPDF 4.2.1, html
   exportar archivos (`Plataforma.guardarArchivo`: descarga en el navegador, menú de compartir en
   Android). Si mañana entra Windows (Tauri), se agrega una implementación ahí y nada más cambia.
 - **Sin red:** ni la app ni esta capa hacen peticiones. `tests/offline.js` lo verifica.
+- **Web sin conexión:** `Plataforma.activarModoSinConexion()` registra `sw.js` (raíz) solo por
+  http(s). Después de cambiar cualquier archivo de la app: `npm run sw`.
 - **Gestos:** el canvas usa Pointer Events (`interaccion/raycasting.js`). Un dedo = mouse; dos
   dedos = pellizcar para zoom y arrastrar para desplazar.
 

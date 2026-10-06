@@ -24,7 +24,7 @@ function archivos(dir, ext){
 }
 
 console.log('\nA. Sin URLs remotas (index.html, css/, js/ propio)');
-const PROPIOS = ['index.html', 'capacitor.config.json', ...archivos('css', ['.css']), ...archivos('js', ['.js']).filter(f=> !f.startsWith('js/vendor/'))];
+const PROPIOS = ['index.html', 'sw.js', 'capacitor.config.json', ...archivos('css', ['.css']), ...archivos('js', ['.js']).filter(f=> !f.startsWith('js/vendor/'))];
 const NAMESPACES = /^https?:\/\/www\.w3\.org\//;
 const remotas = [];
 for(const f of PROPIOS){
@@ -73,6 +73,23 @@ for(const f of PROPIOS.filter(f=> f.endsWith('.js'))){
   if(/\beval\s*\(|new\s+Function\s*\(/.test(src)) peligrosos.push(f);
 }
 check('ni eval( ni new Function( en js/ (fuera de vendor/)', peligrosos.length === 0, peligrosos);
+
+console.log('\nF. Web sin conexión (service worker, 06/10/2026)');
+{
+  const { bloqueGenerado, INICIO, FIN } = require('../tools/generar-sw');
+  const { archivosDeLaApp } = require('../tools/archivos-app');
+  const sw = leer('sw.js').replace(/\r\n/g, '\n');
+  const actual = sw.slice(sw.indexOf(INICIO), sw.indexOf(FIN) + FIN.length);
+  check('sw.js al día con los archivos de la app (si falla: npm run sw)', actual === bloqueGenerado());
+  const lista = archivosDeLaApp();
+  check('la lista incluye index.html, three.js, jsPDF, html2canvas y las fuentes',
+    ['index.html', 'js/vendor/three.min.js', 'js/vendor/jspdf.umd.min.js', 'js/vendor/html2canvas.min.js', 'assets/fonts/inter-latin-400-normal.woff2'].every(f=> lista.includes(f)));
+  const scripts = [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+)"/g)].map(m=> m[1]);
+  check('todo lo que index.html carga está en la lista', scripts.every(f=> lista.includes(f)), scripts.filter(f=> !lista.includes(f)));
+  const plataforma = leer('js/plataforma/plataforma.js');
+  check('solo se registra por http(s), nunca en Capacitor ni Tauri',
+    /register\('sw\.js'\)/.test(plataforma) && /esCapacitor \|\| esTauri/.test(plataforma) && /\^https\?:\$/.test(plataforma));
+}
 
 console.log('\nE. Android (Capacitor): permisos mínimos y datos que no salen del equipo (controles 10 y 11)');
 if(fs.existsSync(path.join(RAIZ, 'android/app/src/main/AndroidManifest.xml'))){

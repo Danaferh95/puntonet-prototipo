@@ -8,6 +8,8 @@
      Plataforma.almacen.leer(clave)        → string | null
      Plataforma.almacen.escribir(clave, v) → true si se guardó; false si no hay espacio o no hay almacén
      Plataforma.almacen.borrar(clave)
+     Plataforma.activarModoSinConexion()   web por http(s): registra sw.js para que la app abra sin
+                                           internet. En Capacitor, file:// o Tauri no hace nada.
      Plataforma.guardarArchivo({ nombre, mime, blob })  → Promise<{ compartir? }>
          Navegador: descarga el archivo. Capacitor: lo escribe en la caché de la app y abre el
          "Guardar como" de Android (plugin propio GuardarArchivo, en android/app/src/main/java/…)
@@ -83,9 +85,29 @@ const Plataforma = (function(){
     return { compartir };
   }
 
+  /* Web sin conexión (06/10/2026): sw.js guarda todos los archivos de la app la primera vez que se
+     abre. Solo hace falta cuando la app viene de un servidor (Cloudflare, servidor local): en
+     Android, con doble clic (file://) o en el instalador de Windows los archivos ya están en el
+     equipo. Avisa una vez cuando quedó lista sin conexión, y cuando llegó una versión nueva. */
+  function activarModoSinConexion(){
+    const esTauri = !!(window.__TAURI__ || window.__TAURI_INTERNALS__);
+    if(esCapacitor || esTauri || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    const habiaVersion = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      const nuevo = reg.installing;
+      if(!nuevo) return;
+      nuevo.addEventListener('statechange', ()=>{
+        if(nuevo.state !== 'activated') return;
+        if(habiaVersion) showToast('Hay una versión nueva de la app: recarga la página para usarla.', 6000);
+        else showToast('La app quedó lista para usarse sin conexión.', 4000);
+      });
+    }).catch(err=> console.warn('[plataforma] no se pudo activar el modo sin conexión:', err));
+  }
+
   return {
     nombre: esCapacitor ? 'capacitor' : 'navegador',
     almacen,
+    activarModoSinConexion,
     guardarArchivo(opts){
       return esCapacitor ? guardarArchivoCapacitor(opts) : descargarEnNavegador(opts).then(()=> ({}));
     },

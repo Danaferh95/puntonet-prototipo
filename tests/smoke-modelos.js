@@ -350,37 +350,46 @@ const E = (w, expr) => w.eval(expr);
   const n5 = E(w5,"createNube('X', 1, 1)"), m5 = E(w5,'createMatriz(0,0)');
   check('si falta un solo .glb → "parcial": esa entidad con primitiva, el resto con modelo', e5 === 'parcial' && !n5.group.userData.modelo && m5.group.userData.modelo, e5);
 
-  console.log('\nI-bis. Guardar estado actual: inicio y final de la sesión (T06)');
-  // Un solo botón (Dei, 23/09): el primer guardado queda como inicio; los siguientes actualizan.
+  console.log('\nI-bis. Guardar estado actual: inicio y final de la sesión (T06, ajuste 06/10)');
+  // Un solo botón (Dei, 23/09). 06/10: el botón guarda el INICIO y cada clic lo reemplaza (con
+  // confirmación); el final lo guarda solo el reporte.
   const wE = ventana({});
   await E(wE,'modelosListos');
   const doc = wE.document;
   const btn = doc.getElementById('btnEstructuraActual');
+  const dlg = doc.getElementById('dialogOverlay');
+  const tick = ()=> new Promise(r=> setTimeout(r, 0));
   check('hay un solo botón de guardado (ya no existe "Guardar inicial")',
     !!btn && !doc.getElementById('btnEstructuraInicial') && /Guardar estado actual/.test(btn.textContent));
   check('arranca sin fotos: el JSON exporta estructuras en null',
     JSON.stringify(E(wE,'buildConfiguracionCliente()').estructuras) === '{"inicial":null,"actual":null}');
   E(wE,'createSede(30, 3, 1)');
-  btn.click();
+  btn.click(); await tick();
   const ini = E(wE,'state.estructuras.inicial');
-  check('el primer guardado queda como inicio y como actual, con entidades, conexiones, salud y resumen',
+  check('el primer guardado queda como inicio (sin diálogo), con entidades, conexiones, salud y resumen; no toca el final',
     !!ini && ini.sedes.length === 1 && Array.isArray(ini.conexiones) && typeof ini.salud.actual === 'number' &&
     ini.resumen.sedes === 1 && !('clienteLogo' in ini) && !('estructuras' in ini) &&
-    E(wE,'state.estructuras.actual').resumen.sedes === 1 && E(wE,'state.estructuras.actual') !== ini);
+    E(wE,'state.estructuras.actual') === null && !dlg.classList.contains('show'));
   check('…y el botón queda marcado con la hora', btn.classList.contains('is-saved') &&
     doc.getElementById('estructuraActualHora').textContent !== '');
   E(wE,'createSede(30, -3, 1); createMatriz(-4, -3)');
-  btn.click();
-  check('los guardados siguientes actualizan el actual y no tocan el inicio (sin diálogo)',
-    E(wE,'state.estructuras.inicial').resumen.sedes === 1 && E(wE,'state.estructuras.actual').resumen.sedes === 2 &&
-    !doc.getElementById('dialogOverlay').classList.contains('show'));
+  btn.click(); await tick();
+  check('el segundo guardado pide confirmar el reemplazo (muestra la hora del anterior)',
+    dlg.classList.contains('show') && doc.getElementById('dialogConfirm').textContent === 'Reemplazar' && /guardado a las/.test(doc.getElementById('dialogBody').textContent));
+  doc.getElementById('dialogCancel').click(); await tick();
+  check('si se cancela, el inicio no cambia', E(wE,'state.estructuras.inicial').resumen.sedes === 1);
+  btn.click(); await tick();
+  doc.getElementById('dialogConfirm').click(); await tick();
+  check('si se confirma, el inicio se reemplaza por lo que hay en pantalla',
+    E(wE,'state.estructuras.inicial').resumen.sedes === 2 && E(wE,'state.estructuras.inicial').resumen.matrices === 1 &&
+    E(wE,'state.estructuras.actual') === null);
   E(wE,'createSede(30, 0, 4)');
   E(wE,'openReport()');
   const cfgE = E(wE,'buildConfiguracionCliente()');
-  check('generar el reporte guarda el actual solo, y el JSON lleva inicio y final',
-    cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 1);
+  check('generar el reporte guarda el final solo, y el JSON lleva inicio y final',
+    cfgE.estructuras.actual.resumen.sedes === 3 && cfgE.estructuras.inicial.resumen.sedes === 2);
   check('el reporte muestra el bloque inicio → final', /Estructura: inicio y final/.test(doc.getElementById('reportBody').textContent) &&
-    /1 → 3/.test(doc.getElementById('reportBody').textContent));
+    /2 → 3/.test(doc.getElementById('reportBody').textContent));
   // Cliente 25/09: cada guardado lleva su captura, no solo el inicio → el reporte compara imágenes.
   const imgs = E(wE,'[state.estructuras.inicial.imagen, state.estructuras.actual.imagen]');
   check('inicio y final llevan cada uno su captura del canvas (data URL)',
@@ -391,7 +400,7 @@ const E = (w, expr) => w.eval(expr);
   await E(wE2,'modelosListos');
   E(wE2,'createSede(30, 3, 1); openReport()');
   check('si nunca se guardó, el reporte se abre igual, lo avisa, y su guardado automático no fija el inicio',
-    /No se guardó el estado durante la sesión/.test(wE2.document.getElementById('reportBody').textContent) &&
+    /No se guardó el estado inicial/.test(wE2.document.getElementById('reportBody').textContent) &&
     !!E(wE2,'state.estructuras.actual') && E(wE2,'state.estructuras.inicial') === null);
 
   console.log('\nK. Memoria de la GPU (js/escena/recursos.js)');

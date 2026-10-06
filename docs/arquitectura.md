@@ -49,7 +49,11 @@ servidor, no tiene base de datos y no se conecta a la red.**
 3. Al generar el reporte, el PDF (o el JSON) se arma **en el equipo**. En la PC se descarga; en la
    tablet se escribe en la caché privada de la app y se abre el menú de compartir de Android. Lo que
    el vendedor comparte sale de la app por decisión suya y bajo las reglas del equipo (MDM).
-4. **Nueva sesión** borra lo guardado.
+4. **Guardar estado actual** guarda el *inicio* de la sesión (la infraestructura con la que llegó
+   el cliente). Cada clic lo reemplaza, con confirmación si ya había uno. El *final* lo toma solo
+   el reporte, con lo que hay en pantalla (ajuste del 06/10/2026).
+5. **Nueva sesión** borra lo guardado (configuración, inicio y final) y arranca de cero. Está en la
+   web y en Android.
 
 No hay usuarios, contraseñas ni sesiones de servidor: la app no autentica porque no expone ni
 consume ningún servicio. El acceso a la app es el acceso al equipo.
@@ -61,6 +65,13 @@ consume ningún servicio. El acceso a la app es el acceso al equipo.
 - El código no hace peticiones a internet ni carga código remoto (sin `eval`, sin `new Function`,
   sin actualizaciones en vivo).
 - La app Android no pide el permiso `INTERNET`.
+- **Web publicada (Cloudflare u otro servidor):** `sw.js` (service worker) guarda todos los archivos
+  de la app la primera vez que se abre; desde ahí abre y funciona sin internet, incluido el PDF.
+  La lista de archivos es la misma que va al APK (`tools/archivos-app.js`). Solo se registra por
+  http(s): en Android, con doble clic (`file://`) o en el instalador de Windows no hace falta.
+  **Al publicar cambios hay que correr `npm run sw`** (actualiza la versión y la lista; `npm test`
+  falla si quedó desactualizado). Los navegadores que ya la tenían bajan la versión nueva y la app
+  avisa que hay que recargar.
 - `tests/offline.js` lo verifica en cada `npm test`: sin URLs remotas en el código propio, librerías
   idénticas a las versiones fijadas, sin `eval`, y los permisos del manifiesto.
 

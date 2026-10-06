@@ -53,7 +53,7 @@ function serializarSesion(incluirLogo){
 function sesionTieneContenido(){
   return !!(state.clienteNombre || state.clienteLogo || state.sedes.length || state.matrices.length ||
     state.nubes.length || state.conexiones.length || state.datacenter.instancias.length ||
-    !state.datacenter.activo || state.estructuras.actual);
+    !state.datacenter.activo || state.estructuras.inicial || state.estructuras.actual);
 }
 
 function guardarSesionAhora(){
@@ -183,7 +183,7 @@ function avisarErrorDeRestauracion(){
 byId('btnNuevaSesion').addEventListener('click', ()=>{
   showDialog({
     title: 'Nueva sesión',
-    body: 'Se borra la configuración actual de este equipo (cliente, sedes, productos y conexiones). Si la necesitas, exporta antes el reporte. Esta acción no se puede deshacer.',
+    body: 'Se borra la configuración actual de este equipo (cliente, sedes, productos, conexiones y el estado inicial guardado). Si la necesitas, exporta antes el reporte. Esta acción no se puede deshacer.',
     confirmText: 'Empezar de cero', danger: true,
   }).then(r=>{
     if(!r.ok) return;

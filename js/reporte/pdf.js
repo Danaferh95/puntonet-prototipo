@@ -336,7 +336,7 @@ function entidadesDelReporte(){
 
 function datosReportePDF(config){
   const entidadesConServicios = [...state.matrices, ...state.sedes, ...state.nubes, ...(state.datacenter.activo ? [state.datacenter] : [])];
-  // Estado inicial (cliente, 25/09): la foto del primer "Guardar estado actual" (T06), con su
+  // Estado inicial (cliente, 25/09): la foto del último "Guardar estado actual" (T06), con su
   // captura del canvas y su salud. Ya no se pide un score a mano.
   const ini = config.estructuras.inicial, fin = config.estructuras.actual;
   const inicial = ini && ini.resumen ? ini.resumen.saludGlobal : null;
@@ -724,7 +724,7 @@ async function downloadPDF(){
   escenario.setAttribute('aria-hidden', 'true');
   document.body.appendChild(escenario);
   try {
-    guardarEstructura(false); // T06: el final del reporte es lo que hay en pantalla
+    guardarFinal(); // T06: el final del reporte es lo que hay en pantalla
     const config = buildConfiguracionCliente();
     const ctx = { escenario, paginas: [], datos: datosReportePDF(config) };
     if(document.fonts){

@@ -47,6 +47,10 @@ avisarErrorDeRestauracion();
 restaurarSesion();
 iniciarAutoguardado();
 
+/* Web por http(s): guarda la app para que abra sin internet (sw.js, ver plataforma/plataforma.js).
+   Se pide al terminar de cargar, para no competir con el arranque. */
+window.addEventListener('load', ()=> Plataforma.activarModoSinConexion());
+
 /* Librerías del PDF: se piden cuando el navegador queda libre, sin demorar el arranque
    (ver cargarLibreriasPDF en reporte/pdf.js). El tope de 3 s es para equipos lentos, donde el
    loop de render puede no dejar nunca un momento "libre". */

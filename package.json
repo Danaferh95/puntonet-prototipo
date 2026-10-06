@@ -6,6 +6,7 @@
     "test": "node tests/run-all.js",
     "vendor": "node tools/copiar-vendor.js",
     "www": "node tools/preparar-www.js",
+    "sw": "node tools/generar-sw.js",
     "android:sync": "node tools/preparar-www.js && npx cap sync android",
     "android:open": "npx cap open android"
   },

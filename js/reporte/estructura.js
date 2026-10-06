@@ -2,21 +2,25 @@
    T06 (reunión 22/09): ESTRUCTURA INICIAL vs ACTUAL
    Dos fotos del proyecto, guardadas en el estado y en el JSON, para que el reporte muestre cómo
    empezó y cómo terminó la sesión. Todo en memoria, sin backend.
-   Un solo botón, "Guardar estado actual" (Dei, 23/09: dos botones confundían):
-   - El PRIMER guardado de la sesión queda además como `inicial` (el inicio de la sesión); los
-     siguientes solo actualizan `actual`. No hay forma de reemplazar el inicio a mano.
-   - Generar el reporte guarda `actual` sola, así el final del reporte siempre coincide con lo
-     que hay en pantalla. Ese guardado automático NO fija el inicio: si nunca se tocó el botón,
-     el reporte muestra solo el final y lo avisa.
+   Un solo botón, "Guardar estado actual" (Dei, 23/09: dos botones confundían).
+   Cliente (06/10): "aunque pongo guardar, el estado no se guarda". Antes el PRIMER guardado fijaba
+   el inicio para siempre y los siguientes solo tocaban `actual`, que el reporte vuelve a pisar:
+   desde el segundo clic el botón no tenía ningún efecto visible, y un inicio viejo (de una prueba
+   anterior) quedaba en el reporte. Decisión (Dei, 06/10):
+   - El botón guarda el INICIO (el estado actual del cliente, antes de la propuesta). Cada clic lo
+     reemplaza; si ya había uno, se pide confirmar mostrando la hora del anterior.
+   - El FINAL (`actual`) lo guarda solo el reporte (al abrirlo y al exportar el PDF), así siempre
+     coincide con lo que hay en pantalla. Si nunca se tocó el botón, el reporte muestra solo el
+     final y lo avisa.
+   - "Nueva sesión" (core/persistencia.js) borra todo, incluidos inicio y final.
    Una foto es una copia profunda de lo que exporta buildConfiguracionCliente (entidades,
    productos, conexiones, salud) sin los datos del cliente ni las propias fotos, más un resumen
    con los conteos que usa el reporte. Es un dato congelado: no se vuelve a calcular.
    Cliente (25/09): la foto del inicio guarda además la captura del canvas en ese momento
    (`imagen`, PNG en data URL), con el mismo encuadre que el esquema del PDF. El PDF la muestra
    junto al score de ese momento; ya no se pide el score a mano.
-   Cliente (25/09, tarde): TODA foto lleva su captura, no solo la del inicio. Cada "Guardar
-   estado actual" (y el guardado automático al generar el reporte) captura el canvas en
-   `actual.imagen`, así el reporte compara la imagen del inicio con la del final.
+   Cliente (25/09, tarde): TODA foto lleva su captura, no solo la del inicio: el guardado del
+   final también captura el canvas en `actual.imagen`, así el reporte compara las dos imágenes.
    ========================================================================= */
 /* Tamaño de cada captura (inicio y final), en px de página del PDF (se toma × PDF_ESCALA). Tiene
    que coincidir con el aspecto de .pdf-comparacion__caja en css/reporte/pdf.css (16:9). */
@@ -60,24 +64,40 @@ function fotoEstructura(){
 function horaFoto(foto){
   return foto ? new Date(foto.guardadoEn).toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' }) : '';
 }
+/* El botón muestra la hora del inicio guardado (vacío si todavía no se guardó). */
 function renderBotonesEstructura(){
-  const foto = state.estructuras.actual;
+  const foto = state.estructuras.inicial;
   byId('btnEstructuraActual').classList.toggle('is-saved', !!foto);
   byId('estructuraActualHora').textContent = horaFoto(foto);
 }
-/* `fijarInicio`: solo el botón lo pide. El primer guardado hecho con el botón fija el inicio. */
-function guardarEstructura(fijarInicio){
+function fotoConCaptura(){
   const foto = fotoEstructura();
-  foto.imagen = capturaEstructura(); // la del final se reemplaza en cada guardado
-  const esPrimero = fijarInicio && !state.estructuras.inicial;
-  if(esPrimero) state.estructuras.inicial = JSON.parse(JSON.stringify(foto)); // misma captura
-  state.estructuras.actual = foto;
+  foto.imagen = capturaEstructura();
+  return foto;
+}
+/* Inicio de la sesión: solo lo guarda el botón, y cada clic lo reemplaza. */
+function guardarInicio(){
+  state.estructuras.inicial = fotoConCaptura();
   renderBotonesEstructura();
-  return esPrimero;
+}
+/* Final: lo guarda el reporte (openReport y downloadPDF) con lo que hay en pantalla. */
+function guardarFinal(){
+  state.estructuras.actual = fotoConCaptura();
 }
 byId('btnEstructuraActual').addEventListener('click', ()=>{
-  const esPrimero = guardarEstructura(true);
-  showToast(esPrimero ? `Estado guardado como inicio de la sesión (captura y salud ${state.estructuras.inicial.resumen.saludGlobal}%).` : `Estado actual guardado (captura y salud ${state.estructuras.actual.resumen.saludGlobal}%).`);
+  const previo = state.estructuras.inicial;
+  const confirmar = previo
+    ? showDialog({
+        title: 'Reemplazar el estado inicial',
+        body: `Ya hay un estado inicial guardado a las ${horaFoto(previo)} (salud ${previo.resumen.saludGlobal}%). ¿Reemplazarlo por lo que hay ahora en pantalla?`,
+        confirmText: 'Reemplazar',
+      })
+    : Promise.resolve({ ok:true });
+  confirmar.then(r=>{
+    if(!r.ok) return;
+    guardarInicio(); // la sesión se guarda sola (core/persistencia.js: el clic programa el guardado)
+    showToast(`${previo ? 'Estado inicial reemplazado' : 'Estado inicial guardado'} (${horaFoto(state.estructuras.inicial)}, salud ${state.estructuras.inicial.resumen.saludGlobal}%). El final se guarda solo al generar el reporte.`, 4000);
+  });
 });
 
 /* Bloque del reporte: inicio vs final, con los conteos del resumen y la salud por categoría.
@@ -119,7 +139,7 @@ function renderBloqueEstructuras(config){
   if(!ini){
     const aviso = document.createElement('div');
     aviso.className = 'report-inst muted-small';
-    aviso.textContent = 'No se guardó el estado durante la sesión: se muestra solo el final.';
+    aviso.textContent = 'No se guardó el estado inicial (botón "Guardar estado actual"): se muestra solo el final.';
     box.appendChild(aviso);
   }
   const r0 = ini ? ini.resumen : {}, r1 = fin.resumen;
@@ -137,8 +157,8 @@ function renderBloqueEstructuras(config){
 }
 
 function openReport(){
-  // T06: generar el reporte actualiza la estructura actual (el "final" = lo que hay en pantalla).
-  guardarEstructura(false);
+  // T06: generar el reporte guarda el final (= lo que hay en pantalla). El inicio no se toca.
+  guardarFinal();
   const config = buildConfiguracionCliente();
   reportSubtitle.textContent = `${config.nombreCliente} · ${config.sedes.length} sede(s) · ${config.matrices.length} matriz(ces) · generado ${new Date(config.generadoEn).toLocaleString('es-EC')}`;
   reportBody.innerHTML='';
