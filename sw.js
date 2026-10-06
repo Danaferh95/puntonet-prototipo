@@ -12,7 +12,7 @@
      borra la vieja y la app avisa que hay que recargar.
    ========================================================================= */
 /* <generado por tools/generar-sw.js> */
-const VERSION = '281fd8ce6bbe';
+const VERSION = '3e54166f1bd1';
 const ARCHIVOS = [
   "./",
   "index.html",
