@@ -20,6 +20,7 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 
 | Carpeta | Archivo | Qué tiene |
 |---|---|---|
+| `plataforma/` | `plataforma.js` | Capa de plataforma: almacén local y guardar/compartir archivos (navegador o Android). Va antes que todo |
 | `core/` | `catalogo.js` | §1 Verticales, Productos y Subproductos |
 | | `utilidades.js` | Color por producto, tamaños de sede, sliders |
 | | `estado.js` | §2 `state`, `byId`, búsquedas de entidades, reglas de conexión |
@@ -52,9 +53,10 @@ secciones que ya tenía el archivo (§1 Catálogo, §2 Estado, §3 Escena…), s
 | `reporte/` | `reporte.js` | §9 cliente, logo, reporte y exportar JSON |
 | | `estructura.js` | T06 estructura inicial vs actual |
 | | `pdf.js` | §9-bis PDF (y carga diferida de jsPDF/html2canvas) |
+| `core/` | `persistencia.js` | Guardar/restaurar la sesión en el equipo y "Nueva sesión". Se carga justo antes de `main.js` |
 | | `main.js` | §10 arranque y estado inicial |
 
-Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que generan los scripts de
+Sin tocar: `vendor/` (three.js r128, GLTFLoader, post-proceso, jsPDF 4.2.1, html2canvas 1.4.1) y los datos embebidos que generan los scripts de
 `tools/` (`modelos-glb.js`, `iconos-glb.js`, `reporte-assets.js`).
 
 ## Dónde va cada cosa nueva
@@ -77,7 +79,20 @@ Sin tocar: `vendor/` (GLTFLoader, post-proceso) y los datos embebidos que genera
 - **Los puertos (+) comparten una sola textura** en vez de pintar un canvas por entidad.
 - **jsPDF y html2canvas (~550 KB) ya no frenan el arranque:** se piden cuando la app ya está
   dibujada y el navegador queda libre. Si todavía no llegaron al exportar, el PDF las espera.
-- **Inter se carga con `<link>`** en vez de `@import` dentro del CSS.
+- **Todo es local (offline):** three.js, jsPDF, html2canvas e Inter viven en `js/vendor/` y
+  `assets/fonts/`, con versiones fijadas en `package.json`. Ninguna petición sale a internet.
+
+## Plataforma (navegador, Android y, a futuro, Windows)
+
+- El código de la app **no pregunta en qué plataforma corre**. Todo lo que depende de ella pasa
+  por `Plataforma` (`plataforma/plataforma.js`): guardar el estado (`Plataforma.almacen`) y
+  exportar archivos (`Plataforma.guardarArchivo`: descarga en el navegador, menú de compartir en
+  Android). Si mañana entra Windows (Tauri), se agrega una implementación ahí y nada más cambia.
+- **Sin red:** ni la app ni esta capa hacen peticiones. `tests/offline.js` lo verifica.
+- **Web sin conexión:** `Plataforma.activarModoSinConexion()` registra `sw.js` (raíz) solo por
+  http(s). Después de cambiar cualquier archivo de la app: `npm run sw`.
+- **Gestos:** el canvas usa Pointer Events (`interaccion/raycasting.js`). Un dedo = mouse; dos
+  dedos = pellizcar para zoom y arrastrar para desplazar.
 
 ## Tests
 

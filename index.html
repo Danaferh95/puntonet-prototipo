@@ -4,11 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Configurador de Infraestructura · Puntonet · Prototipo v47</title>
-<!-- Inter (design system Puntonet · Atomic v1). Antes era un @import dentro del CSS: como <link>
-     el navegador la pide en paralelo con los estilos en vez de esperar a leerlos. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap">
+<!-- Inter (design system Puntonet · Atomic v1): se declara con @font-face en css/base/tokens.css
+     desde assets/fonts/. Nada se pide a internet: la app funciona offline. -->
 <!-- Estilos: el orden importa (cascada). Ver css/README.md. -->
 <link rel="stylesheet" href="css/base/tokens.css">
 <link rel="stylesheet" href="css/base/mascaras.css">
@@ -35,7 +32,8 @@
     <input id="clienteInput" type="text" placeholder="Nombre del cliente…">
     <button id="logoUploadBtn" title="Subir logo del cliente (aparece en el PDF)">+ logo</button>
     <input id="logoFileInput" type="file" accept="image/*">
-    <button class="btn btn-estructura" id="btnEstructuraActual" type="button" title="Guardar estado actual: el primer guardado queda como inicio de la sesión; los siguientes actualizan el estado (el reporte lo guarda solo)">Guardar estado actual<span class="btn-estructura__hora" id="estructuraActualHora"></span></button>
+    <button class="btn ghost btn-nueva-sesion" id="btnNuevaSesion" type="button" title="Borrar la configuración guardada en este equipo y empezar de cero">Nueva sesión</button>
+    <button class="btn btn-estructura" id="btnEstructuraActual" type="button" title="Guardar el estado actual del cliente como inicio de la sesión (cada clic lo reemplaza). El final se guarda solo al generar el reporte.">Guardar estado actual<span class="btn-estructura__hora" id="estructuraActualHora"></span></button>
     <button class="btn primary" id="btnReport"><span>Generar Reporte</span><span class="btn-arrow" aria-hidden="true">→</span></button>
   </div>
 
@@ -87,13 +85,17 @@
       <span class="screen-title__strong">Infraestructura</span>
     </h2>
     <button class="viewer-deselect" id="btnDeselect" type="button">Deseleccionar</button>
-    <div id="sceneHint">Arrastrar fondo: orbitar · Ctrl/Cmd + arrastrar (o botón ✋): desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</div>
+    <div id="sceneHint">
+      <span class="scene-hint--raton">Arrastrar fondo: orbitar · Ctrl/Cmd + arrastrar (o botón ✋): desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Clic: ver/editar detalle</span>
+      <span class="scene-hint--tactil">Un dedo sobre el fondo: orbitar · Pellizcar: zoom · Dos dedos: desplazar cámara · Arrastrar sede: moverla · Soltar un producto sobre sede/Matriz: asignarlo · Tocar: ver/editar detalle · Mantener sobre un ícono: ver qué producto es</span>
+    </div>
     <div id="placingHint">
       <span id="placingHintText"></span>
       <button id="placingHintCancel" type="button" title="Cancelar">Cancelar</button>
     </div>
     <div id="zoomControls">
       <button class="zoom-btn" id="panToggle" type="button" title="Modo mano: arrastrar desplaza la cámara en vez de orbitar (Ctrl/Cmd + arrastre también funciona sin activar esto)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11m0-5.5V4.5a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.3a6 6 0 0 1-4.9-2.5L4.3 15a1.5 1.5 0 0 1 2.4-1.8L8 15"/></svg></button>
+      <button class="zoom-btn" id="multiSelectToggle" type="button" aria-pressed="false" aria-label="Seleccionar varias" title="Seleccionar varias: cada toque suma o quita una entidad (igual que Shift + clic)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><path d="M4.8 6.6l1.4 1.4 2.4-2.6"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><path d="M15.8 6.6l1.4 1.4 2.4-2.6"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
       <button class="zoom-btn" id="zoomReset" type="button" title="Restablecer vista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/></svg></button>
       <span class="zoom-sep" aria-hidden="true"></span>
       <button class="zoom-btn" id="zoomOut" type="button" title="Alejar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
@@ -166,8 +168,10 @@
         <input type="text" id="popupMarca" placeholder="Ej. Cisco, Fortinet, Microsoft...">
       </div>
       <div class="field">
-        <label>Notas del vendedor</label>
-        <textarea id="popupNotas" placeholder="Detalles del cliente, condiciones especiales, seguimiento..."></textarea>
+        <label for="popupNotas">Notas del vendedor</label>
+        <textarea id="popupNotas" placeholder="Condiciones especiales, seguimiento..." aria-describedby="popupNotasAviso"></textarea>
+        <!-- LOPDP (Ecuador): las notas se guardan en el equipo y salen en el PDF. Decisión 28/09: solo aviso, sin límite. -->
+        <p class="field-aviso" id="popupNotasAviso">No ingreses datos personales (nombres, teléfonos, correos o cédulas de contactos): estas notas se guardan en el equipo y aparecen en el reporte.</p>
       </div>
     </div>
     <div class="modal-foot">
@@ -210,7 +214,8 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- three.js r128, copiado de node_modules/three/build (npm three@0.128.0). Local: offline. -->
+<script src="js/vendor/three.min.js"></script>
 <!-- jsPDF y html2canvas ya no se cargan acá: los pide js/reporte/pdf.js (cargarLibreriasPDF) cuando la app ya arrancó. -->
 <script src="js/vendor/GLTFLoader.js"></script>
 <script src="js/vendor/postproceso-r128.js"></script>
@@ -218,6 +223,7 @@
 <script src="js/iconos-glb.js"></script>
 <script src="js/reporte-assets.js"></script>
 <!-- App: el orden importa (ver js/README.md). main.js va último: es el único que arranca la app. -->
+<script src="js/plataforma/plataforma.js"></script>
 <script src="js/core/catalogo.js"></script>
 <script src="js/core/utilidades.js"></script>
 <script src="js/core/estado.js"></script>
@@ -250,6 +256,7 @@
 <script src="js/reporte/reporte.js"></script>
 <script src="js/reporte/estructura.js"></script>
 <script src="js/reporte/pdf.js"></script>
+<script src="js/core/persistencia.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

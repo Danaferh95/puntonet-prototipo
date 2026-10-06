@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider: solo la caché privada de la app, que es donde Plataforma.guardarArchivo escribe
+     el PDF/JSON antes de abrir el menú de compartir. La plantilla de Capacitor exponía además la
+     raíz del almacenamiento externo (external-path "."), que la app no usa. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="cache" path="." />
+</paths>

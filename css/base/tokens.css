@@ -24,6 +24,14 @@
 
 
 
+/* ---------- 0. Fuente Inter (local, offline) ----------
+   woff2 de @fontsource/inter 5.3.0 (subset latin, cubre español), en assets/fonts/. Licencia SIL
+   OFL 1.1 en assets/fonts/LICENSE-Inter.txt. Solo los pesos que usa la app: 300, 400, 500, 700. */
+@font-face{font-family:"Inter";font-style:normal;font-weight:300;font-display:swap;src:url("../../assets/fonts/inter-latin-300-normal.woff2") format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:400;font-display:swap;src:url("../../assets/fonts/inter-latin-400-normal.woff2") format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:500;font-display:swap;src:url("../../assets/fonts/inter-latin-500-normal.woff2") format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:700;font-display:swap;src:url("../../assets/fonts/inter-latin-700-normal.woff2") format("woff2");}
+
 /* ---------- 1. Tokens del design system ----------
    Los componentes usan los semánticos --pn-color-*; las --pn-palette-* solo alimentan a
    los semánticos. */

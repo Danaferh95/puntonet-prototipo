@@ -336,7 +336,7 @@ function entidadesDelReporte(){
 
 function datosReportePDF(config){
   const entidadesConServicios = [...state.matrices, ...state.sedes, ...state.nubes, ...(state.datacenter.activo ? [state.datacenter] : [])];
-  // Estado inicial (cliente, 25/09): la foto del primer "Guardar estado actual" (T06), con su
+  // Estado inicial (cliente, 25/09): la foto del último "Guardar estado actual" (T06), con su
   // captura del canvas y su salud. Ya no se pide un score a mano.
   const ini = config.estructuras.inicial, fin = config.estructuras.actual;
   const inicial = ini && ini.resumen ? ini.resumen.saludGlobal : null;
@@ -676,11 +676,13 @@ function esperarImagenesPDF(raiz){
 let pdfEnCurso = false;
 /* Librerías del PDF (jsPDF + html2canvas, ~550 KB). Solo hacen falta al exportar, pero antes se
    cargaban con <script> al abrir la app y demoraban el arranque. Ahora main.js las pide cuando el
-   navegador queda libre, así ya están listas antes del primer clic; si todavía no llegaron (o
-   fallaron por falta de red), downloadPDF las espera o las vuelve a pedir. */
+   navegador queda libre, así ya están listas antes del primer clic; si todavía no llegaron,
+   downloadPDF las espera o las vuelve a pedir.
+   Desde la etapa Android offline (28/09/2026) son copias locales en js/vendor/ (versiones fijadas
+   en package.json: jspdf 4.2.1, html2canvas 1.4.1). No se pide nada a internet. */
 const LIBRERIAS_PDF = [
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'js/vendor/jspdf.umd.min.js',
+  'js/vendor/html2canvas.min.js',
 ];
 let libreriasPDF = null;
 function cargarLibreriasPDF(){
@@ -722,7 +724,7 @@ async function downloadPDF(){
   escenario.setAttribute('aria-hidden', 'true');
   document.body.appendChild(escenario);
   try {
-    guardarEstructura(false); // T06: el final del reporte es lo que hay en pantalla
+    guardarFinal(); // T06: el final del reporte es lo que hay en pantalla
     const config = buildConfiguracionCliente();
     const ctx = { escenario, paginas: [], datos: datosReportePDF(config) };
     if(document.fonts){
@@ -750,8 +752,12 @@ async function downloadPDF(){
       doc.addImage(lienzo.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
     }
     const fecha = new Date().toISOString().slice(0, 10);
-    doc.save(`reporte-${safeFileName(config.nombreCliente)}-${fecha}.pdf`);
+    // Capa de plataforma: descarga en el navegador; en Android, "Guardar como" y luego compartir.
+    const nombrePDF = `reporte-${safeFileName(config.nombreCliente)}-${fecha}.pdf`;
+    const guardado = await Plataforma.guardarArchivo({ nombre: nombrePDF, mime: 'application/pdf', blob: doc.output('blob') });
+    ofrecerCompartir(guardado, 'PDF guardado', nombrePDF);
   } catch(err){
+    if(esCancelacionCompartir(err)) return; // cerró el menú de compartir: el PDF ya se generó
     console.error('[pdf] no se pudo generar el reporte:', err);
     showToast('No se pudo generar el PDF. Revisa la consola para más detalle.');
   } finally {

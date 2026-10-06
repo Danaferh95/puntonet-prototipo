@@ -51,7 +51,7 @@ function buildConfiguracionCliente(){
     estructuras: { inicial: state.estructuras.inicial, actual: state.estructuras.actual },
     generadoEn: new Date().toISOString(),
     salud: {
-      // Cliente 25/09: ya no se carga a mano; es la salud del inicio de la sesión (primer
+      // Cliente 25/09: ya no se carga a mano; es la salud del inicio de la sesión (último
       // "Guardar estado actual"), o null si no se guardó.
       inicial: saludDelInicio(),
       actual: saludGlobal(),
@@ -141,7 +141,7 @@ function conexionesTexto(entityId){
 }
 
 /* Salud del inicio de la sesión (cliente, 25/09): antes el asesor la escribía a mano en el
-   reporte; ahora sale sola de la foto que se tomó con el primer "Guardar estado actual". */
+   reporte; ahora sale sola de la foto del último "Guardar estado actual" (06/10: cada clic la reemplaza). */
 function saludDelInicio(){
   const ini = state.estructuras.inicial;
   return ini && ini.resumen ? ini.resumen.saludGlobal : null;

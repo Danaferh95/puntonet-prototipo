@@ -3,10 +3,25 @@
   "private": true,
   "description": "Prototipo interactivo Puntonet (MATTE). La app no necesita build: se abre index.html directo en el navegador.",
   "scripts": {
-    "test": "node tests/run-all.js"
+    "test": "node tests/run-all.js",
+    "vendor": "node tools/copiar-vendor.js",
+    "www": "node tools/preparar-www.js",
+    "sw": "node tools/generar-sw.js",
+    "android:sync": "node tools/preparar-www.js && npx cap sync android",
+    "android:open": "npx cap open android"
   },
   "devDependencies": {
-    "jsdom": "^30.1.1",
+    "@capacitor/cli": "8.5.2",
+    "@fontsource/inter": "5.3.0",
+    "html2canvas": "1.4.1",
+    "jsdom": "30.1.1",
+    "jspdf": "4.2.1",
     "three": "0.128.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/filesystem": "8.1.3",
+    "@capacitor/share": "8.0.2"
   }
 }

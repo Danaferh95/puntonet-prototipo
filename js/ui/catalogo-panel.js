@@ -186,7 +186,7 @@ function renderRightPanel(){
         const sub = getSubproducto(inst.subproductoId);
         // Sdwan (v9 §3, ajustado): el nombre solo no dice a qué canal se está aplicando — se
         // agrega el destino inline, igual que Canal de Conexión/Cloud Interconnect en el reporte.
-        let nombreMostrado = inst.nombreSubproducto;
+        let nombreMostrado = escapeHtml(inst.nombreSubproducto);
         if(sub.id==='sdwan'){
           const target = inst.targetConexionId ? state.conexiones.find(c=>c.id===inst.targetConexionId) : null;
           nombreMostrado += target

@@ -2,3 +2,11 @@ node_modules/
 
 # Capturas, reportes y notas de trabajo: no son parte de la app
 Claude outputs/
+
+# Capacitor: www/ se arma con tools/preparar-www.js (no se versiona)
+www/
+
+# Firma de Android: el keystore y sus claves NUNCA van al repo (ver docs/android.md)
+*.jks
+*.keystore
+keystore.properties

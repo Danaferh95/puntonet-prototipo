@@ -88,3 +88,11 @@
 .touch-drag-ghost{position:fixed;z-index:200;pointer-events:none;transform:translate(-50%,-135%);
   padding:0.5rem 1rem;border-radius:var(--pn-layout-pill);color:var(--pn-color-navy);font:500 0.8125rem/1.25rem var(--font-sans);
   white-space:nowrap;opacity:.96;box-shadow:var(--pn-glow-focus);}
+
+/* Texto de ayuda del visor según el tipo de puntero (etapa Android offline): en pantallas táctiles
+   (tablet) no hay Ctrl/Cmd ni rueda del mouse, así que se muestran los gestos con los dedos. */
+.scene-hint--tactil{display:none;}
+@media (pointer:coarse){
+  .scene-hint--raton{display:none;}
+  .scene-hint--tactil{display:inline;}
+}

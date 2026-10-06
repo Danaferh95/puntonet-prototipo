@@ -26,3 +26,5 @@
 .btn-estructura.is-saved{border-color:var(--pn-color-cyan);}
 .btn-estructura__hora{color:var(--pn-color-cyan);font-size:0.8125rem;font-weight:400;}
 .btn-estructura__hora:empty{display:none;}
+/* Nueva sesión (etapa Android offline): acción secundaria, mismo alto que el resto del header. */
+.btn-nueva-sesion{flex:none;padding:0 1rem;font-size:0.9375rem;}

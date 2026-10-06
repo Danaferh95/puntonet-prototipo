@@ -1,10 +1,13 @@
 /* Neutraliza HTML en cualquier texto que venga del usuario (nombres de sede/Matriz/Nube, valores
    de propiedades, nombre del cliente) antes de interpolarlo en un innerHTML. Sin esto, un nombre
-   con `<` o `&` rompe el marcado del panel o del reporte. */
+   con `<` o `&` rompe el marcado del panel o del reporte.
+   Android offline (28/09/2026): también escapa comillas. La versión anterior (textContent →
+   innerHTML) dejaba pasar `"` y `'`, y varios nombres van dentro de atributos
+   (value="${escapeHtml(sede.nombre)}"): un nombre con comillas podía cerrar el atributo y
+   agregar otros (p. ej. un manejador de eventos). */
+const ESCAPES_HTML = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
 function escapeHtml(str){
-  const div = document.createElement('div');
-  div.textContent = str === null || str === undefined ? '' : str;
-  return div.innerHTML;
+  return (str === null || str === undefined ? '' : String(str)).replace(/[&<>"']/g, c=> ESCAPES_HTML[c]);
 }
 
 /* Los 6 bloques del panel derecho (sede, Matriz, Nube, Datacenter, conexiones, herencia) comparten
@@ -102,7 +105,7 @@ function renderHerenciaBox(sede){
       return `<label class="herenciaRow">
         <input type="checkbox" class="herenciaCheck" data-inst="${inst.instanciaId}" ${checked?'checked':''}>
         <img class="herenciaIcon" src="${iconoUiSubproducto(sub)}" alt="">
-        <span class="herenciaName">${inst.nombreSubproducto}</span>
+        <span class="herenciaName">${escapeHtml(inst.nombreSubproducto)}</span>
         ${checked ? `<span class="herenciaRemove" data-inst="${inst.instanciaId}" title="Quitar herencia">×</span>` : ''}
       </label>`;
     }).join('');
