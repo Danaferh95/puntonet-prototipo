@@ -1,0 +1,6 @@
+# Librerías de terceros: se versionan tal cual vienen de npm. Sin esto, git en Windows
+# (core.autocrlf=true) las deja con CRLF y dejan de ser idénticas a las versiones fijadas
+# (tests/offline.js, sección B).
+js/vendor/three.min.js -text
+js/vendor/jspdf.umd.min.js -text
+js/vendor/html2canvas.min.js -text
