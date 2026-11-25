@@ -77,7 +77,7 @@ function buildConfiguracionCliente(){
       })),
     })),
     datacenter: {
-      nombre: state.datacenter.nombre,
+      nombre: state.datacenter.nombre, gx: state.datacenter.gx, gz: state.datacenter.gz,
       instancias: state.datacenter.instancias.map(i=>({
         instanciaId: i.instanciaId, subproductoId: i.subproductoId, verticalId: i.verticalId,
         nombreSubproducto: i.nombreSubproducto, propiedades: i.propiedades, notas: i.notas,

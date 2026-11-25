@@ -2,7 +2,8 @@
    9-bis. REPORTE PDF (T08, plantilla de Dei del 24/09)
    -------------------------------------------------------------------------
    Hasta T08 el PDF se dibujaba primitiva por primitiva con jsPDF (Helvetica sobre blanco). La
-   plantilla nueva es oscura, con Inter, degradados y tarjetas del design system, así que el PDF
+   plantilla nueva usa Inter y tarjetas del design system (fondo blanco desde el 25/11/2026, ver
+   css/reporte/pdf.css), así que el PDF
    pasa a armarse como páginas HTML de tamaño A4 (794 × 1123 px) que html2canvas convierte en
    imagen, una por página, y jsPDF junta en el archivo. Toda la apariencia vive en
    css/reporte/pdf.css (§12, clases .pdf-*); acá solo se arma el contenido y se pagina.

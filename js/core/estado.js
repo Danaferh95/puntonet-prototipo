@@ -16,7 +16,7 @@ const state = {
   nubes: [],              // { id, nombre, tipo:'nube', gx, gz, group(THREE.Group), instancias:[] } — destino de
                           // Cloud Interconnect (v9 §4/§5); por ahora solo se crean al vuelo desde el dropdown
                           // "Conectar a" de Cloud Interconnect (no tienen catálogo de productos propios todavía).
-  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[], activo:true }, // edificio fijo de Puntonet — aparece por defecto, pero se puede eliminar (ago/2026, ver deleteDatacenter) si el proyecto no lo necesita
+  datacenter: { id:'datacenter', nombre:'Datacenter Epicentro', tipo:'datacenter', group:null, instancias:[], activo:true }, // edificio de Puntonet (movible desde nov/2026; gx/gz los fija escena/entidades.js) — aparece por defecto, pero se puede eliminar (ago/2026, ver deleteDatacenter) si el proyecto no lo necesita
   conexiones: [],        // { id, aId, bId, subproductoId, instanciaId, ownerId, esBackup } — cable entre 2
                           // entidades; instanciaId+ownerId lo ligan al "servicio asignado" que
                           // representa (misma cosa, no dos registros — ver ensureConexionAutomatica).
@@ -238,7 +238,7 @@ function generaConexionAutomatica(sub){
 function getOrCreateNubeInternetAuto(){
   const existente = state.nubes.find(n=>n.esAutoInternet);
   if(existente) return existente;
-  const {gx,gz} = nearestFreeCell(GRID_SPACING*6, DATACENTER_GZ*GRID_SPACING, null, huellaDeClave('nube'));
+  const {gx,gz} = nearestFreeCell(GRID_SPACING*(state.datacenter.gx+6), state.datacenter.gz*GRID_SPACING, null, huellaDeClave('nube'));
   const nube = createNube('Internet', gx, gz);
   nube.esAutoInternet = true;
   return nube;

@@ -86,7 +86,12 @@ const SUBPRODUCTOS = [
     // lo suma a la lista del dropdown "Conectar a" (antes solo Sedes/Matrices), de modo que un
     // canal Sede↔Datacenter se pueda contratar como producto y no solo tendiendo el cable a mano
     // desde el puerto.
-    destinos:['sede','matriz','datacenter'], destinosConexion:['sede','matriz','datacenter'],
+    // nov/2026 (pedido de producto 25/11): "que el Canal de conexión se pueda configurar en
+    // cualquier nube que se cree" — `destinos` suma 'nube': el chip se puede soltar sobre
+    // cualquier Nube (de proveedor o la automática de Internet) y el dropdown "Conectar a" lista
+    // Sedes, Matrices y el Datacenter como el otro extremo. `destinosConexion` no cambia: el
+    // enlace Sede→Nube sigue siendo el Cloud Interconnect.
+    destinos:['sede','matriz','datacenter','nube'], destinosConexion:['sede','matriz','datacenter'],
     ocultaEnServiciosAsignados:true, permiteBackup:true, sumaConcentrador:true },
   // Cloud Interconnect (v9 §4): el dropdown "Conectar a" ya no lista Sedes/Matrices — lista
   // Nubes (entidad `nube`, ver createNube/candidatosConexionEntreSedes). Sigue siendo
@@ -212,7 +217,9 @@ const SUBPRODUCTOS = [
     eslogan:'¡La misma protección, sin cables ni hardware!',
     descripcion:'Hardware virtual para protección perimetral.',
     parametros:['Marca','Modelo de equipo'],
-    destinos:['sede','matriz','datacenter'] },
+    // nov/2026 (pedido de producto 25/11): "que el Firewall IaaS se pueda configurar en cualquier
+    // nube que se cree" — suma 'nube'. On Premise no: es hardware físico, no va en una nube.
+    destinos:['sede','matriz','datacenter','nube'] },
   // Internet Seguro (ago/2026): a partir de esta fase se comporta como el resto de la familia
   // Internet — `conexion:'internetAuto'` lo conecta solo a la Nube de Internet compartida del
   // proyecto (getOrCreateNubeInternetAuto), igual que Internet Corporativo/Startup/Teleworking —

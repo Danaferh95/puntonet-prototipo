@@ -174,6 +174,11 @@ const dcPos = { x: 0*GRID_SPACING, z: DATACENTER_GZ*GRID_SPACING };
 datacenterGroup.position.set(dcPos.x, 0, dcPos.z);
 scene.add(datacenterGroup);
 state.datacenter.group = datacenterGroup;
+// nov/2026 (pedido de producto 25/11): el Epicentro se puede mover arrastrándolo como una Sede.
+// DATACENTER_GZ queda como posición inicial; la real vive en state.datacenter.gx/gz (se guarda
+// en la sesión, ver persistencia.js) y es la que usa occupied() para no encimar entidades.
+state.datacenter.gx = 0;
+state.datacenter.gz = DATACENTER_GZ;
 
 const DC_TIERS = [ [3.0,0.55,2.2], [2.0,1.0,1.5], [1.1,0.7,0.85] ];
 let dcY = 0;

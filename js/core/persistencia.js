@@ -45,7 +45,8 @@ function serializarSesion(incluirLogo){
     sedes: state.sedes.map(datosDeEntidad),
     matrices: state.matrices.map(datosDeEntidad),
     nubes: state.nubes.map(datosDeEntidad),
-    datacenter: { activo: !!state.datacenter.activo, instancias: state.datacenter.instancias },
+    datacenter: { activo: !!state.datacenter.activo, instancias: state.datacenter.instancias,
+      gx: state.datacenter.gx, gz: state.datacenter.gz },
     conexiones: state.conexiones,
   });
 }
@@ -125,6 +126,13 @@ function aplicarSesion(s){
     recrearEntidad(d, 'nextNubeSeq', ()=> createNube(d.nombre, d.gx, d.gz)));
 
   const dc = s.datacenter || { activo:true, instancias:[] };
+  // Posición del Epicentro (movible desde nov/2026). Sesiones anteriores no la traen: queda la
+  // de siempre.
+  if(typeof dc.gx === 'number' && typeof dc.gz === 'number'){
+    state.datacenter.gx = dc.gx; state.datacenter.gz = dc.gz;
+    const pos = gridToWorld(dc.gx, dc.gz);
+    datacenterGroup.position.set(pos.x, 0, pos.z);
+  }
   if(dc.activo === false) deleteDatacenter();
   else state.datacenter.instancias = dc.instancias || [];
 

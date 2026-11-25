@@ -27,7 +27,7 @@ function webp(p){
 }
 
 const assets = {
-  logo: svg('logos/puntonet-logo-blanco.svg'), // 25/09: versión toda en blanco (cliente)
+  logo: svg('logos/puntonet-logo-oscuro.svg'), // 25/11: PDF en blanco → letras oscuras (antes puntonet-logo-blanco.svg)
   renders: {
     sede: webp('renders-sm/sede.webp'),
     matriz: webp('renders-sm/matriz.webp'),

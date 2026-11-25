@@ -89,6 +89,15 @@ function deleteDatacenter(){
 
 function restoreDatacenter(){
   if(state.datacenter.activo) return;
+  // Mientras estuvo eliminado, otra entidad pudo ocupar su lugar: si es así, vuelve en la celda
+  // libre más cercana.
+  const dims = datacenterGroup.userData.dims;
+  if(occupied(state.datacenter.gx, state.datacenter.gz, 'datacenter', dims)){
+    const {gx,gz} = nearestFreeCell(datacenterGroup.position.x, datacenterGroup.position.z, 'datacenter', dims);
+    state.datacenter.gx = gx; state.datacenter.gz = gz;
+    const pos = gridToWorld(gx, gz);
+    datacenterGroup.position.set(pos.x, 0, pos.z);
+  }
   state.datacenter.activo = true;
   datacenterGroup.visible = true;
   upsertNameLabel('datacenter', datacenterGroup, dcY + 0.8, 'Datacenter Epicentro');

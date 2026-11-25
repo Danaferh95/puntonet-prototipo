@@ -12,7 +12,7 @@
      borra la vieja y la app avisa que hay que recargar.
    ========================================================================= */
 /* <generado por tools/generar-sw.js> */
-const VERSION = '3e54166f1bd1';
+const VERSION = '10dbb52b28f0';
 const ARCHIVOS = [
   "./",
   "index.html",
@@ -152,6 +152,7 @@ const ARCHIVOS = [
   "assets/ui/icons/ventanas.svg",
   "assets/ui/icons/wifi_equipo.svg",
   "assets/ui/logos/puntonet-logo-blanco.svg",
+  "assets/ui/logos/puntonet-logo-oscuro.svg",
   "assets/ui/logos/puntonet-logo.svg",
   "assets/ui/marca/marca-agua.svg",
   "assets/ui/medallions/medallion-ciberseguridad.svg",

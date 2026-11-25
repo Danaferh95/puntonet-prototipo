@@ -211,7 +211,8 @@ function onPointerMove(e){
       connectingHoverId = null;
       startTempCable();
     } else if(!pointerDownInfo.hit.port && moved > DRAG_THRESHOLD){
-      if(pointerDownInfo.hit.sedeId && pointerDownInfo.hit.sedeId!=='datacenter' && !pointerDownInfo.hit.asset){
+      // El Datacenter Epicentro también se mueve (pedido de producto 25/11/2026).
+      if(pointerDownInfo.hit.sedeId && !pointerDownInfo.hit.asset){
         pointerMode = 'moveSede';
         movingSede = getSedeById(pointerDownInfo.hit.sedeId);
       } else {

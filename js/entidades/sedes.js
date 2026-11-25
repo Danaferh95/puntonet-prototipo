@@ -52,9 +52,9 @@ function huellaDeSedePorEmpleados(empleados){
 function occupied(gx, gz, excludeId, huella){
   const h = huella || huellaDeClave('sede_mediano');
   const caja = huellaEnCelda(gx, gz, h.w, h.d);
-  if(state.datacenter.activo){
+  if(state.datacenter.activo && excludeId !== 'datacenter'){
     const dcDims = datacenterGroup.userData.dims || { w:3, d:2.2 };
-    if(seSolapan(caja, huellaEnCelda(0, DATACENTER_GZ, dcDims.w, dcDims.d))) return true;
+    if(seSolapan(caja, huellaEnCelda(state.datacenter.gx, state.datacenter.gz, dcDims.w, dcDims.d))) return true;
   }
   return todasLasEntidades().some(e=>
     e && e.id !== excludeId && e.id !== 'datacenter' && e.group && seSolapan(caja, huellaDeColocada(e)));
