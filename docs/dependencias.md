@@ -24,6 +24,8 @@ Las copias de `js/vendor/` y `assets/fonts/` salen de `node_modules` con `npm ru
 |---|---|---|---|
 | @capacitor/cli | 8.5.2 | MIT | Genera y sincroniza el proyecto Android |
 | jsdom | 30.1.1 | MIT | Tests automáticos |
+| electron | 44.5.1 | MIT | Contenedor de la versión Windows. No entra en el APK ni en la web; sí va dentro del instalador `.exe` (es el navegador que abre la app) |
+| electron-builder | 26.15.3 | MIT | Arma el instalador NSIS de Windows (`npm run escritorio:instalador`) |
 
 ## Vulnerabilidades conocidas
 

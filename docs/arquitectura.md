@@ -85,8 +85,11 @@ local ni remota.
 
 El código de la app no pregunta en qué plataforma corre: lo que depende de ella (guardar el
 estado, exportar un archivo) pasa por `Plataforma`. Hoy hay dos implementaciones (navegador y
-Capacitor). Si Puntonet confirma laptops Windows, se agrega una tercera (Tauri, con WebView2) sin
-tocar el resto.
+Capacitor). En Windows la app corre dentro de **Electron 44.5.1** (`electron/main.js`), que abre la
+misma carpeta `www/` por `file://` y usa la implementación de navegador (el PDF se guarda con el
+"Guardar como" de Windows). Instalador: `npm run escritorio:instalador` → `dist-escritorio/`.
+El instalador NSIS se tiene que generar en Windows (en Linux pide `wine`); en cualquier sistema
+queda además la versión portable en `dist-escritorio/win-unpacked/`.
 
 ## Seguridad en el código
 
@@ -105,6 +108,7 @@ Puntonet y el momento en que pasa la propiedad son parte del contrato (control 1
 |---|---|
 | `index.html`, `css/`, `js/`, `assets/` | La aplicación (lo único que va dentro del APK) |
 | `android/` | Proyecto Android nativo generado por Capacitor |
+| `electron/` | Arranque de la versión de escritorio Windows (Electron) |
 | `tools/` | Scripts de construcción (empaquetar modelos e íconos, copiar librerías, armar `www/`) |
 | `tests/` | Pruebas automáticas (`npm test`) |
 | `docs/` | Esta documentación y la evidencia |
