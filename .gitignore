@@ -10,3 +10,6 @@ www/
 *.jks
 *.keystore
 keystore.properties
+
+# Escritorio (Electron): instaladores generados
+dist-escritorio/
